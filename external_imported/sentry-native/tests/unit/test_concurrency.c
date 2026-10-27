@@ -3,30 +3,53 @@
 
 #include <sentry_sync.h>
 
+#ifdef SENTRY__MUTEX_INIT_DYN
+SENTRY__MUTEX_INIT_DYN(g_test_check_mutex)
+#else
+static sentry_mutex_t g_test_check_mutex = SENTRY__MUTEX_INIT;
+#endif
+
 static void
-send_envelope_test_concurrent(const sentry_envelope_t *envelope, void *data)
+send_envelope_test_concurrent(sentry_envelope_t *envelope, void *data)
 {
+    SENTRY__MUTEX_INIT_DYN_ONCE(g_test_check_mutex);
+
     sentry__atomic_fetch_and_add((long *)data, 1);
 
     sentry_value_t event = sentry_envelope_get_event(envelope);
     if (!sentry_value_is_null(event)) {
         const char *event_id = sentry_value_as_string(
             sentry_value_get_by_key(event, "event_id"));
+        // Protect the test check with a mutex since the test framework
+        // global variables that track checks are not thread-safe.
+        sentry__mutex_lock(&g_test_check_mutex);
         TEST_CHECK_STRING_EQUAL(
             event_id, "4c035723-8638-4c3a-923f-2ab9d08b4018");
+        sentry__mutex_unlock(&g_test_check_mutex);
     }
+    sentry_envelope_free(envelope);
 }
 
 static void
 init_framework(long *called)
 {
+    SENTRY__MUTEX_INIT_DYN_ONCE(g_test_check_mutex);
+
+    sentry__mutex_lock(&g_test_check_mutex);
     SENTRY_TEST_OPTIONS_NEW(options);
+    sentry__mutex_unlock(&g_test_check_mutex);
+
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
-    sentry_options_set_transport(options,
-        sentry_new_function_transport(send_envelope_test_concurrent, called));
+
+    sentry_transport_t *transport
+        = sentry_transport_new(send_envelope_test_concurrent);
+    sentry_transport_set_state(transport, called);
+    sentry_options_set_transport(options, transport);
+
     sentry_options_set_release(options, "prod");
     sentry_options_set_require_user_consent(options, false);
     sentry_options_set_auto_session_tracking(options, true);
+
     sentry_init(options);
 }
 
@@ -86,6 +109,7 @@ SENTRY_TEST(concurrent_init)
         sentry__thread_init(&threads[i]);
         sentry__thread_spawn(&threads[i], &thread_worker, &called);
     }
+
     for (size_t i = 0; i < THREADS_NUM; i++) {
         sentry__thread_join(threads[i]);
         sentry__thread_free(&threads[i]);

@@ -25,7 +25,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GTEST_FILTER: ${{ github.event.inputs.gtest_filter || '*' }}
+  # Exclude *_Online tests by default — they hit external services and flake on
+  # CI runners. Run with workflow_dispatch + a custom filter to include them.
+  GTEST_FILTER: ${{ github.event.inputs.gtest_filter || '-*_Online' }}
 
 jobs:
   style-check:
@@ -40,7 +42,7 @@ jobs:
           clang-format --version
           cd test && make style_check
 
-  ubuntu:
+  build-and-test-on-32bit:
     runs-on: ubuntu-latest
     if: >
       (github.event_name == 'push') ||
@@ -53,10 +55,6 @@ jobs:
         - arch_flags: -m32
           arch_suffix: :i386
           name: (32-bit)
-        - arch_flags:
-          arch_suffix:
-          name: (64-bit)
-    name: ubuntu ${{ matrix.config.name }}
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -69,9 +67,293 @@ jobs:
             zlib1g-dev${{ matrix.config.arch_suffix }} libbrotli-dev${{ matrix.config.arch_suffix }} \
             libzstd-dev${{ matrix.config.arch_suffix }}
       - name: build and run tests
-        run: cd test && make EXTRA_CXXFLAGS="${{ matrix.config.arch_flags }}"
+        run: cd test && make test EXTRA_CXXFLAGS="${{ matrix.config.arch_flags }}"
+
+  ubuntu:
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request'  &&
+       github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.test_linux == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        tls_backend: [openssl, mbedtls, wolfssl]
+    name: ubuntu (${{ matrix.tls_backend }})
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: install common libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libbrotli-dev libzstd-dev
+      - name: install OpenSSL
+        if: matrix.tls_backend == 'openssl'
+        run: sudo apt-get install -y libssl-dev
+      - name: install Mbed TLS
+        if: matrix.tls_backend == 'mbedtls'
+        run: sudo apt-get install -y libmbedtls-dev
+      - name: install wolfSSL
+        if: matrix.tls_backend == 'wolfssl'
+        run: sudo apt-get install -y libwolfssl-dev
+      - name: build and run tests (OpenSSL)
+        if: matrix.tls_backend == 'openssl'
+        run: cd test && make test_split && make test_openssl_parallel
+        env:
+          LSAN_OPTIONS: suppressions=lsan_suppressions.txt
+      - name: build and run tests (Mbed TLS)
+        if: matrix.tls_backend == 'mbedtls'
+        # Run mbedTLS shards with reduced parallelism — under ASAN+mbedTLS the
+        # default 4 shards overload CI runners enough that timing-sensitive
+        # ServerTest cases flake on first-request keep-alive reuse.
+        run: cd test && make test_split_mbedtls && SHARDS=2 make test_mbedtls_parallel
+      - name: build and run tests (wolfSSL)
+        if: matrix.tls_backend == 'wolfssl'
+        run: cd test && make test_split_wolfssl && make test_wolfssl_parallel
       - name: run fuzz test target
-        run: cd test && make EXTRA_CXXFLAGS="${{ matrix.config.arch_flags }}" fuzz_test
+        if: matrix.tls_backend == 'openssl'
+        run: cd test && make fuzz_test
+      - name: build and run WebSocket heartbeat test
+        if: matrix.tls_backend == 'openssl'
+        run: cd test && make test_websocket_heartbeat && ./test_websocket_heartbeat
+      - name: build and run ThreadPool test
+        run: cd test && make test_thread_pool && ./test_thread_pool
+
+  # BoringSSL is Google's fork of OpenSSL. It has no API stability guarantee
+  # and is not packaged by distros, so we build it from source. cpp-httplib
+  # treats it as an OpenSSL backend variant via the OPENSSL_IS_BORINGSSL
+  # macro (see httplib.h). This job is best-effort: continue-on-error keeps
+  # upstream API drift from blocking PRs while still surfacing breakage.
+  ubuntu-boringssl:
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request'  &&
+       github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.test_linux == 'true')
+    continue-on-error: true
+    name: ubuntu (boringssl, best-effort)
+    env:
+      # Tracking HEAD keeps us honest about upstream churn. If breakage
+      # becomes routine, replace HEAD with a 40-char commit SHA; the
+      # resolve step uses the SHA directly when it matches that shape.
+      BORINGSSL_REF: HEAD
+      BORINGSSL_PREFIX: ${{ github.workspace }}/boringssl-install
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: install common libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev zlib1g-dev libbrotli-dev libzstd-dev
+      - name: resolve BoringSSL commit
+        id: boringssl-rev
+        # Accept either a ref name (resolved via git ls-remote) or a full
+        # 40-char SHA used directly. ls-remote does not list arbitrary
+        # commit SHAs, so pinning requires the second path.
+        run: |
+          if [[ "${BORINGSSL_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            sha="${BORINGSSL_REF}"
+            echo "Using pinned BoringSSL SHA: ${sha}"
+          else
+            sha=$(git ls-remote https://boringssl.googlesource.com/boringssl "${BORINGSSL_REF}" | awk '{print $1}')
+            if [ -z "$sha" ]; then
+              echo "Failed to resolve BoringSSL ref ${BORINGSSL_REF}" >&2
+              exit 1
+            fi
+            echo "Resolved ${BORINGSSL_REF} -> ${sha}"
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+      - name: cache BoringSSL build
+        id: boringssl-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BORINGSSL_PREFIX }}
+          key: boringssl-${{ runner.os }}-${{ steps.boringssl-rev.outputs.sha }}
+      - name: build BoringSSL
+        if: steps.boringssl-cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          git clone https://boringssl.googlesource.com/boringssl boringssl
+          cd boringssl
+          git checkout "${{ steps.boringssl-rev.outputs.sha }}"
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_INSTALL_PREFIX="${BORINGSSL_PREFIX}"
+          cmake --build build -j"$(nproc)" --target install
+      - name: build and run tests (BoringSSL)
+        # Override OPENSSL_SUPPORT to point the existing OpenSSL Makefile path
+        # at BoringSSL's prefix. BoringSSL defines OPENSSL_IS_BORINGSSL in
+        # <openssl/base.h>, which httplib.h and test.cc use to switch on API
+        # differences (e.g. SAN-only hostname verification, no CN fallback).
+        #
+        # BoringSSL's public headers (<openssl/stack.h>) use std::enable_if_t,
+        # so consumers must compile with C++14 or later. cpp-httplib itself
+        # supports C++11, but anyone pairing it with BoringSSL inherits this
+        # constraint. EXTRA_CXXFLAGS appends after the Makefile's -std=c++11
+        # and the later flag wins.
+        run: |
+          cd test
+          BORINGSSL_FLAGS="-DCPPHTTPLIB_OPENSSL_SUPPORT -I${BORINGSSL_PREFIX}/include -L${BORINGSSL_PREFIX}/lib -lssl -lcrypto -lpthread"
+          make test_split OPENSSL_SUPPORT="${BORINGSSL_FLAGS}" EXTRA_CXXFLAGS="-std=c++17"
+          make test_openssl_parallel OPENSSL_SUPPORT="${BORINGSSL_FLAGS}" EXTRA_CXXFLAGS="-std=c++17"
+        env:
+          LSAN_OPTIONS: suppressions=lsan_suppressions.txt
+
+  # macOS counterpart of the BoringSSL job. Same best-effort posture; the
+  # extra framework links cover the macOS Keychain integration that
+  # httplib.h auto-enables for any TLS backend on macOS.
+  macos-boringssl:
+    runs-on: macos-latest
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request'  &&
+       github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.test_macos == 'true')
+    continue-on-error: true
+    name: macos (boringssl, best-effort)
+    env:
+      BORINGSSL_REF: HEAD
+      BORINGSSL_PREFIX: ${{ github.workspace }}/boringssl-install
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: resolve BoringSSL commit
+        id: boringssl-rev
+        # Accept either a ref name (resolved via git ls-remote) or a full
+        # 40-char SHA used directly. ls-remote does not list arbitrary
+        # commit SHAs, so pinning requires the second path.
+        run: |
+          if [[ "${BORINGSSL_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            sha="${BORINGSSL_REF}"
+            echo "Using pinned BoringSSL SHA: ${sha}"
+          else
+            sha=$(git ls-remote https://boringssl.googlesource.com/boringssl "${BORINGSSL_REF}" | awk '{print $1}')
+            if [ -z "$sha" ]; then
+              echo "Failed to resolve BoringSSL ref ${BORINGSSL_REF}" >&2
+              exit 1
+            fi
+            echo "Resolved ${BORINGSSL_REF} -> ${sha}"
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+      - name: cache BoringSSL build
+        id: boringssl-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.BORINGSSL_PREFIX }}
+          key: boringssl-${{ runner.os }}-${{ steps.boringssl-rev.outputs.sha }}
+      - name: build BoringSSL
+        if: steps.boringssl-cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          git clone https://boringssl.googlesource.com/boringssl boringssl
+          cd boringssl
+          git checkout "${{ steps.boringssl-rev.outputs.sha }}"
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_INSTALL_PREFIX="${BORINGSSL_PREFIX}"
+          cmake --build build -j"$(sysctl -n hw.ncpu)" --target install
+      - name: build and run tests (BoringSSL)
+        run: |
+          cd test
+          # CoreFoundation/Security frameworks satisfy the Keychain integration
+          # auto-enabled in httplib.h for macOS TLS builds.
+          BORINGSSL_FLAGS="-DCPPHTTPLIB_OPENSSL_SUPPORT -I${BORINGSSL_PREFIX}/include -L${BORINGSSL_PREFIX}/lib -lssl -lcrypto -framework CoreFoundation -framework Security"
+          make test_split OPENSSL_SUPPORT="${BORINGSSL_FLAGS}" EXTRA_CXXFLAGS="-std=c++17"
+          make test_openssl_parallel OPENSSL_SUPPORT="${BORINGSSL_FLAGS}" EXTRA_CXXFLAGS="-std=c++17"
+        env:
+          LSAN_OPTIONS: suppressions=lsan_suppressions.txt
+
+  # Reproducer for https://github.com/yhirose/cpp-httplib/issues/2431.
+  # On Linux/glibc, getaddrinfo_with_timeout() schedules an asynchronous
+  # DNS lookup with getaddrinfo_a(GAI_NOWAIT) using a stack-local gaicb.
+  # When gai_suspend() hits the connection timeout, gai_cancel() is called
+  # but does not block; the resolver worker can later write back into the
+  # destroyed stack frame. To make the worker actually reach that write,
+  # the test job runs a loopback UDP responder (test/dns_test_fixture.py)
+  # that delays its reply past the test's 1s timeout, and uses an iptables
+  # NAT rule so glibc's lookups land on that fixture instead of a real
+  # nameserver. With ASAN's detect_stack_use_after_return enabled, the
+  # late write-back is reported as a stack-use-after-return.
+  issue-2431-repro:
+    runs-on: ubuntu-latest
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request'  &&
+       github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.test_linux == 'true')
+    name: issue-2431 repro (Linux + ASAN)
+    # Bound the whole job in case anything in the test harness hangs
+    # unexpectedly. With the fixture in place a normal run is well under
+    # a minute either way (ASAN abort on broken HEAD, clean pass on fix).
+    timeout-minutes: 5
+    env:
+      DNS_FIXTURE_PORT: "15353"
+      DNS_FIXTURE_DELAY: "3"
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: install libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev zlib1g-dev libbrotli-dev \
+            libzstd-dev libcurl4-openssl-dev iptables util-linux iproute2
+      - name: start loopback DNS test fixture
+        run: |
+          # Force glibc through its DNS code path: Ubuntu's default
+          # nsswitch short-circuits to NOTFOUND through mdns4_minimal,
+          # which would skip the buggy code entirely.
+          sudo sed -i 's/^hosts:.*/hosts: dns/' /etc/nsswitch.conf
+          # Run the loopback fixture (delayed UDP responder).
+          python3 test/dns_test_fixture.py "$DNS_FIXTURE_PORT" "$DNS_FIXTURE_DELAY" \
+            >/tmp/dns_fixture.log 2>&1 &
+          echo $! | sudo tee /tmp/dns_fixture.pid >/dev/null
+          # Wait for the fixture to start listening.
+          for _ in $(seq 1 50); do
+            if ss -lun "( sport = :$DNS_FIXTURE_PORT )" | grep -q ":$DNS_FIXTURE_PORT"; then
+              break
+            fi
+            sleep 0.1
+          done
+          ss -lun "( sport = :$DNS_FIXTURE_PORT )" | grep -q ":$DNS_FIXTURE_PORT" \
+            || { echo "fixture failed to start"; cat /tmp/dns_fixture.log; exit 1; }
+          # Send the test process's DNS lookups to the loopback fixture.
+          # NAT only the local OUTPUT chain; conntrack handles the reply path.
+          sudo iptables -t nat -I OUTPUT -p udp --dport 53 \
+            -j REDIRECT --to-port "$DNS_FIXTURE_PORT"
+          # Sanity check: a query must take at least the fixture delay
+          # and resolve to NXDOMAIN (proving traffic reaches the fixture).
+          start=$(date +%s)
+          getent hosts unresolvable-host.invalid >/dev/null 2>&1 || true
+          elapsed=$(( $(date +%s) - start ))
+          if [ "$elapsed" -lt 2 ]; then
+            echo "ERROR: lookup returned in ${elapsed}s; fixture not in path" >&2
+            exit 1
+          fi
+          echo "[ok] DNS lookups are routed to the test fixture (took ${elapsed}s)"
+      - name: build test binary
+        run: cd test && make test
+      - name: run GetAddrInfoAsyncCancelTest
+        run: |
+          cd test
+          ARCH=$(uname -m)
+          CPPHTTPLIB_TEST_ISSUE_2431=1 \
+          ASAN_OPTIONS=detect_stack_use_after_return=1 \
+          LSAN_OPTIONS=suppressions=lsan_suppressions.txt \
+          setarch "$ARCH" -R \
+            ./test --gtest_filter='GetAddrInfoAsyncCancelTest.*'
+      - name: tear down test fixture
+        if: always()
+        run: |
+          sudo iptables -t nat -F OUTPUT || true
+          if [ -f /tmp/dns_fixture.pid ]; then
+            sudo kill "$(cat /tmp/dns_fixture.pid)" 2>/dev/null || true
+          fi
 
   macos:
     runs-on: macos-latest
@@ -80,13 +362,90 @@ jobs:
       (github.event_name == 'pull_request'  &&
        github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.test_macos == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        tls_backend: [openssl, mbedtls, wolfssl]
+    name: macos (${{ matrix.tls_backend }})
     steps:
       - name: checkout
         uses: actions/checkout@v4
-      - name: build and run tests
-        run: cd test && make
+      - name: install Mbed TLS
+        if: matrix.tls_backend == 'mbedtls'
+        run: brew install mbedtls@3
+      - name: install wolfSSL
+        if: matrix.tls_backend == 'wolfssl'
+        run: brew install wolfssl
+      - name: build and run tests (OpenSSL)
+        if: matrix.tls_backend == 'openssl'
+        run: cd test && make test_split && make test_openssl_parallel
+        env:
+          LSAN_OPTIONS: suppressions=lsan_suppressions.txt
+      - name: build and run tests (Mbed TLS)
+        if: matrix.tls_backend == 'mbedtls'
+        # macOS runners under ASAN+mbedTLS still flake at SHARDS=2 (rapid
+        # bind/connect on the fixture's fixed port races on the slower
+        # macos-latest runner). Serialize fully here; ubuntu stays at 2.
+        run: cd test && make test_split_mbedtls && SHARDS=1 make test_mbedtls_parallel
+      - name: build and run tests (wolfSSL)
+        if: matrix.tls_backend == 'wolfssl'
+        run: cd test && make test_split_wolfssl && make test_wolfssl_parallel
       - name: run fuzz test target
+        if: matrix.tls_backend == 'openssl'
         run: cd test && make fuzz_test
+      - name: build and run WebSocket heartbeat test
+        if: matrix.tls_backend == 'openssl'
+        run: cd test && make test_websocket_heartbeat && ./test_websocket_heartbeat
+      - name: build and run ThreadPool test
+        run: cd test && make test_thread_pool && ./test_thread_pool
+
+  ios-parse-check:
+    runs-on: macos-latest
+    if: >
+      (github.event_name == 'push') ||
+      (github.event_name == 'pull_request'  &&
+       github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.test_macos == 'true')
+    name: ios header parse check (not officially supported)
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: install OpenSSL headers
+        run: brew install openssl@3
+      - name: verify header parses on iOS target
+        run: |
+          IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          OPENSSL_INC=$(brew --prefix openssl@3)/include
+          echo "Using iOS SDK: $IOS_SDK"
+          echo '#include "httplib.h"' | clang++ \
+            -isysroot "$IOS_SDK" \
+            -target arm64-apple-ios16.0 \
+            -std=c++11 \
+            -DCPPHTTPLIB_OPENSSL_SUPPORT \
+            -I"$OPENSSL_INC" \
+            -I. -Wall -Wextra \
+            -fsyntax-only -x c++ -
+      - name: verify CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN is rejected on iOS
+        run: |
+          IOS_SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          OPENSSL_INC=$(brew --prefix openssl@3)/include
+          out=$(echo '#include "httplib.h"' | clang++ \
+            -isysroot "$IOS_SDK" \
+            -target arm64-apple-ios16.0 \
+            -std=c++11 \
+            -DCPPHTTPLIB_OPENSSL_SUPPORT \
+            -DCPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN \
+            -I"$OPENSSL_INC" \
+            -I. \
+            -fsyntax-only -x c++ - 2>&1 || true)
+          if echo "$out" | grep -q "only supported on macOS"; then
+            echo "OK: #error fired as expected"
+          else
+            echo "FAIL: expected #error did not fire"
+            echo "--- compiler output ---"
+            echo "$out"
+            exit 1
+          fi
 
   windows:
     runs-on: windows-latest
@@ -96,6 +455,7 @@ jobs:
        github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name) ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.test_windows == 'true')
     strategy:
+      fail-fast: false
       matrix:
         config:
         - with_ssl: false
@@ -126,7 +486,14 @@ jobs:
           core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
     - name: Setup msbuild on windows
       uses: microsoft/setup-msbuild@v2
+    - name: Cache vcpkg packages
+      id: vcpkg-cache
+      uses: actions/cache@v4
+      with:
+        path: C:/vcpkg/installed
+        key: vcpkg-installed-windows-gtest-curl-zlib-brotli-zstd
     - name: Install vcpkg dependencies
+      if: steps.vcpkg-cache.outputs.cache-hit != 'true'
       run: vcpkg install gtest curl zlib brotli zstd
     - name: Install OpenSSL
       if: ${{ matrix.config.with_ssl }}
@@ -138,6 +505,7 @@ jobs:
         -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
         -DHTTPLIB_TEST=ON
         -DHTTPLIB_COMPILE=${{ matrix.config.compiled && 'ON' || 'OFF' }}
+        -DHTTPLIB_USE_OPENSSL_IF_AVAILABLE=${{ matrix.config.with_ssl && 'ON' || 'OFF' }}
         -DHTTPLIB_REQUIRE_ZLIB=ON
         -DHTTPLIB_REQUIRE_BROTLI=ON
         -DHTTPLIB_REQUIRE_ZSTD=ON
@@ -146,7 +514,37 @@ jobs:
       run: cmake --build build --config Release -- /v:m /clp:ShowCommandLine
     - name: Run tests ${{ matrix.config.name }}
       if: ${{ matrix.config.run_tests }}
-      run: ctest --output-on-failure --test-dir build -C Release
+      shell: pwsh
+      working-directory: build/test
+      run: |
+        $shards = 4
+        $procs = @()
+        for ($i = 0; $i -lt $shards; $i++) {
+          $log = "shard_${i}.log"
+          $procs += Start-Process -FilePath ./Release/httplib-test.exe `
+            -ArgumentList "--gtest_color=yes","--gtest_filter=${{ github.event.inputs.gtest_filter || '-*_Online' }}" `
+            -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "${log}.err" `
+            -Environment @{ GTEST_TOTAL_SHARDS="$shards"; GTEST_SHARD_INDEX="$i" }
+        }
+        $procs | Wait-Process
+        $failed = $false
+        for ($i = 0; $i -lt $shards; $i++) {
+          $log = "shard_${i}.log"
+          $proc = $procs[$i]
+          $hasPassed = Select-String -Path $log -Pattern "\[  PASSED  \]" -Quiet
+          $hasFailed = Select-String -Path $log -Pattern "\[  FAILED  \]" -Quiet
+          if ($hasPassed -and -not $hasFailed -and $proc.ExitCode -eq 0) {
+            $passed = (Select-String -Path $log -Pattern "\[  PASSED  \]").Line
+            Write-Host "Shard ${i}: $passed"
+          } else {
+            Write-Host "=== Shard $i FAILED (exit=$($proc.ExitCode)) ==="
+            Get-Content $log
+            if (Test-Path "${log}.err") { Get-Content "${log}.err" }
+            $failed = $true
+          }
+        }
+        if ($failed) { exit 1 }
+        Write-Host "All shards passed."
 
     env:
       VCPKG_ROOT: "C:/vcpkg"

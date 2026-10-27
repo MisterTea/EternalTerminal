@@ -13,6 +13,7 @@
 #include <helpers/range_test_helpers.hpp>
 
 #include <catch2/catch_approx.hpp>
+#include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generator_exception.hpp>
 #include <catch2/generators/catch_generators_adapters.hpp>
@@ -84,6 +85,19 @@ TEST_CASE("Generators internals", "[generators][internals]") {
             REQUIRE_THROWS_AS(
                 filter([](int) { return false; }, values({ 1, 2, 3 })),
                 Catch::GeneratorException);
+        }
+
+        // Non-trivial usage
+        SECTION("Out-of-line predicates are copied into the generator") {
+            auto evilNumber = Catch::Detail::make_unique<int>(2);
+            auto gen = [&]{
+                const auto predicate = [&](int i) { return i != *evilNumber; };
+                return filter(predicate, values({ 2, 1, 2, 3, 2, 2 }));
+            }();
+            REQUIRE(gen.get() == 1);
+            REQUIRE(gen.next());
+            REQUIRE(gen.get() == 3);
+            REQUIRE_FALSE(gen.next());
         }
     }
     SECTION("Take generator") {
@@ -326,6 +340,7 @@ public:
     bool next() override {
         return false;
     }
+    bool isFinite() const override { return true; }
 };
 
 // Avoids -Wweak-vtables
@@ -459,6 +474,7 @@ namespace {
 
     public:
         bool const& get() const override;
+        bool isFinite() const override { return true; }
     };
 
     // Avoids -Wweak-vtables
@@ -496,6 +512,7 @@ namespace {
 
         bool const& get() const override;
         size_t stringificationCalls() const { return m_stringificationCalls; }
+        bool isFinite() const override { return true; }
     };
 
     // Avoids -Wweak-vtables
@@ -572,4 +589,243 @@ TEST_CASE("from_range(container) supports ADL begin/end and arrays", "[generator
         REQUIRE_FALSE( gen.next() );
     }
 
+}
+
+TEST_CASE( "ConcatGenerator", "[generators][concat]" ) {
+    using namespace Catch::Generators;
+    SECTION( "Cat support single-generator construction" ) {
+        ConcatGenerator<int> c( value( 1 ) );
+        REQUIRE( c.get() == 1 );
+        REQUIRE_FALSE( c.next() );
+    }
+    SECTION( "Iterating over multiple generators" ) {
+        ConcatGenerator<int> c( value( 1 ), values( { 2, 3, 4 } ), value( 5 ) );
+        for ( int i = 0; i < 4; ++i ) {
+            REQUIRE( c.get() == i + 1 );
+            REQUIRE( c.next() );
+        }
+        REQUIRE( c.get() == 5 );
+        REQUIRE_FALSE( c.next() );
+    }
+}
+
+namespace {
+    // Test the default behaviour of skipping generators forward. We do
+    // not want to use pre-existing generator, because they will get
+    // specialized forward skip implementation.
+    class SkipTestGenerator : public Catch::Generators::IGenerator<int> {
+        std::vector<int> m_elements{ 0, 1, 2, 3, 4, 5 };
+        size_t m_idx = 0;
+    public:
+        int const& get() const override { return m_elements[m_idx]; }
+        bool next() override {
+            ++m_idx;
+            return m_idx < m_elements.size();
+        }
+
+        bool isFinite() const override { return true; }
+    };
+}
+
+TEST_CASE( "Generators can be skipped forward", "[generators]" ) {
+    SkipTestGenerator generator;
+    REQUIRE( generator.currentElementIndex() == 0 );
+
+    generator.skipToNthElement( 3 );
+    REQUIRE( generator.currentElementIndex() == 3 );
+    REQUIRE( generator.get() == 3 );
+
+    // Try "skipping" to the same element.
+    generator.skipToNthElement( 3 );
+    REQUIRE( generator.currentElementIndex() == 3 );
+    REQUIRE( generator.get() == 3 );
+
+    generator.skipToNthElement( 5 );
+    REQUIRE( generator.currentElementIndex() == 5 );
+    REQUIRE( generator.get() == 5 );
+
+    // Backwards
+    REQUIRE_THROWS( generator.skipToNthElement( 3 ) );
+    // Past the end
+    REQUIRE_THROWS( generator.skipToNthElement( 6 ) );
+}
+
+TEST_CASE( "FixedValuesGenerator can be skipped forward",
+           "[generators][values]" ) {
+    Catch::Generators::FixedValuesGenerator<int> values( {0, 1, 2, 3, 4} );
+    REQUIRE( values.currentElementIndex() == 0 );
+
+    values.skipToNthElement( 3 );
+    REQUIRE( values.currentElementIndex() == 3 );
+    REQUIRE( values.get() == 3 );
+
+    values.skipToNthElement( 4 );
+    REQUIRE( values.currentElementIndex() == 4 );
+    REQUIRE( values.get() == 4 );
+
+    // Past the end
+    REQUIRE_THROWS( values.skipToNthElement( 5 ) );
+}
+
+TEST_CASE( "TakeGenerator can be skipped forward", "[generators][take]" ) {
+    SECTION("take is shorter than underlying") {
+        Catch::Generators::TakeGenerator<int> take(
+            6, Catch::Generators::values( { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 } ) );
+        REQUIRE( take.get() == 0 );
+
+        take.skipToNthElement( 2 );
+        REQUIRE( take.get() == 2 );
+
+        take.skipToNthElement( 5 );
+        REQUIRE( take.get() == 5 );
+
+        // This is in the original values, but past the end of the take
+        REQUIRE_THROWS( take.skipToNthElement( 6 ) );
+    }
+    SECTION( "take is longer than underlying" ) {
+        Catch::Generators::TakeGenerator<int> take(
+            8, Catch::Generators::values( { 0, 1, 2, 3, 4, 5 } ) );
+        REQUIRE( take.get() == 0 );
+
+        take.skipToNthElement( 2 );
+        REQUIRE( take.get() == 2 );
+
+        take.skipToNthElement( 5 );
+        REQUIRE( take.get() == 5 );
+
+        // This is in the take, but outside of original values
+        REQUIRE_THROWS( take.skipToNthElement( 6 ) );
+    }
+}
+
+TEST_CASE("MapGenerator can be skipped forward efficiently",
+    "[generators][map]") {
+    using namespace Catch::Generators;
+
+    int map_calls = 0;
+    auto map_func = [&map_calls]( int i ) {
+        ++map_calls;
+        return i;
+    };
+
+    SECTION( "via calls to next()" ) {
+        MapGenerator<int, int, decltype( map_func )> map_generator(
+            map_func, values( { 0, 1, 2, 3, 4, 5, 6 } ) );
+        REQUIRE( map_calls == 0 );
+
+        map_generator.next();
+        map_generator.next();
+        map_generator.next();
+        REQUIRE( map_calls == 0 );
+        REQUIRE( map_generator.get() == 3 );
+        REQUIRE( map_calls == 1 );
+        REQUIRE( map_generator.get() == 3 );
+        REQUIRE( map_calls == 1 );
+
+        map_generator.next();
+        REQUIRE( map_calls == 1 );
+    }
+    SECTION("via calls to skipToNthElement()") {
+        MapGenerator<int, int, decltype( map_func )> map_generator(
+            map_func, values( { 0, 1, 2, 3, 4, 5, 6 } ) );
+        REQUIRE( map_calls == 0 );
+
+        map_generator.skipToNthElement( 3 );
+        map_generator.skipToNthElement( 4 );
+        REQUIRE( map_calls == 0 );
+        REQUIRE( map_generator.get() == 4 );
+        REQUIRE( map_calls == 1 );
+
+        map_generator.skipToNthElement( 4 );
+        REQUIRE( map_generator.get() == 4 );
+        REQUIRE( map_calls == 1 );
+
+        map_generator.skipToNthElement( 6 );
+        REQUIRE( map_calls == 1 );
+        REQUIRE( map_generator.get() == 6 );
+        REQUIRE( map_calls == 2 );
+
+        REQUIRE_THROWS( map_generator.skipToNthElement( 7 ) );
+        REQUIRE( map_calls == 2 );
+    }
+}
+
+TEST_CASE( "Generator adapters properly handle isFinite",
+           "[generators][map][take][chunk][filter][concat]" ) {
+    using namespace Catch::Generators;
+    SECTION( "concat generator" ) {
+        ConcatGenerator<int> finite_cat(
+            value( 1 ), values( { 2, 3, 4 } ), value( 5 ) );
+        REQUIRE( finite_cat.isFinite() );
+
+        ConcatGenerator<int> infinite_cat(
+            value( 1 ), random( 1, 10 ), value( 3 ) );
+        REQUIRE_FALSE( infinite_cat.isFinite() );
+    }
+    SECTION( "take generator" ) {
+        TakeGenerator<int> take_1( 2, values( { 1, 2, 3, 4, 5 } ) );
+        REQUIRE( take_1.isFinite() );
+        TakeGenerator<int> take_2( 3, random( 1, 100 ) );
+        REQUIRE( take_2.isFinite() );
+    }
+    SECTION( "chunk generator" ) {
+        ChunkGenerator<int> finite_chunk( 2, values( { 1, 2, 3, 4, 5 } ) );
+        REQUIRE( finite_chunk.isFinite() );
+        ChunkGenerator<int> infinite_chunk( 2, random( 1, 100 ) );
+        REQUIRE_FALSE( infinite_chunk.isFinite() );
+    }
+    SECTION( "map" ) {
+        auto identity = []( int i ) {
+            return i;
+        };
+
+        MapGenerator<int, int, decltype( identity )> finite_map(
+            identity, values( { 1, 2, 3 } ) );
+        REQUIRE( finite_map.isFinite() );
+        MapGenerator<int, int, decltype( identity )> infinite_map(
+            identity, random( 1, 100 ) );
+        REQUIRE_FALSE( infinite_map.isFinite() );
+    }
+    SECTION( "filter" ) {
+        auto always_true = []( int ) {
+            return true;
+        };
+        FilterGenerator<int, decltype( always_true )> finite_filter(
+            always_true, values( { 1, 2, 3, 4, 5 } ) );
+        REQUIRE( finite_filter.isFinite() );
+        FilterGenerator<int, decltype( always_true )> infinite_filter(
+            always_true, random( 1, 100 ) );
+        REQUIRE_FALSE( infinite_filter.isFinite() );
+    }
+}
+
+TEST_CASE( "RepeatGenerator refuses infinite generators",
+           "[generators][repeat]" ) {
+    using namespace Catch::Generators;
+    REQUIRE_THROWS( RepeatGenerator<int>( 2, random( 1, 100 ) ) );
+}
+
+TEMPLATE_TEST_CASE( "RandomGenerator reports itself as infinite",
+                    "[generators][random]",
+    int,
+    float,
+    long double) {
+    REQUIRE_FALSE( Catch::Generators::random( TestType{ 0 }, TestType{ 100 } ).isFinite() );
+}
+
+namespace {
+    struct NotDefaultConstructible {
+        int m_i;
+        explicit NotDefaultConstructible( int i ): m_i( i ){}
+    };
+}
+
+TEST_CASE( "MapGenerator can handle not default constructible types",
+           "[generators][map]" ) {
+    using namespace Catch::Generators;
+    auto map_generator = map( []( int i ) { return NotDefaultConstructible( i ); }, values({1, 2, 3}));
+    REQUIRE( map_generator.get().m_i == 1 );
+    REQUIRE( map_generator.next() );
+    REQUIRE( map_generator.next() );
+    REQUIRE( map_generator.get().m_i == 3 );
 }

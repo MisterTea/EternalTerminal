@@ -29,7 +29,7 @@ namespace Catch {
 #endif
 
     template<typename ArgT, typename MatcherT>
-    class MatchExpr : public ITransientExpression {
+    class MatchExpr final : public ITransientExpression {
         ArgT && m_arg;
         MatcherT const& m_matcher;
     public:

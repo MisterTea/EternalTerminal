@@ -1,48 +1,34 @@
-name: Intel Mac builds
+name: Mac Builds
 
 on: [push, pull_request]
 
+env:
+  CTEST_OUTPUT_ON_FAILURE: 1
+  CTEST_NO_TESTS_ACTION: error
+
 jobs:
   build:
-    # From macos-14 forward, the baseline "macos-X" image is Arm based,
-    # and not Intel based. Thus this is the newest image we can use for
-    # Intel MacOS CI, and there don't seem to be any plans to keep providing
-    # the Intel based images for free to OSS projects.
-    runs-on: macos-13
+    runs-on: ${{matrix.image}}
     strategy:
+      fail-fast: false
       matrix:
-        cxx:
-          - clang++
+        image: [macos-14, macos-15, macos-15-intel]
         build_type: [Debug, Release]
         std: [14, 17]
-        include:
-          - build_type: Debug
-            examples: ON
-            extra_tests: ON
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
-    - name: Configure build
-      working-directory: ${{runner.workspace}}
-      env:
-        CXX: ${{matrix.cxx}}
-        CXXFLAGS: ${{matrix.cxxflags}}
+    - name: Configure
       run: |
-        cmake -Bbuild -H$GITHUB_WORKSPACE \
+        cmake --preset basic-tests -GNinja \
               -DCMAKE_BUILD_TYPE=${{matrix.build_type}} \
               -DCMAKE_CXX_STANDARD=${{matrix.std}} \
-              -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-              -DCATCH_DEVELOPMENT_BUILD=ON \
-              -DCATCH_BUILD_EXAMPLES=${{matrix.examples}} \
-              -DCATCH_BUILD_EXTRA_TESTS=${{matrix.examples}}
+              -DCATCH_BUILD_EXAMPLES=ON \
+              -DCATCH_BUILD_EXTRA_TESTS=ON
 
-    - name: Build tests + lib
-      working-directory: ${{runner.workspace}}/build
-      run: make -j `sysctl -n hw.ncpu`
+    - name: Build
+      run: cmake --build build
 
-    - name: Run tests
-      env:
-          CTEST_OUTPUT_ON_FAILURE: 1
-      working-directory: ${{runner.workspace}}/build
-      run: ctest -C ${{matrix.build_type}} -j `sysctl -n hw.ncpu`
+    - name: Test
+      run: ctest --test-dir build -j

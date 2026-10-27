@@ -16,6 +16,42 @@ function(add_command NAME)
   set(script "${script}${NAME}(${_args})\n" PARENT_SCOPE)
 endfunction()
 
+# Generates random filename in the temp folder.
+# Temp folder is retrieved by checking env vars from various platforms.
+function(make_temp_file_path OUT_VARIABLE FALLBACK_PATH)
+  set(TEMP_DIR "")
+  set(ENV_VARS
+    # From XDG base dir specification
+    XDG_RUNTIME_DIR
+    # From POSIX standard
+    TMPDIR
+    # From Windows
+    TMP
+    TEMP
+  )
+
+  foreach(var ${ENV_VARS})
+    message(NOTICE "Checking ${var} env var")
+    if(DEFINED ENV{${var}} AND NOT "$ENV{${var}}" STREQUAL "")
+        set(TEMP_DIR "$ENV{${var}}")
+        break()
+    endif()
+  endforeach()
+
+  # If all checks fail, we use the fallback path
+  if(TEMP_DIR STREQUAL "")
+    set(TEMP_DIR "${FALLBACK_PATH}")
+  endif()
+
+  file(TO_CMAKE_PATH "${TEMP_DIR}" TEMP_DIR)
+
+  # Generate the random file name
+  string(RANDOM LENGTH 8 RAND_ID)
+  set(FINAL_TEMP_PATH "${TEMP_DIR}/Catch2-test-listing.${RAND_ID}.json")
+
+  set(${OUT_VARIABLE} "${FINAL_TEMP_PATH}" PARENT_SCOPE)
+endfunction()
+
 function(catch_discover_tests_impl)
 
   cmake_parse_arguments(
@@ -72,8 +108,13 @@ function(catch_discover_tests_impl)
     set(ENV{DYLD_FRAMEWORK_PATH} "${paths}")
   endif()
 
+  make_temp_file_path(listing_output_path "${_TEST_WORKING_DIR}")
+
   execute_process(
-    COMMAND ${_TEST_EXECUTOR} "${_TEST_EXECUTABLE}" ${spec} --list-tests --reporter json
+    COMMAND ${_TEST_EXECUTOR} "${_TEST_EXECUTABLE}" ${spec}
+      --list-tests
+      --reporter json
+      --out "${listing_output_path}"
     OUTPUT_VARIABLE listing_output
     RESULT_VARIABLE result
     WORKING_DIRECTORY "${_TEST_WORKING_DIR}"
@@ -85,6 +126,10 @@ function(catch_discover_tests_impl)
       "  Output: ${listing_output}\n"
     )
   endif()
+
+  # Read the JSON output back from the output file (and then get rid of the file)
+  file(READ ${listing_output_path} listing_output)
+  file(REMOVE ${listing_output_path})
 
   # Prepare reporter
   if(reporter)
@@ -136,7 +181,7 @@ function(catch_discover_tests_impl)
 
   # Parse JSON output for list of tests/class names/tags
   string(JSON version GET "${listing_output}" "version")
-  if (NOT version STREQUAL "1")
+  if(NOT version STREQUAL "1")
     message(FATAL_ERROR "Unsupported catch output version: '${version}'")
   endif()
 
@@ -146,6 +191,7 @@ function(catch_discover_tests_impl)
 
   # Exit early if no tests are detected
   if(num_tests STREQUAL "0")
+    file(WRITE "${_CTEST_FILE}" "")
     return()
   endif()
 
@@ -186,11 +232,11 @@ function(catch_discover_tests_impl)
       ${properties}
     )
 
-    if (add_tags)
+    if(add_tags)
       string(JSON num_tags LENGTH "${test_tags}")
       math(EXPR num_tags "${num_tags} - 1")
       set(tag_list "")
-      if (num_tags GREATER_EQUAL "0")
+      if(num_tags GREATER_EQUAL "0")
         foreach(tag_idx RANGE ${num_tags})
           string(JSON a_tag GET "${test_tags}" "${tag_idx}")
           # Catch2's tags can contain semicolons, which are list element separators

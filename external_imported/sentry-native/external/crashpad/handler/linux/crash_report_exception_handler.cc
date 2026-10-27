@@ -53,9 +53,9 @@ class Logger final : public LogOutputStream::Delegate {
   ~Logger() override = default;
 
 #if BUILDFLAG(IS_ANDROID)
-  int Log(const char* buf) override {
+  bool Log(const char* buf) override {
     return __android_log_buf_write(
-        LOG_ID_CRASH, ANDROID_LOG_FATAL, "crashpad", buf);
+        LOG_ID_CRASH, ANDROID_LOG_FATAL, "crashpad", buf) > 0;
   }
 
   size_t OutputCap() override {
@@ -72,7 +72,7 @@ class Logger final : public LogOutputStream::Delegate {
   }
 #else
   // TODO(jperaza): Log to an appropriate location on Linux.
-  int Log(const char* buf) override { return -ENOTCONN; }
+  bool Log(const char* buf) override { return false; }
   size_t OutputCap() override { return 0; }
   size_t LineWidth() override { return 0; }
 #endif
@@ -107,7 +107,10 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     bool write_minidump_to_database,
     bool write_minidump_to_log,
     const UserStreamDataSources* user_stream_data_sources,
-    bool wait_for_upload)
+    bool wait_for_upload,
+    const base::FilePath* crash_reporter,
+    const base::FilePath* crash_envelope,
+    const UUID* report_id)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
@@ -115,7 +118,10 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
       write_minidump_to_database_(write_minidump_to_database),
       write_minidump_to_log_(write_minidump_to_log),
       user_stream_data_sources_(user_stream_data_sources),
-      wait_for_upload_(wait_for_upload){
+      wait_for_upload_(wait_for_upload),
+      crash_reporter_(crash_reporter),
+      crash_envelope_(crash_envelope),
+      report_id_(report_id) {
   DCHECK(write_minidump_to_database_ | write_minidump_to_log_);
 }
 
@@ -230,6 +236,12 @@ void CrashReportExceptionHandler::RemoveAttachment(
   attachments_.erase(it);
 }
 
+void CrashReportExceptionHandler::RequestRetry() {
+  if (upload_thread_) {
+    upload_thread_->RetryPending();
+  }
+}
+
 bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     ProcessSnapshotLinux* process_snapshot,
     ProcessSnapshotSanitized* sanitized_snapshot,
@@ -237,7 +249,7 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     UUID* local_report_id) {
   std::unique_ptr<CrashReportDatabase::NewReport> new_report;
   CrashReportDatabase::OperationStatus database_status =
-      database_->PrepareNewCrashReport(&new_report);
+      database_->PrepareNewCrashReport(&new_report, report_id_);
   if (database_status != CrashReportDatabase::kNoError) {
     LOG(ERROR) << "PrepareNewCrashReport failed";
     Metrics::ExceptionCaptureResult(
@@ -291,6 +303,20 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     CopyFileContent(&file_reader, file_writer);
   }
 
+  bool has_crash_reporter = crash_reporter_ && !crash_reporter_->empty() &&
+                            crash_envelope_ && !crash_envelope_->empty();
+  if (has_crash_reporter) {
+    CrashReportDatabase::Envelope envelope(new_report->ReportID());
+    if (envelope.Initialize(*crash_envelope_)) {
+      envelope.AddAttachments(attachments_);
+      if (auto reader = new_report->Reader()) {
+        envelope.AddMinidump(reader);
+      }
+      envelope.Finish();
+      database_->LaunchCrashReporter(*crash_reporter_, *crash_envelope_);
+    }
+  }
+
   UUID uuid;
   database_status =
       database_->FinishedWritingCrashReport(std::move(new_report), &uuid);
@@ -301,7 +327,9 @@ bool CrashReportExceptionHandler::WriteMinidumpToDatabase(
     return false;
   }
 
-  if (upload_thread_) {
+  if (has_crash_reporter) {
+    database_->DeleteReport(new_report->ReportID());
+  } else if (upload_thread_) {
     upload_thread_->ReportPending(uuid);
   }
 

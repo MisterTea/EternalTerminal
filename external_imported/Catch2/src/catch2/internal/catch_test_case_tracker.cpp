@@ -8,8 +8,9 @@
 #include <catch2/internal/catch_test_case_tracker.hpp>
 
 #include <catch2/internal/catch_enforce.hpp>
-#include <catch2/internal/catch_string_manip.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
+#include <catch2/internal/catch_path_filter.hpp>
+#include <catch2/internal/catch_string_manip.hpp>
 
 #include <algorithm>
 #include <cassert>
@@ -27,6 +28,17 @@ namespace TestCaseTracking {
         location( _location )
     {}
 
+    ITracker::ITracker( NameAndLocation&& nameAndLoc, ITracker* parent ):
+        m_nameAndLocation( CATCH_MOVE( nameAndLoc ) ), m_parent( parent ) {
+        if ( m_parent ) {
+            m_allTrackerDepth = m_parent->m_allTrackerDepth + 1;
+            // We leave section trackers to bump themselves up, as
+            // we cannot use `isSectionTracker` in constructor
+            m_sectionOnlyDepth = m_parent->m_sectionOnlyDepth;
+            m_filterRef = m_parent->m_filterRef;
+            m_newStyleFilters = m_parent->m_newStyleFilters;
+        }
+    }
 
     ITracker::~ITracker() = default;
 
@@ -155,29 +167,58 @@ namespace TestCaseTracking {
         m_ctx.setCurrentTracker( this );
     }
 
+    bool SectionTracker::isFilteredImpl() const {
+        // TBD: This is currently _very_ similar to the block in `isComplete`.
+        //      Is this neccessarily that way, or just accident of current semantics?
+        const size_t filterIndex =
+            m_newStyleFilters ? m_allTrackerDepth : m_sectionOnlyDepth;
+
+        if ( filterIndex < m_filterRef->size() ) {
+            // 1) New style filter must explicitly target section
+            if ( m_newStyleFilters && ( *m_filterRef )[filterIndex].type !=
+                                          PathFilter::For::Section ) {
+                return true;
+            }
+            // 2) Both style filters must match the trimmed name exactly
+            if ( m_trimmed_name !=
+                 StringRef( ( *m_filterRef )[filterIndex].filter ) ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     SectionTracker::SectionTracker( NameAndLocation&& nameAndLocation, TrackerContext& ctx, ITracker* parent )
     :   TrackerBase( CATCH_MOVE(nameAndLocation), ctx, parent ),
         m_trimmed_name(trim(StringRef(ITracker::nameAndLocation().name)))
     {
-        if( parent ) {
-            while ( !parent->isSectionTracker() ) {
-                parent = parent->parent();
-            }
-
-            SectionTracker& parentSection = static_cast<SectionTracker&>( *parent );
-            addNextFilters( parentSection.m_filters );
+        if( m_parent ) {
+            ++m_sectionOnlyDepth;
         }
     }
 
     bool SectionTracker::isComplete() const {
-        bool complete = true;
-
-        if (m_filters.empty()
-            || m_filters[0].empty()
-            || std::find(m_filters.begin(), m_filters.end(), m_trimmed_name) != m_filters.end()) {
-            complete = TrackerBase::isComplete();
+        // If there are active filters AND we do not pass them,
+        // the section is always "completed"
+        const size_t filterIndex =
+            m_newStyleFilters ? m_allTrackerDepth : m_sectionOnlyDepth;
+        if ( filterIndex < m_filterRef->size() ) {
+            // There is active filter, check it
+            // 1) New style filter must explicitly target section
+            if ( m_newStyleFilters && ( *m_filterRef )[filterIndex].type !=
+                                          PathFilter::For::Section ) {
+                return true;
+            }
+            // 2) Both style filters must match the trimmed name exactly
+            if ( m_trimmed_name !=
+                 StringRef( ( *m_filterRef )[filterIndex].filter ) ) {
+                return true;
+            }
         }
-        return complete;
+
+        // Otherwise we delegate to the generic processing
+        return TrackerBase::isComplete();
     }
 
     bool SectionTracker::isSectionTracker() const { return true; }
@@ -211,19 +252,6 @@ namespace TestCaseTracking {
     void SectionTracker::tryOpen() {
         if( !isComplete() )
             open();
-    }
-
-    void SectionTracker::addInitialFilters( std::vector<std::string> const& filters ) {
-        if( !filters.empty() ) {
-            m_filters.reserve( m_filters.size() + filters.size() + 2 );
-            m_filters.emplace_back(StringRef{}); // Root - should never be consulted
-            m_filters.emplace_back(StringRef{}); // Test Case - not a section filter
-            m_filters.insert( m_filters.end(), filters.begin(), filters.end() );
-        }
-    }
-    void SectionTracker::addNextFilters( std::vector<StringRef> const& filters ) {
-        if( filters.size() > 1 )
-            m_filters.insert( m_filters.end(), filters.begin()+1, filters.end() );
     }
 
     StringRef SectionTracker::trimmedName() const {

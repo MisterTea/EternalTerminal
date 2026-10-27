@@ -34,6 +34,10 @@
 /**
  * This function will check the user consent, and return `true` if uploads
  * should *not* be sent to the sentry server, and be discarded instead.
+ *
+ * Note: This function acquires the options lock internally. Use
+ * `sentry__run_should_skip_upload` from worker threads that may run while
+ * the options are locked during SDK shutdown.
  */
 bool sentry__should_skip_upload(void);
 
@@ -85,12 +89,15 @@ sentry_uuid_t sentry__capture_event(
 sentry_envelope_t *sentry__prepare_transaction(const sentry_options_t *options,
     sentry_value_t transaction, sentry_uuid_t *event_id);
 
+sentry_value_t sentry__transaction_finish_value(
+    sentry_transaction_t *opaque_tx, uint64_t timestamp);
+
 /**
  * This function will submit the `envelope` to the given `transport`, first
  * checking for consent.
  */
-void sentry__capture_envelope(
-    sentry_transport_t *transport, sentry_envelope_t *envelope);
+void sentry__capture_envelope(sentry_transport_t *transport,
+    sentry_envelope_t *envelope, const sentry_options_t *options);
 
 /**
  * Generates a new random UUID for events.
@@ -122,6 +129,15 @@ void sentry__options_unlock(void);
 
 void sentry__set_propagation_context(const char *key, sentry_value_t value);
 
+/**
+ * Adds default attributes to the telemetry attributes object.
+ */
+void sentry__apply_attributes(
+    sentry_value_t telemetry, sentry_value_t attributes);
+
+bool sentry__launch_external_crash_reporter(
+    const sentry_options_t *options, sentry_envelope_t *envelope);
+
 #define SENTRY_WITH_OPTIONS(Options)                                           \
     for (const sentry_options_t *Options = sentry__options_getref(); Options;  \
         sentry_options_free((sentry_options_t *)Options), Options = NULL)
@@ -133,7 +149,8 @@ bool sentry__should_send_transaction(
     sentry_value_t tx_ctx, sentry_sampling_context_t *sampling_ctx);
 #endif
 
-#if defined(SENTRY_PLATFORM_NX) || defined(SENTRY_PLATFORM_PS)
+#if defined(SENTRY_PLATFORM_NX) || defined(SENTRY_PLATFORM_PS)                 \
+    || defined(SENTRY_PLATFORM_XBOX)
 int sentry__native_init(sentry_options_t *options);
 #endif
 

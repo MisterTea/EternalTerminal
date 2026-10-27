@@ -17,7 +17,7 @@
 
 inline Catch::TestCase fakeTestCase(const char* name, const char* desc = "") { return Catch::makeTestCase(nullptr, "", { name, desc }, CATCH_INTERNAL_LINEINFO); }
 
-TEST_CASE( "Parse test names and tags" ) {
+TEST_CASE( "Parse test names and tags", "[command-line][test-spec]" ) {
 
     using Catch::parseTestSpec;
     using Catch::TestSpec;
@@ -262,7 +262,63 @@ TEST_CASE( "Parse test names and tags" ) {
         CHECK( spec.matches( tcC ) == false );
         CHECK( spec.matches( tcD ) == true );
     }
+    SECTION( "Leading and trailing spaces in test spec" ) {
+        TestSpec spec = parseTestSpec( "\"  aardvark \"" );
+        CHECK( spec.matches( fakeTestCase( "  aardvark " ) ) );
+        CHECK( spec.matches( fakeTestCase( "  aardvark" ) ) );
+        CHECK( spec.matches( fakeTestCase( " aardvark " ) ) );
+        CHECK( spec.matches( fakeTestCase( "aardvark " ) ) );
+        CHECK( spec.matches( fakeTestCase( "aardvark" ) ) );
+    }
+    SECTION( "Leading and trailing spaces in test name" ) {
+        TestSpec spec = parseTestSpec( "aardvark" );
+        CHECK( spec.matches( fakeTestCase( "  aardvark " ) ) );
+        CHECK( spec.matches( fakeTestCase( "  aardvark" ) ) );
+        CHECK( spec.matches( fakeTestCase( " aardvark " ) ) );
+        CHECK( spec.matches( fakeTestCase( "aardvark " ) ) );
+        CHECK( spec.matches( fakeTestCase( "aardvark" ) ) );
+    }
+    SECTION("Shortened hide tags are split apart when parsing") {
+        TestSpec spec = parseTestSpec("[.foo]");
+        CHECK(spec.matches(fakeTestCase("hidden and foo", "[.][foo]")));
+        CHECK_FALSE(spec.matches(fakeTestCase("only foo", "[foo]")));
+    }
+    SECTION("Shortened hide tags also properly handle exclusion") {
+        TestSpec spec = parseTestSpec("~[.foo]");
+        CHECK_FALSE(spec.matches(fakeTestCase("hidden and foo", "[.][foo]")));
+        CHECK_FALSE(spec.matches(fakeTestCase("only foo", "[foo]")));
+        CHECK_FALSE(spec.matches(fakeTestCase("only hidden", "[.]")));
+        CHECK(spec.matches(fakeTestCase("neither foo nor hidden", "[bar]")));
+    }
+}
 
+TEST_CASE("#1905 -- test spec parser properly clears internal state between compound tests", "[command-line][test-spec]") {
+    using Catch::parseTestSpec;
+    using Catch::TestSpec;
+    // We ask for one of 2 different tests and the latter one of them has a , in name that needs escaping
+    TestSpec spec = parseTestSpec(R"("spec . char","spec \, char")");
+
+    REQUIRE(spec.matches(fakeTestCase("spec . char")));
+    REQUIRE(spec.matches(fakeTestCase("spec , char")));
+    REQUIRE_FALSE(spec.matches(fakeTestCase(R"(spec \, char)")));
+}
+
+TEST_CASE("#1912 -- test spec parser handles escaping", "[command-line][test-spec]") {
+    using Catch::parseTestSpec;
+    using Catch::TestSpec;
+
+    SECTION("Various parentheses") {
+        TestSpec spec = parseTestSpec(R"(spec {a} char,spec \[a] char)");
+
+        REQUIRE(spec.matches(fakeTestCase(R"(spec {a} char)")));
+        REQUIRE(spec.matches(fakeTestCase(R"(spec [a] char)")));
+        REQUIRE_FALSE(spec.matches(fakeTestCase("differs but has similar tag", "[a]")));
+    }
+    SECTION("backslash in test name") {
+        TestSpec spec = parseTestSpec(R"(spec \\ char)");
+
+        REQUIRE(spec.matches(fakeTestCase(R"(spec \ char)")));
+    }
 }
 
 TEST_CASE( "Process can be configured on command line", "[config][command-line]" ) {
@@ -387,7 +443,31 @@ TEST_CASE( "Process can be configured on command line", "[config][command-line]"
             REQUIRE_THAT(result.errorMessage(), Contains("convert") && Contains("oops"));
 #endif
         }
+
+     SECTION("wait-for-keypress") {
+        SECTION("Accepted options") {
+            using tuple_type = std::tuple<char const*, Catch::WaitForKeypress::When>;
+            auto input = GENERATE(table<char const*, Catch::WaitForKeypress::When>({
+                tuple_type{"never", Catch::WaitForKeypress::Never},
+                tuple_type{"start", Catch::WaitForKeypress::BeforeStart},
+                tuple_type{"exit",  Catch::WaitForKeypress::BeforeExit},
+                tuple_type{"both",  Catch::WaitForKeypress::BeforeStartAndExit},
+            }));
+            CHECK(cli.parse({"test", "--wait-for-keypress", std::get<0>(input)}));
+
+            REQUIRE(config.waitForKeypress == std::get<1>(input));
+        }
+
+        SECTION("invalid options are reported") {
+            auto result = cli.parse({"test", "--wait-for-keypress", "sometimes"});
+            CHECK(!result);
+
+#ifndef CATCH_CONFIG_DISABLE_MATCHERS
+            REQUIRE_THAT(result.errorMessage(), Contains("never") && Contains("both"));
+#endif
+        }
     }
+   }
 
     SECTION("nothrow") {
         SECTION("-e") {
@@ -462,4 +542,41 @@ TEST_CASE( "Process can be configured on command line", "[config][command-line]"
 #endif
         }
     }
+
+    SECTION("Benchmark options") {
+        SECTION("samples") {
+            CHECK(cli.parse({ "test", "--benchmark-samples=200" }));
+
+            REQUIRE(config.benchmarkSamples == 200);
+        }
+
+        SECTION("resamples") {
+            CHECK(cli.parse({ "test", "--benchmark-resamples=20000" }));
+
+            REQUIRE(config.benchmarkResamples == 20000);
+        }
+
+        SECTION("confidence-interval") {
+            CHECK(cli.parse({ "test", "--benchmark-confidence-interval=0.99" }));
+
+            REQUIRE(config.benchmarkConfidenceInterval == Catch::Detail::Approx(0.99));
+        }
+
+        SECTION("no-analysis") {
+            CHECK(cli.parse({ "test", "--benchmark-no-analysis" }));
+
+            REQUIRE(config.benchmarkNoAnalysis);
+        }
+
+        SECTION("warmup-time") {
+            CHECK(cli.parse({ "test", "--benchmark-warmup-time=10" }));
+
+            REQUIRE(config.benchmarkWarmupTime == 10);
+        }
+    }
+}
+
+TEST_CASE("Test with special, characters \"in name", "[cli][regression]") {
+    // This test case succeeds if we can invoke it from the CLI
+    SUCCEED();
 }

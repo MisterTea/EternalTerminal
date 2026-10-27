@@ -5,11 +5,9 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO oneapi-src/oneTBB
     REF "v${VERSION}"
-    SHA512 7582748f7d0e0ab46ea6ee7771dfaf7fc08ca7ab7f274fb3373eae0e3411aaafbac192ece15008d9a3d9e8566f8737f96f3f4b5ccf11449ac089d5cd9ebb9eab
+    SHA512 7db4a41e3b0e34a559299451f7eef633190e7e4be1819f609f773ac6b7f3d31ff5e45f3cfabd3606e280adb930d47a77a31377e5ef72c85dcb37a354d8b87e55
     HEAD_REF master
     PATCHES
-        fix-lang.patch # https://github.com/uxlfoundation/oneTBB/pull/1606
-        fix-gcc-without-gas.patch # https://github.com/uxlfoundation/oneTBB/pull/1603
 )
 
 vcpkg_check_features(

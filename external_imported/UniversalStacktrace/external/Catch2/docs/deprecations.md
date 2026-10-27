@@ -39,6 +39,46 @@ apart from writing it out for `--list-tests -v high`.
 Because it isn't actually used nor documented, and brings complications
 to Catch2's internals, description support will be removed.
 
+### SourceLineInfo::empty()
+
+There should be no reason to ever have an empty `SourceLineInfo`, so the
+method will be removed.
+
+
+### Composing lvalues of already composed matchers
+
+Because a significant bug in this use case has persisted for 2+ years
+without a bug report, and to simplify the implementation, code that
+composes lvalues of composed matchers will not compile. That is,
+this code will no longer work:
+
+```cpp
+            auto m1 = Contains("string");
+            auto m2 = Contains("random");
+            auto composed1 = m1 || m2;
+            auto m3 = Contains("different");
+            auto composed2 = composed1 || m3;
+            REQUIRE_THAT(foo(), !composed1);
+            REQUIRE_THAT(foo(), composed2);
+```
+
+Instead you will have to write this:
+
+```cpp
+            auto m1 = Contains("string");
+            auto m2 = Contains("random");
+            auto m3 = Contains("different");
+            REQUIRE_THAT(foo(), !(m1 || m2));
+            REQUIRE_THAT(foo(), m1 || m2 || m3);
+```
+
+### `ParseAndAddCatchTests.cmake`
+
+The CMake/CTest integration using `ParseAndAddCatchTests.cmake` is deprecated,
+as it can be replaced by `Catch.cmake` that provides the function
+`catch_discover_tests` to get tests directly from a CMake target via the
+command line interface instead of parsing C++ code with regular expressions.
+
 
 ## Planned changes
 
@@ -87,6 +127,17 @@ positively match a testspec.
 
 The API for Catch2's console colour will be changed to take an extra
 argument, the stream to which the colour code should be applied.
+
+
+### Type erasure in the `PredicateMatcher`
+
+Currently, the `PredicateMatcher` uses `std::function` for type erasure,
+so that type of the matcher is always `PredicateMatcher<T>`, regardless
+of the type of the predicate. Because of the high compilation overhead
+of `std::function`, and the fact that the type erasure is used only rarely,
+`PredicateMatcher` will no longer be type erased in the future. Instead,
+the predicate type will be made part of the PredicateMatcher's type.
+
 
 ---
 

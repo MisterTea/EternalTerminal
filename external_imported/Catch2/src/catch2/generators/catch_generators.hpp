@@ -9,6 +9,7 @@
 #define CATCH_GENERATORS_HPP_INCLUDED
 
 #include <catch2/catch_tostring.hpp>
+#include <catch2/generators/catch_generators_throw.hpp>
 #include <catch2/interfaces/catch_interfaces_generatortracker.hpp>
 #include <catch2/internal/catch_source_line_info.hpp>
 #include <catch2/internal/catch_stringref.hpp>
@@ -21,14 +22,6 @@
 namespace Catch {
 
 namespace Generators {
-
-namespace Detail {
-
-    //! Throws GeneratorException with the provided message
-    [[noreturn]]
-    void throw_generator_exception(char const * msg);
-
-} // end namespace detail
 
     template<typename T>
     class IGenerator : public GeneratorUntypedBase {
@@ -64,6 +57,9 @@ namespace Detail {
         bool next() {
             return m_generator->countedNext();
         }
+
+        bool isFinite() const { return m_generator->isFinite(); }
+        void skipToNthElement( size_t n ) { m_generator->skipToNthElement(n); }
     };
 
 
@@ -84,6 +80,8 @@ namespace Detail {
         bool next() override {
             return false;
         }
+
+        bool isFinite() const override { return true; }
     };
 
     template<typename T>
@@ -93,6 +91,15 @@ namespace Detail {
             "specialization, use SingleValue Generator instead.");
         std::vector<T> m_values;
         size_t m_idx = 0;
+
+        void skipToNthElementImpl( std::size_t n ) override {
+            if ( n >= m_values.size() ) {
+                Detail::throw_generator_exception(
+                    "Coud not jump to Nth element: not enough elements" );
+            }
+            m_idx = n;
+        }
+
     public:
         FixedValuesGenerator( std::initializer_list<T> values ) : m_values( values ) {}
 
@@ -103,6 +110,8 @@ namespace Detail {
             ++m_idx;
             return m_idx < m_values.size();
         }
+
+        bool isFinite() const override { return true; }
     };
 
     template <typename T, typename DecayedT = std::decay_t<T>>
@@ -166,6 +175,13 @@ namespace Detail {
                 ++m_current;
             }
             return m_current < m_generators.size();
+        }
+
+        bool isFinite() const override {
+            for (auto const& gen : m_generators) {
+                if (!gen.isFinite()) { return false; }
+            }
+            return true;
         }
     };
 

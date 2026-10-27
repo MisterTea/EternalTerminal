@@ -9,6 +9,7 @@
 
 #include <catch2/internal/catch_test_spec_parser.hpp>
 #include <catch2/internal/catch_tag_alias_registry.hpp>
+#include <cstdint>
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
 

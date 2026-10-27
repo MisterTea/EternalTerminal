@@ -7,6 +7,7 @@
 - Build System Changes Listed Below.
 - MinGW build support.
 - Screenshot support for Windows.
+- C++17 standard requirement (upstream uses C++20 or newer).
 
 # Build System Changes
 

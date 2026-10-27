@@ -11,8 +11,8 @@
 #include <catch2/matchers/catch_matchers_templated.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
 
-#include <algorithm>
 #include <functional>
+#include <type_traits>
 
 namespace Catch {
     namespace Matchers {
@@ -23,7 +23,7 @@ namespace Catch {
             Equality m_eq;
         public:
             template <typename T2, typename Equality2>
-            ContainsElementMatcher(T2&& target, Equality2&& predicate):
+            constexpr ContainsElementMatcher(T2&& target, Equality2&& predicate):
                 m_desired(CATCH_FORWARD(target)),
                 m_eq(CATCH_FORWARD(predicate))
             {}
@@ -33,7 +33,7 @@ namespace Catch {
             }
 
             template <typename RangeLike>
-            bool match( RangeLike&& rng ) const {
+            constexpr bool match( RangeLike&& rng ) const {
                 for ( auto&& elem : rng ) {
                     if ( m_eq( elem, m_desired ) ) { return true; }
                 }
@@ -49,12 +49,12 @@ namespace Catch {
             // Note that we do a copy+move to avoid having to SFINAE this
             // constructor (and also avoid some perfect forwarding failure
             // cases)
-            ContainsMatcherMatcher(Matcher matcher):
+            constexpr ContainsMatcherMatcher(Matcher matcher):
                 m_matcher(CATCH_MOVE(matcher))
             {}
 
             template <typename RangeLike>
-            bool match(RangeLike&& rng) const {
+            constexpr bool match(RangeLike&& rng) const {
                 for (auto&& elem : rng) {
                     if (m_matcher.match(elem)) {
                         return true;
@@ -74,14 +74,14 @@ namespace Catch {
          * Uses `std::equal_to` to do the comparison
          */
         template <typename T>
-        std::enable_if_t<!Detail::is_matcher<T>::value,
+        constexpr std::enable_if_t<!Detail::is_matcher_v<T>,
         ContainsElementMatcher<T, std::equal_to<>>> Contains(T&& elem) {
             return { CATCH_FORWARD(elem), std::equal_to<>{} };
         }
 
         //! Creates a matcher that checks whether a range contains element matching a matcher
         template <typename Matcher>
-        std::enable_if_t<Detail::is_matcher<Matcher>::value,
+        constexpr std::enable_if_t<Detail::is_matcher_v<Matcher>,
         ContainsMatcherMatcher<Matcher>> Contains(Matcher&& matcher) {
             return { CATCH_FORWARD(matcher) };
         }
@@ -92,7 +92,7 @@ namespace Catch {
          * Uses `eq` to do the comparisons, the element is provided on the rhs
          */
         template <typename T, typename Equality>
-        ContainsElementMatcher<T, Equality> Contains(T&& elem, Equality&& eq) {
+        constexpr ContainsElementMatcher<T, Equality> Contains(T&& elem, Equality&& eq) {
             return { CATCH_FORWARD(elem), CATCH_FORWARD(eq) };
         }
 

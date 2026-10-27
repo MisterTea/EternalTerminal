@@ -49,9 +49,14 @@ namespace Catch {
                     if( !line.empty() && !startsWith( line, '#' ) ) {
                         if( !startsWith( line, '"' ) )
                             line = '"' + line + '"';
-                        config.testsOrTags.push_back( line + ',' );
+                        config.testsOrTags.push_back( line );
+                        config.testsOrTags.emplace_back( "," );
                     }
                 }
+                //Remove comma in the end
+                if(!config.testsOrTags.empty())
+                    config.testsOrTags.erase( config.testsOrTags.end()-1 );
+
                 return ParserResult::ok( ParseResultType::Matched );
             };
         auto const setTestOrder = [&]( std::string const& order ) {
@@ -86,14 +91,16 @@ namespace Catch {
             };
         auto const setWaitForKeypress = [&]( std::string const& keypress ) {
                 auto keypressLc = toLower( keypress );
-                if( keypressLc == "start" )
+                if (keypressLc == "never")
+                    config.waitForKeypress = WaitForKeypress::Never;
+                else if( keypressLc == "start" )
                     config.waitForKeypress = WaitForKeypress::BeforeStart;
                 else if( keypressLc == "exit" )
                     config.waitForKeypress = WaitForKeypress::BeforeExit;
                 else if( keypressLc == "both" )
                     config.waitForKeypress = WaitForKeypress::BeforeStartAndExit;
                 else
-                    return ParserResult::runtimeError( "keypress argument must be one of: start, exit or both. '" + keypress + "' not recognised" );
+                    return ParserResult::runtimeError( "keypress argument must be one of: never, start, exit or both. '" + keypress + "' not recognised" );
             return ParserResult::ok( ParseResultType::Matched );
             };
         auto const setVerbosity = [&]( std::string const& verbosity ) {
@@ -163,6 +170,9 @@ namespace Catch {
             | Opt( [&]( bool flag ) { config.showDurations = flag ? ShowDurations::Always : ShowDurations::Never; }, "yes|no" )
                 ["-d"]["--durations"]
                 ( "show test durations" )
+            | Opt( config.minDuration, "seconds" )
+                ["-D"]["--min-duration"]
+                ( "show test durations for tests taking at least the given number of seconds" )
             | Opt( loadTestNamesFromFile, "filename" )
                 ["-f"]["--input-file"]
                 ( "load test names to run from a file" )
@@ -193,13 +203,24 @@ namespace Catch {
             | Opt( config.libIdentify )
                 ["--libidentify"]
                 ( "report name and version according to libidentify standard" )
-            | Opt( setWaitForKeypress, "start|exit|both" )
+            | Opt( setWaitForKeypress, "never|start|exit|both" )
                 ["--wait-for-keypress"]
                 ( "waits for a keypress before exiting" )
-            | Opt( config.benchmarkResolutionMultiple, "multiplier" )
-                ["--benchmark-resolution-multiple"]
-                ( "multiple of clock resolution to run benchmarks" )
-
+            | Opt( config.benchmarkSamples, "samples" )
+                ["--benchmark-samples"]
+                ( "number of samples to collect (default: 100)" )
+            | Opt( config.benchmarkResamples, "resamples" )
+                ["--benchmark-resamples"]
+                ( "number of resamples for the bootstrap (default: 100000)" )
+            | Opt( config.benchmarkConfidenceInterval, "confidence interval" )
+                ["--benchmark-confidence-interval"]
+                ( "confidence interval for the bootstrap (between 0 and 1, default: 0.95)" )
+            | Opt( config.benchmarkNoAnalysis )
+                ["--benchmark-no-analysis"]
+                ( "perform only measurements; do not perform any analysis" )
+            | Opt( config.benchmarkWarmupTime, "benchmarkWarmupTime" )
+                ["--benchmark-warmup-time"]
+                ( "amount of time in milliseconds spent on warming up each test (default: 100)" )
             | Arg( config.testsOrTags, "test name|pattern|tags" )
                 ( "which test or tests to use" );
 

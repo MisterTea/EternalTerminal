@@ -1,7 +1,9 @@
 import os
+import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -18,10 +20,12 @@ from .assertions import (
     assert_no_before_send,
     assert_crash_timestamp,
     assert_breakpad_crash,
+    assert_exception,
 )
-from .conditions import has_breakpad, has_files
+from .conditions import has_breakpad, has_files, is_qemu
 
 
+@pytest.mark.skipif(is_qemu, reason="unreliable under qemu-user")
 def test_capture_stdout(cmake):
     tmp_path = cmake(
         ["sentry_example"],
@@ -44,6 +48,26 @@ def test_capture_stdout(cmake):
     assert_stacktrace(envelope)
 
     assert_event(envelope)
+
+
+def copy_except(src: Path, dst: Path, exceptions: list[str] = None) -> None:
+    """
+    Recursively copy everything from src to dst, except for entries whose
+    names are in `exceptions`.
+    """
+    exceptions = set(exceptions or [])
+
+    dst.mkdir(parents=True, exist_ok=True)
+
+    for entry in src.iterdir():
+        if entry.name in exceptions:
+            continue
+
+        dest = dst / entry.name
+        if entry.is_dir():
+            shutil.copytree(entry, dest, symlinks=True)
+        else:
+            shutil.copy2(entry, dest)
 
 
 def test_dynamic_sdk_name_override(cmake):
@@ -135,14 +159,13 @@ def test_multi_process(cmake):
     assert len(runs) == 0
 
 
-def run_stdout_for(backend, cmake, example_args, build_args=None):
+def run_stdout_for(backend, cmake, example_args, build_args=None, env=None):
     build_args = dict(build_args or {})
     build_args.update({"SENTRY_BACKEND": backend, "SENTRY_TRANSPORT": "none"})
 
     tmp_path = cmake(["sentry_example"], build_args)
 
-    child = run(tmp_path, "sentry_example", example_args)
-    assert child.returncode  # well, it's a crash after all
+    run(tmp_path, "sentry_example", example_args, expect_failure=True, env=env)
 
     return tmp_path, check_output(tmp_path, "sentry_example", ["stdout", "no-setup"])
 
@@ -163,6 +186,44 @@ def test_inproc_crash_stdout(cmake):
     assert_inproc_crash(envelope)
 
 
+@pytest.mark.parametrize(
+    "backend",
+    [
+        "inproc",
+        pytest.param(
+            "breakpad",
+            marks=pytest.mark.skipif(
+                not has_breakpad or is_qemu, reason="test needs breakpad backend"
+            ),
+        ),
+    ],
+)
+@pytest.mark.skipif(is_qemu, reason="unreliable under qemu-user")
+def test_abort_stdout(cmake, backend):
+    """Test that a normal abort() call is captured by inproc and breakpad backends.
+
+    This verifies that our SIGABRT handling changes (which bail out early
+    for abort() on the handler thread or during recursion) don't break
+    normal abort() capture from user code.
+    """
+    tmp_path, output = run_stdout_for(backend, cmake, ["attachment", "abort"])
+
+    envelope = Envelope.deserialize(output)
+
+    assert_crash_timestamp(has_files, tmp_path)
+    assert_meta(envelope, integration=backend)
+    assert_breadcrumb(envelope)
+    assert_attachment(envelope)
+    if backend == "inproc":
+        assert_inproc_crash(envelope)
+    elif backend == "breakpad":
+        assert_minidump(envelope)
+        assert_breakpad_crash(envelope)
+    else:
+        pytest.fail(f"unsupported backend: {backend}")
+
+
+@pytest.mark.skipif(is_qemu, reason="unreliable under qemu-user")
 def test_inproc_crash_stdout_before_send(cmake):
     tmp_path, output = run_crash_stdout_for("inproc", cmake, ["before-send"])
 
@@ -176,6 +237,7 @@ def test_inproc_crash_stdout_before_send(cmake):
     assert_before_send(envelope)
 
 
+@pytest.mark.skipif(is_qemu, reason="unreliable under qemu-user")
 def test_inproc_crash_stdout_discarding_on_crash(cmake):
     tmp_path, output = run_crash_stdout_for("inproc", cmake, ["discarding-on-crash"])
 
@@ -203,12 +265,12 @@ def test_inproc_crash_stdout_before_send_and_on_crash(cmake):
 
 
 @pytest.mark.parametrize(
-    "build_args",
+    "stack_size",
     [
-        ({}),  # uses default of 64KiB
+        None,  # uses default of 64KiB
         # no test with 16KiB since `inproc` fails with that handler stack size
         pytest.param(
-            {"SENTRY_HANDLER_STACK_SIZE": "32"},
+            "32",
             marks=pytest.mark.skipif(
                 sys.platform != "win32",
                 reason="handler stack size parameterization tests stack guarantee on windows only",
@@ -216,9 +278,12 @@ def test_inproc_crash_stdout_before_send_and_on_crash(cmake):
         ),
     ],
 )
-def test_inproc_stack_overflow_stdout(cmake, build_args):
+def test_inproc_stack_overflow_stdout(cmake, stack_size):
+    env = dict(os.environ)
+    if stack_size:
+        env["SENTRY_HANDLER_STACK_SIZE"] = stack_size
     tmp_path, output = run_stdout_for(
-        "inproc", cmake, ["attachment", "stack-overflow"], build_args
+        "inproc", cmake, ["log", "attachment", "stack-overflow"], env=env
     )
 
     envelope = Envelope.deserialize(output)
@@ -230,7 +295,7 @@ def test_inproc_stack_overflow_stdout(cmake, build_args):
     assert_inproc_crash(envelope)
 
 
-@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+@pytest.mark.skipif(not has_breakpad or is_qemu, reason="test needs breakpad backend")
 def test_breakpad_crash_stdout(cmake):
     tmp_path, output = run_crash_stdout_for("breakpad", cmake, [])
 
@@ -244,7 +309,7 @@ def test_breakpad_crash_stdout(cmake):
     assert_breakpad_crash(envelope)
 
 
-@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+@pytest.mark.skipif(not has_breakpad or is_qemu, reason="test needs breakpad backend")
 def test_breakpad_crash_stdout_before_send(cmake):
     tmp_path, output = run_crash_stdout_for("breakpad", cmake, ["before-send"])
 
@@ -259,7 +324,7 @@ def test_breakpad_crash_stdout_before_send(cmake):
     assert_breakpad_crash(envelope)
 
 
-@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+@pytest.mark.skipif(not has_breakpad or is_qemu, reason="test needs breakpad backend")
 def test_breakpad_crash_stdout_discarding_on_crash(cmake):
     tmp_path, output = run_crash_stdout_for("breakpad", cmake, ["discarding-on-crash"])
 
@@ -269,7 +334,7 @@ def test_breakpad_crash_stdout_discarding_on_crash(cmake):
     assert_crash_timestamp(has_files, tmp_path)
 
 
-@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+@pytest.mark.skipif(not has_breakpad or is_qemu, reason="test needs breakpad backend")
 def test_breakpad_crash_stdout_before_send_and_on_crash(cmake):
     tmp_path, output = run_crash_stdout_for(
         "breakpad", cmake, ["before-send", "on-crash"]
@@ -288,18 +353,18 @@ def test_breakpad_crash_stdout_before_send_and_on_crash(cmake):
 
 
 @pytest.mark.parametrize(
-    "build_args",
+    "stack_size",
     [
-        ({}),  # uses default of 64KiB
+        None,  # uses default of 64KiB
         pytest.param(
-            {"SENTRY_HANDLER_STACK_SIZE": "16"},
+            "16",
             marks=pytest.mark.skipif(
                 sys.platform != "win32",
                 reason="handler stack size parameterization tests stack guarantee on windows only",
             ),
         ),
         pytest.param(
-            {"SENTRY_HANDLER_STACK_SIZE": "32"},
+            "32",
             marks=pytest.mark.skipif(
                 sys.platform != "win32",
                 reason="handler stack size parameterization tests stack guarantee on windows only",
@@ -307,10 +372,13 @@ def test_breakpad_crash_stdout_before_send_and_on_crash(cmake):
         ),
     ],
 )
-@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
-def test_breakpad_stack_overflow_stdout(cmake, build_args):
+@pytest.mark.skipif(not has_breakpad or is_qemu, reason="test needs breakpad backend")
+def test_breakpad_stack_overflow_stdout(cmake, stack_size):
+    env = dict(os.environ)
+    if stack_size:
+        env["SENTRY_HANDLER_STACK_SIZE"] = stack_size
     tmp_path, output = run_stdout_for(
-        "breakpad", cmake, ["attachment", "stack-overflow"], build_args
+        "breakpad", cmake, ["attachment", "stack-overflow"], env=env
     )
 
     envelope = Envelope.deserialize(output)

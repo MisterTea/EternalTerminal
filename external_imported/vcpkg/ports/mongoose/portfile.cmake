@@ -4,7 +4,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO cesanta/mongoose
     REF "${VERSION}"
-    SHA512 c8e56c7bf9d2abd6ab136fe4759a2564a633b4ce80205efbc9701c96f6a8592c1b53683e92f37dbacc670bd997fd3a49a512e829f9987ba2548ebb250bb30bdd
+    SHA512 49ddbb53a1d0588bfef06b6c541479ddc26d5a9e7ded34900f6e9e44023fcf54db7dca8ddf6d8a1cadd8ccf65ec3672dc692973cbbd083847efef19810e8df42
     HEAD_REF master
 )
 

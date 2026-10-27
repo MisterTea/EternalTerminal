@@ -30,6 +30,9 @@
 #include "util/file/filesystem.h"
 #include "util/misc/initialization_state_dcheck.h"
 #include "util/misc/memory_sanitizer.h"
+#if BUILDFLAG(IS_LINUX)
+#include "util/posix/spawn_subprocess.h"
+#endif
 
 namespace crashpad {
 
@@ -160,7 +163,7 @@ class ScopedLockFile {
 
 class CrashReportDatabaseGeneric : public CrashReportDatabase {
  public:
-  CrashReportDatabaseGeneric();
+  explicit CrashReportDatabaseGeneric(const base::FilePath& path);
 
   CrashReportDatabaseGeneric(const CrashReportDatabaseGeneric&) = delete;
   CrashReportDatabaseGeneric& operator=(const CrashReportDatabaseGeneric&) =
@@ -168,12 +171,12 @@ class CrashReportDatabaseGeneric : public CrashReportDatabase {
 
   ~CrashReportDatabaseGeneric() override;
 
-  bool Initialize(const base::FilePath& path, bool may_create);
+  bool Initialize(bool may_create);
 
   // CrashReportDatabase:
   Settings* GetSettings() override;
   OperationStatus PrepareNewCrashReport(
-      std::unique_ptr<NewReport>* report) override;
+      std::unique_ptr<NewReport>* report, const UUID* uuid) override;
   OperationStatus FinishedWritingCrashReport(std::unique_ptr<NewReport> report,
                                              UUID* uuid) override;
   OperationStatus LookUpCrashReport(const UUID& uuid, Report* report) override;
@@ -189,6 +192,8 @@ class CrashReportDatabaseGeneric : public CrashReportDatabase {
   OperationStatus RequestUpload(const UUID& uuid) override;
   int CleanDatabase(time_t lockfile_ttl) override;
   base::FilePath DatabasePath() override;
+  void LaunchCrashReporter(const base::FilePath& crash_reporter,
+                           const base::FilePath& crash_envelope) override;
 
  private:
   struct LockfileUploadReport : public UploadReport {
@@ -260,26 +265,24 @@ class CrashReportDatabaseGeneric : public CrashReportDatabase {
   static bool WriteMetadata(const base::FilePath& path, const Report& report);
 
   Settings& SettingsInternal() {
-    std::call_once(settings_init_, [this]() {
-      settings_.Initialize(base_dir_.Append(kSettings));
-    });
+    std::call_once(settings_init_, [this]() { settings_.Initialize(); });
     return settings_;
   }
 
-  base::FilePath base_dir_;
+  const base::FilePath base_dir_;
   Settings settings_;
   std::once_flag settings_init_;
   InitializationStateDcheck initialized_;
 };
 
-CrashReportDatabaseGeneric::CrashReportDatabaseGeneric() = default;
+CrashReportDatabaseGeneric::CrashReportDatabaseGeneric(
+    const base::FilePath& path)
+    : base_dir_(path), settings_(path.Append(kSettings)) {}
 
 CrashReportDatabaseGeneric::~CrashReportDatabaseGeneric() = default;
 
-bool CrashReportDatabaseGeneric::Initialize(const base::FilePath& path,
-                                            bool may_create) {
+bool CrashReportDatabaseGeneric::Initialize(bool may_create) {
   INITIALIZATION_STATE_SET_INITIALIZING(initialized_);
-  base_dir_ = path;
 
   if (!IsDirectory(base_dir_, true) &&
       !(may_create &&
@@ -303,22 +306,24 @@ bool CrashReportDatabaseGeneric::Initialize(const base::FilePath& path,
   return true;
 }
 
-// static
-std::unique_ptr<CrashReportDatabase> CrashReportDatabase::Initialize(
-    const base::FilePath& path) {
-  auto database = std::make_unique<CrashReportDatabaseGeneric>();
-  return database->Initialize(path, true) ? std::move(database) : nullptr;
-}
-
-// static
-std::unique_ptr<CrashReportDatabase>
-CrashReportDatabase::InitializeWithoutCreating(const base::FilePath& path) {
-  auto database = std::make_unique<CrashReportDatabaseGeneric>();
-  return database->Initialize(path, false) ? std::move(database) : nullptr;
-}
-
 base::FilePath CrashReportDatabaseGeneric::DatabasePath() {
   return base_dir_;
+}
+
+void CrashReportDatabaseGeneric::LaunchCrashReporter(
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope) {
+#if BUILDFLAG(IS_LINUX)
+  SpawnSubprocess(
+      {
+          crash_reporter.value(),
+          crash_envelope.value(),
+      },
+      nullptr,
+      -1,
+      false,
+      nullptr);
+#endif
 }
 
 Settings* CrashReportDatabaseGeneric::GetSettings() {
@@ -327,12 +332,15 @@ Settings* CrashReportDatabaseGeneric::GetSettings() {
 }
 
 OperationStatus CrashReportDatabaseGeneric::PrepareNewCrashReport(
-    std::unique_ptr<NewReport>* report) {
+    std::unique_ptr<NewReport>* report, const UUID* uuid) {
   INITIALIZATION_STATE_DCHECK_VALID(initialized_);
 
   auto new_report = std::make_unique<NewReport>();
   if (!new_report->Initialize(
-          this, base_dir_.Append(kNewDirectory), kCrashReportExtension)) {
+          this,
+          base_dir_.Append(kNewDirectory),
+          kCrashReportExtension,
+          uuid)) {
     return kFileSystemError;
   }
 
@@ -942,6 +950,27 @@ bool CrashReportDatabaseGeneric::WriteMetadata(const base::FilePath& path,
 
   return LoggingWriteFile(handle.get(), &metadata, sizeof(metadata)) &&
          LoggingWriteFile(handle.get(), report.id.c_str(), report.id.size());
+}
+
+// static
+std::unique_ptr<CrashReportDatabase> CrashReportDatabase::Initialize(
+    const base::FilePath& path) {
+  auto database = std::make_unique<CrashReportDatabaseGeneric>(path);
+  return database->Initialize(true) ? std::move(database) : nullptr;
+}
+
+// static
+std::unique_ptr<CrashReportDatabase>
+CrashReportDatabase::InitializeWithoutCreating(const base::FilePath& path) {
+  auto database = std::make_unique<CrashReportDatabaseGeneric>(path);
+  return database->Initialize(false) ? std::move(database) : nullptr;
+}
+
+// static
+std::unique_ptr<SettingsReader>
+CrashReportDatabase::GetSettingsReaderForDatabasePath(
+    const base::FilePath& path) {
+  return std::make_unique<SettingsReader>(path.Append(kSettings));
 }
 
 }  // namespace crashpad

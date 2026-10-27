@@ -20,7 +20,6 @@
 #include <string>
 #include <string_view>
 
-#include "base/strings/string_piece.h"
 #include "build/build_config.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -63,9 +62,9 @@ struct UUID {
   //! \return `true` if the string was formatted correctly and the object has
   //!     been initialized with the data. `false` if the string could not be
   //!     parsed, with the object state untouched.
-  bool InitializeFromString(const base::StringPiece& string);
+  bool InitializeFromString(std::string_view string);
 #if BUILDFLAG(IS_WIN) || DOXYGEN
-  bool InitializeFromString(const std::wstring_view& string);
+  bool InitializeFromString(std::wstring_view string);
 #endif  // BUILDFLAG(IS_WIN)
 
   //! \brief Initializes the %UUID using a standard system facility to generate
@@ -81,6 +80,11 @@ struct UUID {
   //! \param[in] system_uuid A system `UUID` or `GUID` structure.
   void InitializeFromSystemUUID(const ::UUID* system_uuid);
 #endif  // BUILDFLAG(IS_WIN)
+
+  //! \brief Checks whether the %UUID is zero (all bytes are 0).
+  //!
+  //! \return `true` if the %UUID is all zeros, `false` otherwise.
+  bool IsZero() const;
 
   //! \brief Formats the %UUID per RFC 4122 §3.
   //!

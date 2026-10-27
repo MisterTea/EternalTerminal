@@ -2,9 +2,9 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO paullouisageneau/libdatachannel
     REF "v${VERSION}"
-    SHA512 65c000669dacf7b97605d7471eeb0d862985f2b03e794ede4c394170ecc0495b525dca33123ef84f0cd0b5780d43459ab608533617d40273ee8916e2f84e15e5
+    SHA512 694561ba5b3e08ed35e7e167330d97455ee2ef8d298c9c41e12de4d07032bbe1bb2ebec1e35126187c57ef9492e7d1c82ffd0fa3511eabcdfb77efabfd4b7d9a
     HEAD_REF master
-    PATCHES 
+    PATCHES
         dependencies.diff
         uwp-warnings.patch
 )

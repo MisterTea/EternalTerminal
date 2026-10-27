@@ -7,6 +7,7 @@
 #define SENTRY_RL_CATEGORY_ERROR 1
 #define SENTRY_RL_CATEGORY_SESSION 2
 #define SENTRY_RL_CATEGORY_TRANSACTION 3
+#define SENTRY_RL_CATEGORY_REPLAY 4
 
 typedef struct sentry_rate_limiter_s sentry_rate_limiter_t;
 

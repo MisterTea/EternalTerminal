@@ -57,19 +57,22 @@ if(WIN32 AND NOT (MINGW AND "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "[Aa][Rr][Mm]64"
     endif()
 
     if(MINGW)
-        find_program(JWASM_FOUND jwasm)
-        if (JWASM_FOUND)
-            set(CMAKE_ASM_MASM_COMPILER ${JWASM_FOUND})
-            execute_process(COMMAND ${CMAKE_C_COMPILER} --version OUTPUT_VARIABLE COMPILER_VERSION_OUTPUT)
-            if (COMPILER_VERSION_OUTPUT)
-                if (COMPILER_VERSION_OUTPUT MATCHES "x86_64")
-                    set(JWASM_FLAGS -win64)
-                else()
-                    set(JWASM_FLAGS -coff)
+        if(NOT DEFINED CMAKE_ASM_MASM_COMPILER OR CMAKE_ASM_MASM_COMPILER STREQUAL "")
+            # Only check for and set up JWASM if no ASM_MASM has been specified before
+            find_program(JWASM_FOUND jwasm)
+            if (JWASM_FOUND)
+                set(CMAKE_ASM_MASM_COMPILER ${JWASM_FOUND})
+                execute_process(COMMAND ${CMAKE_C_COMPILER} --version OUTPUT_VARIABLE COMPILER_VERSION_OUTPUT)
+                if (COMPILER_VERSION_OUTPUT)
+                    if (COMPILER_VERSION_OUTPUT MATCHES "x86_64")
+                        set(JWASM_FLAGS -win64)
+                    else()
+                        set(JWASM_FLAGS -coff)
+                    endif()
                 endif()
-            endif()
-           set(CMAKE_ASM_MASM_FLAGS ${CMAKE_ASM_MASM_FLAGS} ${JWASM_FLAGS})
-        endif(JWASM_FOUND)
+                set(CMAKE_ASM_MASM_FLAGS ${CMAKE_ASM_MASM_FLAGS} ${JWASM_FLAGS})
+            endif(JWASM_FOUND)
+        endif()
 
         if(NOT CMAKE_ASM_MASM_COMPILER OR CMAKE_ASM_MASM_COMPILER STREQUAL "ml" OR CMAKE_ASM_MASM_COMPILER STREQUAL "ml64")
             message(WARNING "No custom ASM_MASM compiler defined via 'CMAKE_ASM_MASM_COMPILER'. Trying to use UASM...")
@@ -129,6 +132,7 @@ if(MSVC)
         $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-deprecated-declarations> # same as /wd4996
         $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-format> # only Clang-CL
         $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-cast-function-type-mismatch> # only Clang-CL
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-return-type>
     )
 elseif(MINGW)
     # redirect to wmain
@@ -140,6 +144,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(crashpad_interface INTERFACE
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
         $<$<COMPILE_LANGUAGE:CXX>:-Wno-attributes>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-return-type>
     )
 endif()
 
@@ -148,6 +153,14 @@ if(LINUX)
         _FILE_OFFSET_BITS=64
         _LARGEFILE64_SOURCE
         _LARGEFILE_SOURCE
+    )
+endif()
+
+if(APPLE)
+    target_compile_options(crashpad_interface INTERFACE
+        "-fobjc-arc"
+        "-fno-objc-arc-exceptions"
+        "-Wno-deprecated-declarations"
     )
 endif()
 
@@ -162,6 +175,7 @@ add_subdirectory(client)
 
 add_subdirectory(third_party/zlib)
 add_subdirectory(third_party/getopt)
+add_subdirectory(third_party/mpack)
 
 add_subdirectory(tools)
 add_subdirectory(handler)

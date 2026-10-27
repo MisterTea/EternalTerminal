@@ -1,5 +1,6 @@
 #include "sentry_session.h"
 #include "sentry_alloc.h"
+#include "sentry_core.h"
 #include "sentry_database.h"
 #include "sentry_envelope.h"
 #include "sentry_json.h"
@@ -47,15 +48,10 @@ status_from_string(const char *status)
 }
 
 sentry_session_t *
-sentry__session_new(void)
+sentry__session_new(const sentry_scope_t *scope)
 {
-    char *release = NULL;
-    char *environment = NULL;
-    SENTRY_WITH_OPTIONS (options) {
-        release = sentry__string_clone(sentry_options_get_release(options));
-        environment
-            = sentry__string_clone(sentry_options_get_environment(options));
-    }
+    char *release = sentry__string_clone(scope->release);
+    char *environment = sentry__string_clone(scope->environment);
 
     if (!release) {
         sentry_free(environment);
@@ -155,17 +151,20 @@ sentry__session_from_json(const char *buf, size_t buflen)
 
     sentry_value_t attrs = sentry_value_get_by_key(value, "attrs");
     if (sentry_value_is_null(attrs)) {
+        sentry_value_decref(value);
         return NULL;
     }
     char *release = sentry__string_clone(
         sentry_value_as_string(sentry_value_get_by_key(attrs, "release")));
     if (!release) {
+        sentry_value_decref(value);
         return NULL;
     }
 
     sentry_session_t *rv = SENTRY_MAKE(sentry_session_t);
     if (!rv) {
         sentry_free(release);
+        sentry_value_decref(value);
         return NULL;
     }
     rv->session_id
@@ -215,17 +214,18 @@ void
 sentry_start_session(void)
 {
     sentry_end_session();
+    sentry_options_t *options = sentry__options_lock();
     SENTRY_WITH_SCOPE (scope) {
-        sentry_options_t *options = sentry__options_lock();
         if (options) {
-            options->session = sentry__session_new();
+            options->session = sentry__session_new(scope);
             if (options->session) {
-                sentry__session_sync_user(options->session, scope->user);
+                sentry__session_sync_user(options->session, scope->user,
+                    options->run ? options->run->installation_id : NULL);
                 sentry__run_write_session(options->run, options->session);
             }
         }
-        sentry__options_unlock();
     }
+    sentry__options_unlock();
 }
 
 void
@@ -273,7 +273,7 @@ sentry__capture_session(sentry_session_t *session)
     sentry__envelope_add_session(envelope, session);
 
     SENTRY_WITH_OPTIONS (options) {
-        sentry__capture_envelope(options->transport, envelope);
+        sentry__capture_envelope(options->transport, envelope, options);
     }
 }
 
@@ -302,17 +302,15 @@ sentry_end_session_with_status(sentry_session_status_t status)
 }
 
 void
-sentry__session_sync_user(sentry_session_t *session, sentry_value_t user)
+sentry__session_sync_user(
+    sentry_session_t *session, sentry_value_t user, const char *installation_id)
 {
-
     sentry_value_t did = sentry_value_get_by_key(user, "id");
-    if (sentry_value_is_null(did)) {
-        did = sentry_value_get_by_key(user, "email");
-    }
-    if (sentry_value_is_null(did)) {
-        did = sentry_value_get_by_key(user, "username");
-    }
     sentry_value_decref(session->distinct_id);
-    sentry_value_incref(did);
-    session->distinct_id = did;
+    if (sentry_value_is_null(did) && installation_id) {
+        session->distinct_id = sentry_value_new_string(installation_id);
+    } else {
+        sentry_value_incref(did);
+        session->distinct_id = did;
+    }
 }

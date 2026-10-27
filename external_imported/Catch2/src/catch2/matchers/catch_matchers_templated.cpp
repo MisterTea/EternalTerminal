@@ -9,7 +9,11 @@
 
 namespace Catch {
 namespace Matchers {
-    MatcherGenericBase::~MatcherGenericBase() = default;
+
+    std::string MatcherGenericBase::describe() const {
+        using namespace std::string_literals;
+        return "Undescribed generic matcher"s;
+    }
 
     namespace Detail {
 

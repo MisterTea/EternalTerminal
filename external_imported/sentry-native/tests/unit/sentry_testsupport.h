@@ -17,7 +17,7 @@
 
 #define CONCAT(A, B) A##B
 #define SENTRY_TEST(Name) void CONCAT(test_sentry_, Name)(void)
-#define SKIP_TEST() (void)0
+#define SKIP_TEST() return
 
 #define TEST_CHECK_STRING_EQUAL(Val, ReferenceVal)                             \
     do {                                                                       \
@@ -46,6 +46,20 @@
         long long _a = (long long)(A);                                         \
         long long _b = (long long)(B);                                         \
         TEST_CHECK_(_a == _b, "%lld == %lld", _a, _b);                         \
+    } while (0)
+
+#define TEST_CHECK_UINT64_EQUAL(A, B)                                          \
+    do {                                                                       \
+        unsigned long long _a = (unsigned long long)(A);                       \
+        unsigned long long _b = (unsigned long long)(B);                       \
+        TEST_CHECK_(_a == _b, "%llu == %llu", _a, _b);                         \
+    } while (0)
+
+#define TEST_CHECK_PTR_EQUAL(A, B)                                             \
+    do {                                                                       \
+        const void *_a = (const void *)(A);                                    \
+        const void *_b = (const void *)(B);                                    \
+        TEST_CHECK_(_a == _b, "%p == %p", _a, _b);                             \
     } while (0)
 
 #define TEST_ASSERT_INT_EQUAL(A, B)                                            \
@@ -89,5 +103,25 @@
 #define SENTRY_TEST_DSN_NEW(Varname, DSN_URL)                                  \
     sentry_dsn_t *Varname = sentry__dsn_new(DSN_URL);                          \
     TEST_ASSERT(!!Varname)
+
+#define SENTRY_TEST_DEPRECATED(call)                                           \
+    do {                                                                       \
+        SENTRY_SUPPRESS_DEPRECATED                                             \
+        call;                                                                  \
+        SENTRY_RESTORE_DEPRECATED                                              \
+    } while (0)
+
+#ifdef SENTRY_PLATFORM_WINDOWS
+#    include <windows.h>
+#    define sleep_s(SECONDS) Sleep((SECONDS) * 1000)
+#    define sleep_ms(MILLISECONDS) Sleep(MILLISECONDS)
+#    define sentry__thread_yield() SwitchToThread()
+#else
+#    include <sched.h>
+#    include <unistd.h>
+#    define sleep_s(SECONDS) sleep(SECONDS)
+#    define sleep_ms(MILLISECONDS) usleep((MILLISECONDS) * 1000)
+#    define sentry__thread_yield() sched_yield()
+#endif
 
 #endif // SENTRY_TEST_SUPPORT_H_INCLUDED

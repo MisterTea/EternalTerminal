@@ -50,6 +50,22 @@ with expansion:
   0 == 0
 
 -------------------------------------------------------------------------------
+#1027: Bitfields can be captured
+-------------------------------------------------------------------------------
+Compilation.tests.cpp:<line number>
+...............................................................................
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( y.v == 0 )
+with expansion:
+  0 == 0
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( 0 == y.v )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
 #1147
 -------------------------------------------------------------------------------
 Compilation.tests.cpp:<line number>
@@ -171,6 +187,569 @@ Compilation.tests.cpp:<line number>: PASSED:
   REQUIRE( std::is_same<TypeList<int>, TypeList<int>>::value )
 with expansion:
   true
+
+-------------------------------------------------------------------------------
+#1905 -- test spec parser properly clears internal state between compound tests
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( spec.matches(fakeTestCase("spec . char")) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( spec.matches(fakeTestCase("spec , char")) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( spec.matches(fakeTestCase(R"(spec \, char)")) )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+#1912 -- test spec parser handles escaping
+  Various parentheses
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( spec.matches(fakeTestCase(R"(spec {a} char)")) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( spec.matches(fakeTestCase(R"(spec [a] char)")) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( spec.matches(fakeTestCase("differs but has similar tag", "[a]")) )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+#1912 -- test spec parser handles escaping
+  backslash in test name
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( spec.matches(fakeTestCase(R"(spec \ char)")) )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
+#1913 - GENERATE inside a for loop should not keep recreating the generator
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( counter < 7 )
+with expansion:
+  3 < 7
+
+-------------------------------------------------------------------------------
+#1913 - GENERATE inside a for loop should not keep recreating the generator
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( counter < 7 )
+with expansion:
+  6 < 7
+
+-------------------------------------------------------------------------------
+#1913 - GENERATEs can share a line
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i != j )
+with expansion:
+  1 != 3
+
+-------------------------------------------------------------------------------
+#1913 - GENERATEs can share a line
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i != j )
+with expansion:
+  1 != 4
+
+-------------------------------------------------------------------------------
+#1913 - GENERATEs can share a line
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i != j )
+with expansion:
+  2 != 3
+
+-------------------------------------------------------------------------------
+#1913 - GENERATEs can share a line
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i != j )
+with expansion:
+  2 != 4
+
+-------------------------------------------------------------------------------
+#1938 - GENERATE after a section
+  A
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with message:
+  A
+
+-------------------------------------------------------------------------------
+#1938 - GENERATE after a section
+  B
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  1
+
+-------------------------------------------------------------------------------
+#1938 - GENERATE after a section
+  B
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  2
+
+-------------------------------------------------------------------------------
+#1938 - GENERATE after a section
+  B
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  3
+
+-------------------------------------------------------------------------------
+#1938 - Section followed by flat generate
+  A
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( 1 )
+
+-------------------------------------------------------------------------------
+#1938 - Section followed by flat generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  2
+
+-------------------------------------------------------------------------------
+#1938 - Section followed by flat generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  3
+
+-------------------------------------------------------------------------------
+#1938 - flat generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  1
+
+-------------------------------------------------------------------------------
+#1938 - flat generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  2
+
+-------------------------------------------------------------------------------
+#1938 - flat generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  3
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+  A
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with message:
+  A
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 1
+  j := 3
+  k := 5
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+  B
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with message:
+  B
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 1
+  j := 3
+  k := 6
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+  B
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with message:
+  B
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 1
+  j := 4
+  k := 5
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 1
+  j := 4
+  k := 6
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+  A
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with message:
+  A
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 2
+  j := 3
+  k := 5
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+  B
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with message:
+  B
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 2
+  j := 3
+  k := 6
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+  B
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with message:
+  B
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 2
+  j := 4
+  k := 5
+
+-------------------------------------------------------------------------------
+#1938 - mixed sections and generates
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+with messages:
+  i := 2
+  j := 4
+  k := 6
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  1
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  1
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  1
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  2
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  1
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  3
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  2
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  1
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  2
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  2
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  2
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  3
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  3
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  1
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  3
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  2
+
+-------------------------------------------------------------------------------
+#1938 - nested generate
+-------------------------------------------------------------------------------
+PartTracker.tests.cpp:<line number>
+...............................................................................
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( m )
+with expansion:
+  3
+
+PartTracker.tests.cpp:<line number>: PASSED:
+  REQUIRE( n )
+with expansion:
+  3
+
+-------------------------------------------------------------------------------
+#1954 - 7 arg template test case sig compiles - 1, 1, 1, 1, 1, 0, 0
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+
+-------------------------------------------------------------------------------
+#1954 - 7 arg template test case sig compiles - 5, 1, 1, 1, 1, 0, 0
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+
+-------------------------------------------------------------------------------
+#1954 - 7 arg template test case sig compiles - 5, 3, 1, 1, 1, 0, 0
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
 
 -------------------------------------------------------------------------------
 #748 - captures with unexpected exceptions
@@ -1180,6 +1759,102 @@ with expansion:
   0 == 0
 
 -------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails -
+Template_Foo_2<float, 6>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  6 < 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails -
+Template_Foo_2<int, 2>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  2 < 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails - std::array
+<float, 6>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  6 < 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails - std::array
+<int, 2>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  2 < 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that succeeds -
+Template_Foo_2<float,6>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() >= 2 )
+with expansion:
+  6 >= 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that succeeds -
+Template_Foo_2<int,2>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() >= 2 )
+with expansion:
+  2 >= 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that succeeds - std::
+array<float,6>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() >= 2 )
+with expansion:
+  6 >= 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that succeeds - std::
+array<int,2>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() >= 2 )
+with expansion:
+  2 >= 2
+
+-------------------------------------------------------------------------------
 A TEMPLATE_TEST_CASE_METHOD based test run that fails - double
 -------------------------------------------------------------------------------
 Class.tests.cpp:<line number>
@@ -1246,6 +1921,72 @@ with expansion:
   1 == 1
 
 -------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 1
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Nttp_Fixture<V>::value == 0 )
+with expansion:
+  1 == 0
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 3
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Nttp_Fixture<V>::value == 0 )
+with expansion:
+  3 == 0
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 6
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Nttp_Fixture<V>::value == 0 )
+with expansion:
+  6 == 0
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that succeeds - 1
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Nttp_Fixture<V>::value > 0 )
+with expansion:
+  1 > 0
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that succeeds - 3
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Nttp_Fixture<V>::value > 0 )
+with expansion:
+  3 > 0
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that succeeds - 6
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Nttp_Fixture<V>::value > 0 )
+with expansion:
+  6 > 0
+
+-------------------------------------------------------------------------------
 A TEST_CASE_METHOD based test run that fails
 -------------------------------------------------------------------------------
 Class.tests.cpp:<line number>
@@ -1310,6 +2051,50 @@ Misc.tests.cpp:<line number>: PASSED:
   REQUIRE( x.size() == 0 )
 with expansion:
   0 == 0
+
+-------------------------------------------------------------------------------
+A Template product test case with array signature - Bar<float, 42>
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( x.size() > 0 )
+with expansion:
+  42 > 0
+
+-------------------------------------------------------------------------------
+A Template product test case with array signature - Bar<int, 9>
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( x.size() > 0 )
+with expansion:
+  9 > 0
+
+-------------------------------------------------------------------------------
+A Template product test case with array signature - std::array<float, 42>
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( x.size() > 0 )
+with expansion:
+  42 > 0
+
+-------------------------------------------------------------------------------
+A Template product test case with array signature - std::array<int, 9>
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( x.size() > 0 )
+with expansion:
+  9 > 0
 
 -------------------------------------------------------------------------------
 A comparison that uses literals instead of the normal constructor
@@ -1658,6 +2443,37 @@ with expansion:
   "This wouldn't pass" not matches undescribed predicate
 
 -------------------------------------------------------------------------------
+Assertion macros support bit operators and bool conversions
+-------------------------------------------------------------------------------
+Compilation.tests.cpp:<line number>
+...............................................................................
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( lhs | rhs )
+with expansion:
+  Val: 1 | Val: 2
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( lhs & rhs )
+with expansion:
+  !(Val: 1 & Val: 2)
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( HasBitOperators{ 1 } & HasBitOperators{ 1 } )
+with expansion:
+  Val: 1 & Val: 1
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( lhs ^ rhs )
+with expansion:
+  Val: 1 ^ Val: 2
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( lhs ^ lhs )
+with expansion:
+  !(Val: 1 ^ Val: 1)
+
+-------------------------------------------------------------------------------
 Assertions then sections
 -------------------------------------------------------------------------------
 Tricky.tests.cpp:<line number>
@@ -1716,43 +2532,6 @@ Tricky.tests.cpp:<line number>
 
 Tricky.tests.cpp:<line number>: PASSED:
   REQUIRE( true )
-
--------------------------------------------------------------------------------
-Assorted miscellaneous tests
--------------------------------------------------------------------------------
-Approx.tests.cpp:<line number>
-...............................................................................
-
-Approx.tests.cpp:<line number>: PASSED:
-  REQUIRE( INFINITY == Approx(INFINITY) )
-with expansion:
-  inff == Approx( inf )
-
-Approx.tests.cpp:<line number>: PASSED:
-  REQUIRE( NAN != Approx(NAN) )
-with expansion:
-  nanf != Approx( nan )
-
-Approx.tests.cpp:<line number>: PASSED:
-  REQUIRE_FALSE( NAN == Approx(NAN) )
-with expansion:
-  !(nanf == Approx( nan ))
-
--------------------------------------------------------------------------------
-Bitfields can be captured (#1027)
--------------------------------------------------------------------------------
-Tricky.tests.cpp:<line number>
-...............................................................................
-
-Tricky.tests.cpp:<line number>: PASSED:
-  REQUIRE( y.v == 0 )
-with expansion:
-  0 == 0
-
-Tricky.tests.cpp:<line number>: PASSED:
-  REQUIRE( 0 == y.v )
-with expansion:
-  0 == 0
 
 -------------------------------------------------------------------------------
 CAPTURE can deal with complex expressions
@@ -1995,6 +2774,32 @@ with expansion:
   0x<hex digits> == 0x<hex digits>
 
 -------------------------------------------------------------------------------
+Comparison ops
+-------------------------------------------------------------------------------
+RandomNumberGeneration.tests.cpp:<line number>
+...............................................................................
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( SimplePcg32{} == SimplePcg32{} )
+with expansion:
+  {?} == {?}
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( SimplePcg32{ 0 } != SimplePcg32{} )
+with expansion:
+  {?} != {?}
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( SimplePcg32{ 1 } == SimplePcg32{ 2 } )
+with expansion:
+  !({?} == {?})
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( SimplePcg32{ 1 } != SimplePcg32{ 1 } )
+with expansion:
+  !({?} != {?})
+
+-------------------------------------------------------------------------------
 Comparison with explicitly convertible types
 -------------------------------------------------------------------------------
 Approx.tests.cpp:<line number>
@@ -2180,6 +2985,70 @@ with expansion:
   4294967295 (0x<hex digits>) > 4
 
 -------------------------------------------------------------------------------
+Composed matchers are distinct
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( testStringForMatching2(), !composed1 )
+with expansion:
+  "some completely different text that contains one common word" not (
+  contains: "string" or contains: "random" )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( testStringForMatching2(), composed2 )
+with expansion:
+  "some completely different text that contains one common word" ( contains:
+  "string" or contains: "random" or contains: "different" )
+
+-------------------------------------------------------------------------------
+Composed matchers shortcircuit
+  &&
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( 1, !(first && second) )
+with expansion:
+  1 not ( CheckedTestingMatcher set to fail and CheckedTestingMatcher set to
+  fail )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE( first.matchCalled )
+with expansion:
+  true
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE( !second.matchCalled )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
+Composed matchers shortcircuit
+  ||
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( 1, first || second )
+with expansion:
+  1 ( CheckedTestingMatcher set to succeed or CheckedTestingMatcher set to fail
+  )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE( first.matchCalled )
+with expansion:
+  true
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE( !second.matchCalled )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
 Contains string matcher
 -------------------------------------------------------------------------------
 Matchers.tests.cpp:<line number>
@@ -2195,6 +3064,167 @@ Matchers.tests.cpp:<line number>: FAILED:
   CHECK_THAT( testStringForMatching(), Contains("STRING") )
 with expansion:
   "this string contains 'abc' as a substring" contains: "STRING"
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  from var and iterators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  from var and iterators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  from var and iterators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  from var and iterators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  from var and iterators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  from var and iterators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  From a temporary container
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  From a temporary container
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  From a temporary container
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  From a temporary container
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  From a temporary container
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  From a temporary container
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( elem % 2 == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Copy and then generate a range
+  Final validation
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( call_count == 1 )
+with expansion:
+  1 == 1
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( make_data().size() == test_count )
+with expansion:
+  6 == 6
 
 -------------------------------------------------------------------------------
 Custom exceptions can be translated when testing for nothrow
@@ -2558,12 +3588,12 @@ Matchers.tests.cpp:<line number>
 ...............................................................................
 
 Matchers.tests.cpp:<line number>: FAILED:
-  CHECK_THROWS_MATCHES( throws(3), SpecialException, ExceptionMatcher{1} )
+  CHECK_THROWS_MATCHES( throwsSpecialException(3), SpecialException, ExceptionMatcher{1} )
 with expansion:
   SpecialException::what special exception has value of 1
 
 Matchers.tests.cpp:<line number>: FAILED:
-  REQUIRE_THROWS_MATCHES( throws(4), SpecialException, ExceptionMatcher{1} )
+  REQUIRE_THROWS_MATCHES( throwsSpecialException(4), SpecialException, ExceptionMatcher{1} )
 with expansion:
   SpecialException::what special exception has value of 1
 
@@ -2574,12 +3604,12 @@ Matchers.tests.cpp:<line number>
 ...............................................................................
 
 Matchers.tests.cpp:<line number>: PASSED:
-  CHECK_THROWS_MATCHES( throws(1), SpecialException, ExceptionMatcher{1} )
+  CHECK_THROWS_MATCHES( throwsSpecialException(1), SpecialException, ExceptionMatcher{1} )
 with expansion:
   SpecialException::what special exception has value of 1
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THROWS_MATCHES( throws(2), SpecialException, ExceptionMatcher{2} )
+  REQUIRE_THROWS_MATCHES( throwsSpecialException(2), SpecialException, ExceptionMatcher{2} )
 with expansion:
   SpecialException::what special exception has value of 2
 
@@ -2633,6 +3663,32 @@ Exception.tests.cpp:<line number>: PASSED:
   REQUIRE_THROWS_WITH( thisThrows(), Contains( "exCept", Catch::CaseSensitive::No ) )
 with expansion:
   "expected exception" contains: "except" (case insensitive)
+
+-------------------------------------------------------------------------------
+Exceptions matchers
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_MATCHES( throwsDerivedException(), DerivedException, Message("DerivedException::what") )
+with expansion:
+  DerivedException::what exception message matches "DerivedException::what"
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_MATCHES( throwsDerivedException(), DerivedException, !Message("derivedexception::what") )
+with expansion:
+  DerivedException::what not exception message matches "derivedexception::what"
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_MATCHES( throwsSpecialException(2), SpecialException, !Message("DerivedException::what") )
+with expansion:
+  SpecialException::what not exception message matches "DerivedException::what"
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_MATCHES( throwsSpecialException(2), SpecialException, Message("SpecialException::what") )
+with expansion:
+  SpecialException::what exception message matches "SpecialException::what"
 
 -------------------------------------------------------------------------------
 Expected exceptions that don't throw or unexpected exceptions fail the test
@@ -2718,6 +3774,46 @@ with expansion:
 
 -------------------------------------------------------------------------------
 Floating point matchers: double
+  Relative
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 10., WithinRel(11.1, 0.1) )
+with expansion:
+  10.0 and 11.1 are within 10% of each other
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 10., !WithinRel(11.2, 0.1) )
+with expansion:
+  10.0 not and 11.2 are within 10% of each other
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 1., !WithinRel(0., 0.99) )
+with expansion:
+  1.0 not and 0 are within 99% of each other
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( -0., WithinRel(0.) )
+with expansion:
+  -0.0 and 0 are within 2.22045e-12% of each other
+
+-------------------------------------------------------------------------------
+Floating point matchers: double
+  Relative
+  Some subnormal values
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( v1, WithinRel(v2) )
+with expansion:
+  0.0 and 2.22507e-308 are within 2.22045e-12% of each other
+
+-------------------------------------------------------------------------------
+Floating point matchers: double
   Margin
 -------------------------------------------------------------------------------
 Matchers.tests.cpp:<line number>
@@ -2742,11 +3838,6 @@ Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 0., !WithinAbs(1., 0.99) )
 with expansion:
   0.0 not is within 0.99 of 1.0
-
-Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( NAN, !WithinAbs(NAN, 0) )
-with expansion:
-  nanf not is within 0.0 of nan
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 11., !WithinAbs(10., 0.5) )
@@ -2778,37 +3869,44 @@ Matchers.tests.cpp:<line number>
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1., WithinULP(1., 0) )
 with expansion:
-  1.0 is within 0 ULPs of 1.0
+  1.0 is within 0 ULPs of 1.0000000000000000e+00 ([1.0000000000000000e+00, 1.
+  0000000000000000e+00])
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( nextafter(1., 2.), WithinULP(1., 1) )
 with expansion:
-  1.0 is within 1 ULPs of 1.0
+  1.0 is within 1 ULPs of 1.0000000000000000e+00 ([9.9999999999999989e-01, 1.
+  0000000000000002e+00])
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( nextafter(1., 0.), WithinULP(1., 1) )
+  REQUIRE_THAT( 0., WithinULP(nextafter(0., 1.), 1) )
 with expansion:
-  1.0 is within 1 ULPs of 1.0
+  0.0 is within 1 ULPs of 4.9406564584124654e-324 ([0.0000000000000000e+00, 9.
+  8813129168249309e-324])
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( nextafter(1., 2.), !WithinULP(1., 0) )
+  REQUIRE_THAT( 1., WithinULP(nextafter(1., 0.), 1) )
 with expansion:
-  1.0 not is within 0 ULPs of 1.0
+  1.0 is within 1 ULPs of 9.9999999999999989e-01 ([9.9999999999999978e-01, 1.
+  0000000000000000e+00])
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 1., !WithinULP(nextafter(1., 2.), 0) )
+with expansion:
+  1.0 not is within 0 ULPs of 1.0000000000000002e+00 ([1.0000000000000002e+00,
+  1.0000000000000002e+00])
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1., WithinULP(1., 0) )
 with expansion:
-  1.0 is within 0 ULPs of 1.0
+  1.0 is within 0 ULPs of 1.0000000000000000e+00 ([1.0000000000000000e+00, 1.
+  0000000000000000e+00])
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( -0., WithinULP(0., 0) )
 with expansion:
-  -0.0 is within 0 ULPs of 0.0
-
-Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( NAN, !WithinULP(NAN, 123) )
-with expansion:
-  nanf not is within 123 ULPs of nanf
+  -0.0 is within 0 ULPs of 0.0000000000000000e+00 ([0.0000000000000000e+00, 0.
+  0000000000000000e+00])
 
 -------------------------------------------------------------------------------
 Floating point matchers: double
@@ -2820,17 +3918,19 @@ Matchers.tests.cpp:<line number>
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1., WithinAbs(1., 0.5) || WithinULP(2., 1) )
 with expansion:
-  1.0 ( is within 0.5 of 1.0 or is within 1 ULPs of 2.0 )
+  1.0 ( is within 0.5 of 1.0 or is within 1 ULPs of 2.0000000000000000e+00 ([1.
+  9999999999999998e+00, 2.0000000000000004e+00]) )
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1., WithinAbs(2., 0.5) || WithinULP(1., 0) )
 with expansion:
-  1.0 ( is within 0.5 of 2.0 or is within 0 ULPs of 1.0 )
+  1.0 ( is within 0.5 of 2.0 or is within 0 ULPs of 1.0000000000000000e+00 ([1.
+  0000000000000000e+00, 1.0000000000000000e+00]) )
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( NAN, !(WithinAbs(NAN, 100) || WithinULP(NAN, 123)) )
+  REQUIRE_THAT( 0.0001, WithinAbs(0., 0.001) || WithinRel(0., 0.1) )
 with expansion:
-  nanf not ( is within 100.0 of nan or is within 123 ULPs of nanf )
+  0.0001 ( is within 0.001 of 0.0 or and 0 are within 10% of each other )
 
 -------------------------------------------------------------------------------
 Floating point matchers: double
@@ -2849,7 +3949,53 @@ Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_NOTHROW( WithinULP(1., 0) )
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THROWS_AS( WithinULP(1., -1), std::domain_error )
+  REQUIRE_NOTHROW( WithinRel(1., 0.) )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_AS( WithinRel(1., -0.2), std::domain_error )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_AS( WithinRel(1., 1.), std::domain_error )
+
+-------------------------------------------------------------------------------
+Floating point matchers: float
+  Relative
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 10.f, WithinRel(11.1f, 0.1f) )
+with expansion:
+  10.0f and 11.1 are within 10% of each other
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 10.f, !WithinRel(11.2f, 0.1f) )
+with expansion:
+  10.0f not and 11.2 are within 10% of each other
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 1.f, !WithinRel(0.f, 0.99f) )
+with expansion:
+  1.0f not and 0 are within 99% of each other
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( -0.f, WithinRel(0.f) )
+with expansion:
+  -0.0f and 0 are within 0.00119209% of each other
+
+-------------------------------------------------------------------------------
+Floating point matchers: float
+  Relative
+  Some subnormal values
+-------------------------------------------------------------------------------
+Matchers.tests.cpp:<line number>
+...............................................................................
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( v1, WithinRel(v2) )
+with expansion:
+  0.0f and 1.17549e-38 are within 0.00119209% of each other
 
 -------------------------------------------------------------------------------
 Floating point matchers: float
@@ -2884,11 +4030,6 @@ with expansion:
   0.0f is within 0.0 of -0.0
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( NAN, !WithinAbs(NAN, 0) )
-with expansion:
-  nanf not is within 0.0 of nan
-
-Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 11.f, !WithinAbs(10.f, 0.5f) )
 with expansion:
   11.0f not is within 0.5 of 10.0
@@ -2918,37 +4059,38 @@ Matchers.tests.cpp:<line number>
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1.f, WithinULP(1.f, 0) )
 with expansion:
-  1.0f is within 0 ULPs of 1.0f
+  1.0f is within 0 ULPs of 1.00000000e+00f ([1.00000000e+00, 1.00000000e+00])
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( nextafter(1.f, 2.f), WithinULP(1.f, 1) )
 with expansion:
-  1.0f is within 1 ULPs of 1.0f
+  1.0f is within 1 ULPs of 1.00000000e+00f ([9.99999940e-01, 1.00000012e+00])
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( nextafter(1.f, 0.f), WithinULP(1.f, 1) )
+  REQUIRE_THAT( 0.f, WithinULP(nextafter(0.f, 1.f), 1) )
 with expansion:
-  1.0f is within 1 ULPs of 1.0f
+  0.0f is within 1 ULPs of 1.40129846e-45f ([0.00000000e+00, 2.80259693e-45])
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( nextafter(1.f, 2.f), !WithinULP(1.f, 0) )
+  REQUIRE_THAT( 1.f, WithinULP(nextafter(1.f, 0.f), 1) )
 with expansion:
-  1.0f not is within 0 ULPs of 1.0f
+  1.0f is within 1 ULPs of 9.99999940e-01f ([9.99999881e-01, 1.00000000e+00])
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( 1.f, !WithinULP(nextafter(1.f, 2.f), 0) )
+with expansion:
+  1.0f not is within 0 ULPs of 1.00000012e+00f ([1.00000012e+00, 1.00000012e+
+  00])
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1.f, WithinULP(1.f, 0) )
 with expansion:
-  1.0f is within 0 ULPs of 1.0f
+  1.0f is within 0 ULPs of 1.00000000e+00f ([1.00000000e+00, 1.00000000e+00])
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( -0.f, WithinULP(0.f, 0) )
 with expansion:
-  -0.0f is within 0 ULPs of 0.0f
-
-Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( NAN, !WithinULP(NAN, 123) )
-with expansion:
-  nanf not is within 123 ULPs of nanf
+  -0.0f is within 0 ULPs of 0.00000000e+00f ([0.00000000e+00, 0.00000000e+00])
 
 -------------------------------------------------------------------------------
 Floating point matchers: float
@@ -2960,17 +4102,19 @@ Matchers.tests.cpp:<line number>
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1.f, WithinAbs(1.f, 0.5) || WithinULP(1.f, 1) )
 with expansion:
-  1.0f ( is within 0.5 of 1.0 or is within 1 ULPs of 1.0f )
+  1.0f ( is within 0.5 of 1.0 or is within 1 ULPs of 1.00000000e+00f ([9.
+  99999940e-01, 1.00000012e+00]) )
 
 Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1.f, WithinAbs(2.f, 0.5) || WithinULP(1.f, 0) )
 with expansion:
-  1.0f ( is within 0.5 of 2.0 or is within 0 ULPs of 1.0f )
+  1.0f ( is within 0.5 of 2.0 or is within 0 ULPs of 1.00000000e+00f ([1.
+  00000000e+00, 1.00000000e+00]) )
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THAT( NAN, !(WithinAbs(NAN, 100) || WithinULP(NAN, 123)) )
+  REQUIRE_THAT( 0.0001f, WithinAbs(0.f, 0.001f) || WithinRel(0.f, 0.1f) )
 with expansion:
-  nanf not ( is within 100.0 of nan or is within 123 ULPs of nanf )
+  0.0001f ( is within 0.001 of 0.0 or and 0 are within 10% of each other )
 
 -------------------------------------------------------------------------------
 Floating point matchers: float
@@ -2989,7 +4133,16 @@ Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_NOTHROW( WithinULP(1.f, 0) )
 
 Matchers.tests.cpp:<line number>: PASSED:
-  REQUIRE_THROWS_AS( WithinULP(1.f, -1), std::domain_error )
+  REQUIRE_THROWS_AS( WithinULP(1.f, static_cast<uint64_t>(-1)), std::domain_error )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_NOTHROW( WithinRel(1.f, 0.f) )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_AS( WithinRel(1.f, -0.2f), std::domain_error )
+
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_AS( WithinRel(1.f, 1.f), std::domain_error )
 
 -------------------------------------------------------------------------------
 Generators -- adapters
@@ -3365,6 +4518,45 @@ Generators.tests.cpp:<line number>: PASSED:
   REQUIRE( chunk2.front() < 3 )
 with expansion:
   2 < 3
+
+-------------------------------------------------------------------------------
+Generators -- adapters
+  Chunking a generator into sized pieces
+  Chunk size of zero
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( chunk2.size() == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+Generators -- adapters
+  Chunking a generator into sized pieces
+  Chunk size of zero
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( chunk2.size() == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+Generators -- adapters
+  Chunking a generator into sized pieces
+  Chunk size of zero
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( chunk2.size() == 0 )
+with expansion:
+  0 == 0
 
 -------------------------------------------------------------------------------
 Generators -- adapters
@@ -3775,6 +4967,9 @@ with expansion:
 
 GeneratorsImpl.tests.cpp:<line number>: PASSED:
   REQUIRE_THROWS_AS( filter([] (int) { return false; }, value(1)), Catch::GeneratorException )
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE_THROWS_AS( filter( []( int ) { return false; }, values( { 1, 2, 3 } ) ), Catch::GeneratorException )
 
 -------------------------------------------------------------------------------
 Generators internals
@@ -4243,6 +5438,504 @@ with expansion:
 -------------------------------------------------------------------------------
 Generators internals
   Range
+  Positive manual step
+  Floating Point
+  Exact
+-------------------------------------------------------------------------------
+GeneratorsImpl.tests.cpp:<line number>
+...............................................................................
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -1.0 == Approx( -1.0 )
+with message:
+  Current expected value is -1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.9 == Approx( -0.9 )
+with message:
+  Current expected value is -0.9
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.9
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.8 == Approx( -0.8 )
+with message:
+  Current expected value is -0.8
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.8
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.7 == Approx( -0.7 )
+with message:
+  Current expected value is -0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.6 == Approx( -0.6 )
+with message:
+  Current expected value is -0.6
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.6
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.5 == Approx( -0.5 )
+with message:
+  Current expected value is -0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.4 == Approx( -0.4 )
+with message:
+  Current expected value is -0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.3 == Approx( -0.3 )
+with message:
+  Current expected value is -0.3
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.3
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.2 == Approx( -0.2 )
+with message:
+  Current expected value is -0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.1 == Approx( -0.1 )
+with message:
+  Current expected value is -0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.0 == Approx( -0.0 )
+with message:
+  Current expected value is -1.38778e-16
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -1.38778e-16
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.1 == Approx( 0.1 )
+with message:
+  Current expected value is 0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.2 == Approx( 0.2 )
+with message:
+  Current expected value is 0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.3 == Approx( 0.3 )
+with message:
+  Current expected value is 0.3
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.3
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.4 == Approx( 0.4 )
+with message:
+  Current expected value is 0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.5 == Approx( 0.5 )
+with message:
+  Current expected value is 0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.6 == Approx( 0.6 )
+with message:
+  Current expected value is 0.6
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.6
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.7 == Approx( 0.7 )
+with message:
+  Current expected value is 0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.8 == Approx( 0.8 )
+with message:
+  Current expected value is 0.8
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.8
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.9 == Approx( 0.9 )
+with message:
+  Current expected value is 0.9
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.9
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx( rangeEnd ) )
+with expansion:
+  1.0 == Approx( 1.0 )
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( gen.next() )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+Generators internals
+  Range
+  Positive manual step
+  Floating Point
+  Slightly over end
+-------------------------------------------------------------------------------
+GeneratorsImpl.tests.cpp:<line number>
+...............................................................................
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -1.0 == Approx( -1.0 )
+with message:
+  Current expected value is -1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.7 == Approx( -0.7 )
+with message:
+  Current expected value is -0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.4 == Approx( -0.4 )
+with message:
+  Current expected value is -0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.1 == Approx( -0.1 )
+with message:
+  Current expected value is -0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.2 == Approx( 0.2 )
+with message:
+  Current expected value is 0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.5 == Approx( 0.5 )
+with message:
+  Current expected value is 0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( gen.next() )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+Generators internals
+  Range
+  Positive manual step
+  Floating Point
+  Slightly under end
+-------------------------------------------------------------------------------
+GeneratorsImpl.tests.cpp:<line number>
+...............................................................................
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -1.0 == Approx( -1.0 )
+with message:
+  Current expected value is -1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.7 == Approx( -0.7 )
+with message:
+  Current expected value is -0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.7
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.4 == Approx( -0.4 )
+with message:
+  Current expected value is -0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.4
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  -0.1 == Approx( -0.1 )
+with message:
+  Current expected value is -0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is -0.1
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.2 == Approx( 0.2 )
+with message:
+  Current expected value is 0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.2
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.get() == Approx(expected) )
+with expansion:
+  0.5 == Approx( 0.5 )
+with message:
+  Current expected value is 0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE( gen.next() )
+with expansion:
+  true
+with message:
+  Current expected value is 0.5
+
+GeneratorsImpl.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( gen.next() )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+Generators internals
+  Range
   Negative manual step
   Integer
   Exact
@@ -4680,6 +6373,17 @@ with expansion:
   5 != 6
 
 -------------------------------------------------------------------------------
+Lambdas in assertions
+-------------------------------------------------------------------------------
+Compilation.tests.cpp:<line number>
+...............................................................................
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( []() { return true; }() )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
 Less-than inequalities with different epsilons
 -------------------------------------------------------------------------------
 Approx.tests.cpp:<line number>
@@ -4790,6 +6494,46 @@ Matchers.tests.cpp:<line number>: FAILED:
   CHECK_THAT( testStringForMatching(), !Contains("substring") )
 with expansion:
   "this string contains 'abc' as a substring" not contains: "substring"
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  A
+  1
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  A
+  2
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  B
+  1
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  B
+  2
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
 
 -------------------------------------------------------------------------------
 Mismatching exception messages failing the test
@@ -5231,6 +6975,125 @@ Condition.tests.cpp:<line number>: PASSED:
   REQUIRE( data.str_hello > "a" )
 with expansion:
   "hello" > "a"
+
+-------------------------------------------------------------------------------
+Our PCG implementation provides expected results for known seeds
+  Default seeded
+-------------------------------------------------------------------------------
+RandomNumberGeneration.tests.cpp:<line number>
+...............................................................................
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  4242248763 (0x<hex digits>)
+  ==
+  4242248763 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  1867888929 (0x<hex digits>)
+  ==
+  1867888929 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  1276619030 (0x<hex digits>)
+  ==
+  1276619030 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  1911218783 (0x<hex digits>)
+  ==
+  1911218783 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  1827115164 (0x<hex digits>)
+  ==
+  1827115164 (0x<hex digits>)
+
+-------------------------------------------------------------------------------
+Our PCG implementation provides expected results for known seeds
+  Specific seed
+-------------------------------------------------------------------------------
+RandomNumberGeneration.tests.cpp:<line number>
+...............................................................................
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  1472234645 (0x<hex digits>)
+  ==
+  1472234645 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  868832940 (0x<hex digits>)
+  ==
+  868832940 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  570883446 (0x<hex digits>)
+  ==
+  570883446 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  889299803 (0x<hex digits>)
+  ==
+  889299803 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  4261393167 (0x<hex digits>)
+  ==
+  4261393167 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  1472234645 (0x<hex digits>)
+  ==
+  1472234645 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  868832940 (0x<hex digits>)
+  ==
+  868832940 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  570883446 (0x<hex digits>)
+  ==
+  570883446 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  889299803 (0x<hex digits>)
+  ==
+  889299803 (0x<hex digits>)
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( rng() == 0x<hex digits> )
+with expansion:
+  4261393167 (0x<hex digits>)
+  ==
+  4261393167 (0x<hex digits>)
 
 -------------------------------------------------------------------------------
 Output from all sections is reported
@@ -6147,6 +8010,114 @@ with expansion:
   true == true
 
 -------------------------------------------------------------------------------
+Parse test names and tags
+  Leading and trailing spaces in test spec
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "  aardvark " ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "  aardvark" ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( " aardvark " ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "aardvark " ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "aardvark" ) ) )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
+Parse test names and tags
+  Leading and trailing spaces in test name
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "  aardvark " ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "  aardvark" ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( " aardvark " ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "aardvark " ) ) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches( fakeTestCase( "aardvark" ) ) )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
+Parse test names and tags
+  Shortened hide tags are split apart when parsing
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches(fakeTestCase("hidden and foo", "[.][foo]")) )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK_FALSE( spec.matches(fakeTestCase("only foo", "[foo]")) )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+Parse test names and tags
+  Shortened hide tags also properly handle exclusion
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK_FALSE( spec.matches(fakeTestCase("hidden and foo", "[.][foo]")) )
+with expansion:
+  !false
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK_FALSE( spec.matches(fakeTestCase("only foo", "[foo]")) )
+with expansion:
+  !false
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK_FALSE( spec.matches(fakeTestCase("only hidden", "[.]")) )
+with expansion:
+  !false
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( spec.matches(fakeTestCase("neither foo nor hidden", "[bar]")) )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
 Pointers can be compared to null
 -------------------------------------------------------------------------------
 Condition.tests.cpp:<line number>
@@ -6559,6 +8530,102 @@ with expansion:
 
 -------------------------------------------------------------------------------
 Process can be configured on command line
+  abort
+  wait-for-keypress
+  Accepted options
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({"test", "--wait-for-keypress", std::get<0>(input)}) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.waitForKeypress == std::get<1>(input) )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  abort
+  wait-for-keypress
+  Accepted options
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({"test", "--wait-for-keypress", std::get<0>(input)}) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.waitForKeypress == std::get<1>(input) )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  abort
+  wait-for-keypress
+  Accepted options
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({"test", "--wait-for-keypress", std::get<0>(input)}) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.waitForKeypress == std::get<1>(input) )
+with expansion:
+  2 == 2
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  abort
+  wait-for-keypress
+  Accepted options
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({"test", "--wait-for-keypress", std::get<0>(input)}) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.waitForKeypress == std::get<1>(input) )
+with expansion:
+  3 == 3
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  abort
+  wait-for-keypress
+  invalid options are reported
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( !result )
+with expansion:
+  true
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( result.errorMessage(), Contains("never") && Contains("both") )
+with expansion:
+  "keypress argument must be one of: never, start, exit or both. 'sometimes'
+  not recognised" ( contains: "never" and contains: "both" )
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
   nothrow
   -e
 -------------------------------------------------------------------------------
@@ -6749,6 +8816,96 @@ with expansion:
   contains: "colour mode must be one of"
 
 -------------------------------------------------------------------------------
+Process can be configured on command line
+  Benchmark options
+  samples
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({ "test", "--benchmark-samples=200" }) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.benchmarkSamples == 200 )
+with expansion:
+  200 == 200
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  Benchmark options
+  resamples
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({ "test", "--benchmark-resamples=20000" }) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.benchmarkResamples == 20000 )
+with expansion:
+  20000 (0x<hex digits>) == 20000 (0x<hex digits>)
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  Benchmark options
+  confidence-interval
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({ "test", "--benchmark-confidence-interval=0.99" }) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.benchmarkConfidenceInterval == Catch::Detail::Approx(0.99) )
+with expansion:
+  0.99 == Approx( 0.99 )
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  Benchmark options
+  no-analysis
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({ "test", "--benchmark-no-analysis" }) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.benchmarkNoAnalysis )
+with expansion:
+  true
+
+-------------------------------------------------------------------------------
+Process can be configured on command line
+  Benchmark options
+  warmup-time
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  CHECK( cli.parse({ "test", "--benchmark-warmup-time=10" }) )
+with expansion:
+  {?}
+
+CmdLine.tests.cpp:<line number>: PASSED:
+  REQUIRE( config.benchmarkWarmupTime == 10 )
+with expansion:
+  10 == 10
+
+-------------------------------------------------------------------------------
 Product with differing arities - std::tuple<int, double, float>
 -------------------------------------------------------------------------------
 Misc.tests.cpp:<line number>
@@ -6780,6 +8937,17 @@ Misc.tests.cpp:<line number>: PASSED:
   REQUIRE( std::tuple_size<TestType>::value >= 1 )
 with expansion:
   1 >= 1
+
+-------------------------------------------------------------------------------
+Range type with sentinel
+-------------------------------------------------------------------------------
+ToString.tests.cpp:<line number>
+...............................................................................
+
+ToString.tests.cpp:<line number>: PASSED:
+  CHECK( Catch::Detail::stringify(UsesSentinel{}) == "{  }" )
+with expansion:
+  "{  }" == "{  }"
 
 -------------------------------------------------------------------------------
 Reconstruction should be based on stringification: #914
@@ -7062,11 +9230,6 @@ Approx.tests.cpp:<line number>: PASSED:
 with expansion:
   Approx( 1.23 ) != 1.24
 
-Approx.tests.cpp:<line number>: PASSED:
-  REQUIRE( INFINITY == Approx(INFINITY) )
-with expansion:
-  inff == Approx( inf )
-
 Message from section one
 -------------------------------------------------------------------------------
 Standard output from all sections is reported
@@ -7212,6 +9375,11 @@ with expansion:
   0 == 0
 
 String.tests.cpp:<line number>: PASSED:
+  REQUIRE( empty.isNullTerminated() )
+with expansion:
+  true
+
+String.tests.cpp:<line number>: PASSED:
   REQUIRE( std::strcmp( empty.c_str(), "" ) == 0 )
 with expansion:
   0 == 0
@@ -7234,27 +9402,17 @@ with expansion:
   5 == 5
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isSubstring( s ) == false )
+  REQUIRE( s.isNullTerminated() )
 with expansion:
-  false == false
+  true
 
 String.tests.cpp:<line number>: PASSED:
   REQUIRE( std::strcmp( rawChars, "hello" ) == 0 )
 with expansion:
   0 == 0
 
--------------------------------------------------------------------------------
-StringRef
-  From string literal
-  c_str() does not cause copy
--------------------------------------------------------------------------------
-String.tests.cpp:<line number>
-...............................................................................
-
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isOwned( s ) == false )
-with expansion:
-  false == false
+  REQUIRE_NOTHROW( s.c_str() )
 
 String.tests.cpp:<line number>: PASSED:
   REQUIRE( s.c_str() == rawChars )
@@ -7262,9 +9420,9 @@ with expansion:
   "hello" == "hello"
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isOwned( s ) == false )
+  REQUIRE( s.data() == rawChars )
 with expansion:
-  false == false
+  "hello" == "hello"
 
 -------------------------------------------------------------------------------
 StringRef
@@ -7277,24 +9435,15 @@ String.tests.cpp:<line number>: PASSED:
   REQUIRE( original == "original" )
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isSubstring( original ) )
+  REQUIRE_FALSE( original.isNullTerminated() )
 with expansion:
-  true
+  !false
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isOwned( original ) == false )
-with expansion:
-  false == false
+  REQUIRE_THROWS( original.c_str() )
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isSubstring( original ) == false )
-with expansion:
-  false == false
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isOwned( original ) )
-with expansion:
-  true
+  REQUIRE_NOTHROW( original.data() )
 
 -------------------------------------------------------------------------------
 StringRef
@@ -7315,7 +9464,7 @@ with expansion:
   5 == 5
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( std::strcmp( ss.c_str(), "hello" ) == 0 )
+  REQUIRE( std::strncmp( ss.data(), "hello", 5 ) == 0 )
 with expansion:
   0 == 0
 
@@ -7323,49 +9472,6 @@ String.tests.cpp:<line number>: PASSED:
   REQUIRE( ss == "hello" )
 with expansion:
   hello == "hello"
-
--------------------------------------------------------------------------------
-StringRef
-  Substrings
-  c_str() causes copy
--------------------------------------------------------------------------------
-String.tests.cpp:<line number>
-...............................................................................
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isSubstring( ss ) )
-with expansion:
-  true
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isOwned( ss ) == false )
-with expansion:
-  false == false
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( rawChars == s.currentData() )
-with expansion:
-  "hello world!" == "hello world!"
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( ss.c_str() != rawChars )
-with expansion:
-  "hello" != "hello world!"
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isSubstring( ss ) == false )
-with expansion:
-  false == false
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( isOwned( ss ) )
-with expansion:
-  true
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( ss.currentData() != s.currentData() )
-with expansion:
-  "hello" != "hello world!"
 
 -------------------------------------------------------------------------------
 StringRef
@@ -7394,39 +9500,70 @@ String.tests.cpp:<line number>
 ...............................................................................
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( s.c_str() == s2.c_str() )
+  REQUIRE( s.data() == s2.data() )
 with expansion:
   "hello world!" == "hello world!"
 
 -------------------------------------------------------------------------------
 StringRef
   Substrings
-  Pointer values of substring refs should not match
+  Pointer values of substring refs should also match
 -------------------------------------------------------------------------------
 String.tests.cpp:<line number>
 ...............................................................................
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( s.c_str() != ss.c_str() )
+  REQUIRE( s.data() == ss.data() )
 with expansion:
-  "hello world!" != "hello"
+  "hello world!" == "hello world!"
 
 -------------------------------------------------------------------------------
 StringRef
-  Comparisons
+  Substrings
+  Past the end substring
 -------------------------------------------------------------------------------
 String.tests.cpp:<line number>
 ...............................................................................
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( StringRef("hello") == StringRef("hello") )
+  REQUIRE( s.substr(s.size() + 1, 123).empty() )
 with expansion:
-  hello == hello
+  true
+
+-------------------------------------------------------------------------------
+StringRef
+  Substrings
+  Substring off the end are trimmed
+-------------------------------------------------------------------------------
+String.tests.cpp:<line number>
+...............................................................................
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( StringRef("hello") != StringRef("cello") )
+  REQUIRE( std::strcmp(ss.c_str(), "world!") == 0 )
 with expansion:
-  hello != cello
+  0 == 0
+
+-------------------------------------------------------------------------------
+StringRef
+  Comparisons are deep
+-------------------------------------------------------------------------------
+String.tests.cpp:<line number>
+...............................................................................
+
+String.tests.cpp:<line number>: PASSED:
+  CHECK( (char*)buffer1 != (char*)buffer2 )
+with expansion:
+  "Hello" != "Hello"
+
+String.tests.cpp:<line number>: PASSED:
+  REQUIRE( left == right )
+with expansion:
+  Hello == Hello
+
+String.tests.cpp:<line number>: PASSED:
+  REQUIRE( left != left.substr(0, 3) )
+with expansion:
+  Hello != Hel
 
 -------------------------------------------------------------------------------
 StringRef
@@ -7485,24 +9622,6 @@ with expansion:
 -------------------------------------------------------------------------------
 StringRef
   to std::string
-  implicitly constructed
--------------------------------------------------------------------------------
-String.tests.cpp:<line number>
-...............................................................................
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( stdStr == "a stringref" )
-with expansion:
-  "a stringref" == "a stringref"
-
-String.tests.cpp:<line number>: PASSED:
-  REQUIRE( stdStr.size() == sr.size() )
-with expansion:
-  11 == 11
-
--------------------------------------------------------------------------------
-StringRef
-  to std::string
   explicitly constructed
 -------------------------------------------------------------------------------
 String.tests.cpp:<line number>
@@ -7537,26 +9656,62 @@ with expansion:
   11 == 11
 
 -------------------------------------------------------------------------------
-StringRef
-  Counting utf-8 codepoints
+StringRef at compilation time
+  Simple constructors
 -------------------------------------------------------------------------------
 String.tests.cpp:<line number>
 ...............................................................................
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( ascii.numberOfCharacters() == ascii.size() )
-with expansion:
-  39 == 39
+with message:
+  StringRef{}.size() == 0
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( simpleu8.numberOfCharacters() == 30 )
-with expansion:
-  30 == 30
+with message:
+  StringRef{ "abc", 3 }.size() == 3
 
 String.tests.cpp:<line number>: PASSED:
-  REQUIRE( emojis.numberOfCharacters() == 9 )
-with expansion:
-  9 == 9
+with message:
+  StringRef{ "abc", 3 }.isNullTerminated()
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  StringRef{ "abc", 2 }.size() == 2
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  !(StringRef{ "abc", 2 }.isNullTerminated())
+
+-------------------------------------------------------------------------------
+StringRef at compilation time
+  UDL construction
+-------------------------------------------------------------------------------
+String.tests.cpp:<line number>
+...............................................................................
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  !(sr1.empty())
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  sr1.size() == 3
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  sr1.isNullTerminated()
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  sr2.empty()
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  sr2.size() == 0
+
+String.tests.cpp:<line number>: PASSED:
+with message:
+  sr2.isNullTerminated()
 
 -------------------------------------------------------------------------------
 Stringifying std::chrono::duration helpers
@@ -7686,6 +9841,123 @@ Tag.tests.cpp:<line number>: PASSED:
   CHECK_THROWS( registry.add( "[@no square bracket at end", "", Catch::SourceLineInfo( "file", 3 ) ) )
 
 -------------------------------------------------------------------------------
+Template test case method with test types specified inside std::tuple - MyTypes
+- 0
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Template_Fixture<TestType>::m_a == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Template test case method with test types specified inside std::tuple - MyTypes
+- 1
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Template_Fixture<TestType>::m_a == 1 )
+with expansion:
+  1 == 1
+
+-------------------------------------------------------------------------------
+Template test case method with test types specified inside std::tuple - MyTypes
+- 2
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: PASSED:
+  REQUIRE( Template_Fixture<TestType>::m_a == 1 )
+with expansion:
+  1.0 == 1
+
+-------------------------------------------------------------------------------
+Template test case with test types specified inside non-copyable and non-
+movable std::tuple - NonCopyableAndNonMovableTypes - 0
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( sizeof(TestType) > 0 )
+with expansion:
+  1 > 0
+
+-------------------------------------------------------------------------------
+Template test case with test types specified inside non-copyable and non-
+movable std::tuple - NonCopyableAndNonMovableTypes - 1
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( sizeof(TestType) > 0 )
+with expansion:
+  4 > 0
+
+-------------------------------------------------------------------------------
+Template test case with test types specified inside non-default-constructible
+std::tuple - MyNonDefaultConstructibleTypes - 0
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( sizeof(TestType) > 0 )
+with expansion:
+  1 > 0
+
+-------------------------------------------------------------------------------
+Template test case with test types specified inside non-default-constructible
+std::tuple - MyNonDefaultConstructibleTypes - 1
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( sizeof(TestType) > 0 )
+with expansion:
+  4 > 0
+
+-------------------------------------------------------------------------------
+Template test case with test types specified inside std::tuple - MyTypes - 0
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( sizeof(TestType) > 0 )
+with expansion:
+  4 > 0
+
+-------------------------------------------------------------------------------
+Template test case with test types specified inside std::tuple - MyTypes - 1
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( sizeof(TestType) > 0 )
+with expansion:
+  1 > 0
+
+-------------------------------------------------------------------------------
+Template test case with test types specified inside std::tuple - MyTypes - 2
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( sizeof(TestType) > 0 )
+with expansion:
+  4 > 0
+
+-------------------------------------------------------------------------------
 TemplateTest: vectors can be sized and resized - float
 -------------------------------------------------------------------------------
 Misc.tests.cpp:<line number>
@@ -8264,6 +10536,586 @@ Misc.tests.cpp:<line number>: PASSED:
   REQUIRE( v.capacity() >= 5 )
 with expansion:
   5 >= 5
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  6 == 6
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  6 >= 6
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+  resizing bigger changes size and capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 2 * V )
+with expansion:
+  12 == 12
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  12 >= 12
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  6 == 6
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  6 >= 6
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+  resizing smaller changes size but not capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 0 )
+with expansion:
+  0 == 0
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  6 >= 6
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+  resizing smaller changes size but not capacity
+  We can use the 'swap trick' to reset the capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  6 == 6
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  6 >= 6
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+  reserving bigger changes capacity but not size
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  6 == 6
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  12 >= 12
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  6 == 6
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  6 >= 6
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
+  reserving smaller does not change size or capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  6 == 6
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  6 >= 6
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  4 == 4
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  4 >= 4
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+  resizing bigger changes size and capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 2 * V )
+with expansion:
+  8 == 8
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  8 >= 8
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  4 == 4
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  4 >= 4
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+  resizing smaller changes size but not capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 0 )
+with expansion:
+  0 == 0
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  4 >= 4
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+  resizing smaller changes size but not capacity
+  We can use the 'swap trick' to reset the capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  4 == 4
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  4 >= 4
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+  reserving bigger changes capacity but not size
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  4 == 4
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  8 >= 8
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  4 == 4
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  4 >= 4
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - float,4
+  reserving smaller does not change size or capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  4 == 4
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  4 >= 4
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  5 == 5
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  5 >= 5
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+  resizing bigger changes size and capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 2 * V )
+with expansion:
+  10 == 10
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  10 >= 10
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  5 == 5
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  5 >= 5
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+  resizing smaller changes size but not capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 0 )
+with expansion:
+  0 == 0
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  5 >= 5
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+  resizing smaller changes size but not capacity
+  We can use the 'swap trick' to reset the capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  5 == 5
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  5 >= 5
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+  reserving bigger changes capacity but not size
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  5 == 5
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  10 >= 10
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  5 == 5
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  5 >= 5
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - int,5
+  reserving smaller does not change size or capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  5 == 5
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  5 >= 5
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  15 == 15
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  15 >= 15
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+  resizing bigger changes size and capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 2 * V )
+with expansion:
+  30 == 30
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  30 >= 30
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  15 == 15
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  15 >= 15
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+  resizing smaller changes size but not capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == 0 )
+with expansion:
+  0 == 0
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  15 >= 15
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+  resizing smaller changes size but not capacity
+  We can use the 'swap trick' to reset the capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  15 == 15
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  15 >= 15
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+  reserving bigger changes capacity but not size
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  15 == 15
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= 2 * V )
+with expansion:
+  30 >= 30
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  15 == 15
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  15 >= 15
+
+-------------------------------------------------------------------------------
+TemplateTestSig: vectors can be sized and resized - std::string,15
+  reserving smaller does not change size or capacity
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.size() == V )
+with expansion:
+  15 == 15
+
+Misc.tests.cpp:<line number>: PASSED:
+  REQUIRE( v.capacity() >= V )
+with expansion:
+  15 >= 15
 
 -------------------------------------------------------------------------------
 Test case with one argument
@@ -8285,6 +11137,14 @@ Tricky.tests.cpp:<line number>: PASSED:
   REQUIRE( 0x<hex digits> == bit30and31 )
 with expansion:
   3221225472 (0x<hex digits>) == 3221225472
+
+-------------------------------------------------------------------------------
+Test with special, characters "in name
+-------------------------------------------------------------------------------
+CmdLine.tests.cpp:<line number>
+...............................................................................
+
+CmdLine.tests.cpp:<line number>: PASSED:
 
 -------------------------------------------------------------------------------
 The NO_FAIL macro reports a failure but does not fail the test
@@ -8782,6 +11642,68 @@ with expansion:
   true
 
 -------------------------------------------------------------------------------
+Trim strings
+-------------------------------------------------------------------------------
+StringManip.tests.cpp:<line number>
+...............................................................................
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(std::string(no_whitespace)) == no_whitespace )
+with expansion:
+  "There is no extra whitespace here"
+  ==
+  "There is no extra whitespace here"
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(std::string(leading_whitespace)) == no_whitespace )
+with expansion:
+  "There is no extra whitespace here"
+  ==
+  "There is no extra whitespace here"
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(std::string(trailing_whitespace)) == no_whitespace )
+with expansion:
+  "There is no extra whitespace here"
+  ==
+  "There is no extra whitespace here"
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(std::string(whitespace_at_both_ends)) == no_whitespace )
+with expansion:
+  "There is no extra whitespace here"
+  ==
+  "There is no extra whitespace here"
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(StringRef(no_whitespace)) == StringRef(no_whitespace) )
+with expansion:
+  There is no extra whitespace here
+  ==
+  There is no extra whitespace here
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(StringRef(leading_whitespace)) == StringRef(no_whitespace) )
+with expansion:
+  There is no extra whitespace here
+  ==
+  There is no extra whitespace here
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(StringRef(trailing_whitespace)) == StringRef(no_whitespace) )
+with expansion:
+  There is no extra whitespace here
+  ==
+  There is no extra whitespace here
+
+StringManip.tests.cpp:<line number>: PASSED:
+  REQUIRE( trim(StringRef(whitespace_at_both_ends)) == StringRef(no_whitespace) )
+with expansion:
+  There is no extra whitespace here
+  ==
+  There is no extra whitespace here
+
+-------------------------------------------------------------------------------
 Unexpected exceptions can be translated
 -------------------------------------------------------------------------------
 Exception.tests.cpp:<line number>
@@ -8873,6 +11795,11 @@ Matchers.tests.cpp:<line number>: PASSED:
 with expansion:
   { 1.0, 2.0, 3.0 } is approx: { 1.0, 2.0, 3.0 }
 
+Matchers.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( v1, Approx<double>({ 1., 2., 3. }) )
+with expansion:
+  { 1.0, 2.0, 3.0 } is approx: { 1.0, 2.0, 3.0 }
+
 -------------------------------------------------------------------------------
 Vector Approx matcher
   Vectors with elements
@@ -8955,6 +11882,11 @@ Matchers.tests.cpp:<line number>: PASSED:
 with expansion:
   { 1, 2, 3 } Contains: 2
 
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5, (VectorContains<int, CustomAllocator<int>>(2)) )
+with expansion:
+  { 1, 2, 3 } Contains: 2
+
 -------------------------------------------------------------------------------
 Vector matchers
   Contains (vector)
@@ -8964,6 +11896,16 @@ Matchers.tests.cpp:<line number>
 
 Matchers.tests.cpp:<line number>: PASSED:
   CHECK_THAT( v, Contains(v2) )
+with expansion:
+  { 1, 2, 3 } Contains: { 1, 2 }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v, Contains<int>({ 1, 2 }) )
+with expansion:
+  { 1, 2, 3 } Contains: { 1, 2 }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5, (Contains<int, std::allocator<int>, CustomAllocator<int>>(v2)) )
 with expansion:
   { 1, 2, 3 } Contains: { 1, 2 }
 
@@ -8981,6 +11923,16 @@ Matchers.tests.cpp:<line number>: PASSED:
   CHECK_THAT( empty, Contains(empty) )
 with expansion:
   {  } Contains: {  }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5, (Contains<int, std::allocator<int>, CustomAllocator<int>>(v2)) )
+with expansion:
+  { 1, 2, 3 } Contains: { 1, 2, 3 }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5, Contains(v6) )
+with expansion:
+  { 1, 2, 3 } Contains: { 1, 2 }
 
 -------------------------------------------------------------------------------
 Vector matchers
@@ -9012,7 +11964,22 @@ with expansion:
   {  } Equals: {  }
 
 Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v, Equals<int>({ 1, 2, 3 }) )
+with expansion:
+  { 1, 2, 3 } Equals: { 1, 2, 3 }
+
+Matchers.tests.cpp:<line number>: PASSED:
   CHECK_THAT( v, Equals(v2) )
+with expansion:
+  { 1, 2, 3 } Equals: { 1, 2, 3 }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5, (Equals<int, std::allocator<int>, CustomAllocator<int>>(v2)) )
+with expansion:
+  { 1, 2, 3 } Equals: { 1, 2, 3 }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5, Equals(v6) )
 with expansion:
   { 1, 2, 3 } Equals: { 1, 2, 3 }
 
@@ -9029,6 +11996,11 @@ with expansion:
   { 1, 2, 3 } UnorderedEquals: { 1, 2, 3 }
 
 Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v, UnorderedEquals<int>({ 3, 2, 1 }) )
+with expansion:
+  { 1, 2, 3 } UnorderedEquals: { 3, 2, 1 }
+
+Matchers.tests.cpp:<line number>: PASSED:
   CHECK_THAT( empty, UnorderedEquals(empty) )
 with expansion:
   {  } UnorderedEquals: {  }
@@ -9042,6 +12014,16 @@ Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( permuted, UnorderedEquals(v) )
 with expansion:
   { 2, 3, 1 } UnorderedEquals: { 1, 2, 3 }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5, (UnorderedEquals<int, std::allocator<int>, CustomAllocator<int>>(permuted)) )
+with expansion:
+  { 1, 2, 3 } UnorderedEquals: { 2, 3, 1 }
+
+Matchers.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( v5_permuted, UnorderedEquals(v5) )
+with expansion:
+  { 1, 3, 2 } UnorderedEquals: { 1, 2, 3 }
 
 -------------------------------------------------------------------------------
 Vector matchers that fail
@@ -9381,261 +12363,37 @@ with expansion:
   "[\x7F]" == "[\x7F]"
 
 -------------------------------------------------------------------------------
-XmlEncode: UTF-8
-  Valid utf-8 strings
+adding a hide tag implicitly enables all others
 -------------------------------------------------------------------------------
-Xml.tests.cpp:<line number>
+Tag.tests.cpp:<line number>
 ...............................................................................
 
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode(u8"Here be üëæ") == u8"Here be üëæ" )
+Tag.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( testcase.tags, VectorContains(std::string(".")) && VectorContains(std::string("!hide")) )
 with expansion:
-  "Here be üëæ" == "Here be üëæ"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode(u8"≈°≈°") == u8"≈°≈°" )
-with expansion:
-  "≈°≈°" == "≈°≈°"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xDF\xBF") == "\xDF\xBF" )
-with expansion:
-  "ﬂø" == "ﬂø"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xE0\xA0\x80") == "\xE0\xA0\x80" )
-with expansion:
-  "‡†Ä" == "‡†Ä"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xED\x9F\xBF") == "\xED\x9F\xBF" )
-with expansion:
-  "Ìüø" == "Ìüø"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xEE\x80\x80") == "\xEE\x80\x80" )
-with expansion:
-  "ÓÄÄ" == "ÓÄÄ"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xEF\xBF\xBF") == "\xEF\xBF\xBF" )
-with expansion:
-  "Ôøø" == "Ôøø"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF0\x90\x80\x80") == "\xF0\x90\x80\x80" )
-with expansion:
-  "êÄÄ" == "êÄÄ"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF4\x8F\xBF\xBF") == "\xF4\x8F\xBF\xBF" )
-with expansion:
-  "Ùèøø" == "Ùèøø"
+  { "!hide", "." } ( Contains: "." and Contains: "!hide" )
 
 -------------------------------------------------------------------------------
-XmlEncode: UTF-8
-  Invalid utf-8 strings
-  Various broken strings
+adding a hide tag implicitly enables all others
 -------------------------------------------------------------------------------
-Xml.tests.cpp:<line number>
+Tag.tests.cpp:<line number>
 ...............................................................................
 
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("Here \xFF be üëæ") == u8"Here \\xFF be üëæ" )
+Tag.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( testcase.tags, VectorContains(std::string(".")) && VectorContains(std::string("!hide")) )
 with expansion:
-  "Here \xFF be üëæ" == "Here \xFF be üëæ"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xFF") == "\\xFF" )
-with expansion:
-  "\xFF" == "\xFF"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xC5\xC5\xA0") == u8"\\xC5≈†" )
-with expansion:
-  "\xC5≈†" == "\xC5≈†"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF4\x90\x80\x80") == u8"\\xF4\\x90\\x80\\x80" )
-with expansion:
-  "\xF4\x90\x80\x80" == "\xF4\x90\x80\x80"
+  { "!hide", "." } ( Contains: "." and Contains: "!hide" )
 
 -------------------------------------------------------------------------------
-XmlEncode: UTF-8
-  Invalid utf-8 strings
-  Overlong encodings
+adding a hide tag implicitly enables all others
 -------------------------------------------------------------------------------
-Xml.tests.cpp:<line number>
+Tag.tests.cpp:<line number>
 ...............................................................................
 
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xC0\x80") == u8"\\xC0\\x80" )
+Tag.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( testcase.tags, VectorContains(std::string(".")) && VectorContains(std::string("!hide")) )
 with expansion:
-  "\xC0\x80" == "\xC0\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF0\x80\x80\x80") == u8"\\xF0\\x80\\x80\\x80" )
-with expansion:
-  "\xF0\x80\x80\x80" == "\xF0\x80\x80\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xC1\xBF") == u8"\\xC1\\xBF" )
-with expansion:
-  "\xC1\xBF" == "\xC1\xBF"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xE0\x9F\xBF") == u8"\\xE0\\x9F\\xBF" )
-with expansion:
-  "\xE0\x9F\xBF" == "\xE0\x9F\xBF"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF0\x8F\xBF\xBF") == u8"\\xF0\\x8F\\xBF\\xBF" )
-with expansion:
-  "\xF0\x8F\xBF\xBF" == "\xF0\x8F\xBF\xBF"
-
--------------------------------------------------------------------------------
-XmlEncode: UTF-8
-  Invalid utf-8 strings
-  Surrogate pairs
--------------------------------------------------------------------------------
-Xml.tests.cpp:<line number>
-...............................................................................
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xED\xA0\x80") == "\xED\xA0\x80" )
-with expansion:
-  "Ì†Ä" == "Ì†Ä"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xED\xAF\xBF") == "\xED\xAF\xBF" )
-with expansion:
-  "ÌØø" == "ÌØø"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xED\xB0\x80") == "\xED\xB0\x80" )
-with expansion:
-  "Ì∞Ä" == "Ì∞Ä"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xED\xBF\xBF") == "\xED\xBF\xBF" )
-with expansion:
-  "Ìøø" == "Ìøø"
-
--------------------------------------------------------------------------------
-XmlEncode: UTF-8
-  Invalid utf-8 strings
-  Invalid start byte
--------------------------------------------------------------------------------
-Xml.tests.cpp:<line number>
-...............................................................................
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\x80") == u8"\\x80" )
-with expansion:
-  "\x80" == "\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\x81") == u8"\\x81" )
-with expansion:
-  "\x81" == "\x81"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xBC") == u8"\\xBC" )
-with expansion:
-  "\xBC" == "\xBC"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xBF") == u8"\\xBF" )
-with expansion:
-  "\xBF" == "\xBF"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF5\x80\x80\x80") == u8"\\xF5\\x80\\x80\\x80" )
-with expansion:
-  "\xF5\x80\x80\x80" == "\xF5\x80\x80\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF6\x80\x80\x80") == u8"\\xF6\\x80\\x80\\x80" )
-with expansion:
-  "\xF6\x80\x80\x80" == "\xF6\x80\x80\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF7\x80\x80\x80") == u8"\\xF7\\x80\\x80\\x80" )
-with expansion:
-  "\xF7\x80\x80\x80" == "\xF7\x80\x80\x80"
-
--------------------------------------------------------------------------------
-XmlEncode: UTF-8
-  Invalid utf-8 strings
-  Missing continuation byte(s)
--------------------------------------------------------------------------------
-Xml.tests.cpp:<line number>
-...............................................................................
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xDE") == u8"\\xDE" )
-with expansion:
-  "\xDE" == "\xDE"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xDF") == u8"\\xDF" )
-with expansion:
-  "\xDF" == "\xDF"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xE0") == u8"\\xE0" )
-with expansion:
-  "\xE0" == "\xE0"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xEF") == u8"\\xEF" )
-with expansion:
-  "\xEF" == "\xEF"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF0") == u8"\\xF0" )
-with expansion:
-  "\xF0" == "\xF0"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF4") == u8"\\xF4" )
-with expansion:
-  "\xF4" == "\xF4"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xE0\x80") == u8"\\xE0\\x80" )
-with expansion:
-  "\xE0\x80" == "\xE0\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xE0\xBF") == u8"\\xE0\\xBF" )
-with expansion:
-  "\xE0\xBF" == "\xE0\xBF"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xE1\x80") == u8"\\xE1\\x80" )
-with expansion:
-  "\xE1\x80" == "\xE1\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF0\x80") == u8"\\xF0\\x80" )
-with expansion:
-  "\xF0\x80" == "\xF0\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF4\x80") == u8"\\xF4\\x80" )
-with expansion:
-  "\xF4\x80" == "\xF4\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF0\x80\x80") == u8"\\xF0\\x80\\x80" )
-with expansion:
-  "\xF0\x80\x80" == "\xF0\x80\x80"
-
-Xml.tests.cpp:<line number>: PASSED:
-  CHECK( encode("\xF4\x80\x80") == u8"\\xF4\\x80\\x80" )
-with expansion:
-  "\xF4\x80\x80" == "\xF4\x80\x80"
+  { "!hide", ".", "foo" } ( Contains: "." and Contains: "!hide" )
 
 -------------------------------------------------------------------------------
 array<int, N> -> toString
@@ -10266,7 +13024,7 @@ ToString.tests.cpp:<line number>
 ...............................................................................
 
 ToString.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( parseEnums( "" ), Equals( std::vector<std::string>{} ) )
+  CHECK_THAT( parseEnums( "" ), Equals( std::vector<Catch::StringRef>{} ) )
 with expansion:
   {  } Equals: {  }
 
@@ -10278,19 +13036,19 @@ ToString.tests.cpp:<line number>
 ...............................................................................
 
 ToString.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1" ), Equals(std::vector<std::string>{"Value1"} ) )
+  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1" ), Equals(std::vector<Catch::StringRef>{"Value1"} ) )
 with expansion:
-  { "Value1" } Equals: { "Value1" }
+  { Value1 } Equals: { Value1 }
 
 ToString.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( parseEnums( "Value1" ), Equals( std::vector<std::string>{"Value1"} ) )
+  CHECK_THAT( parseEnums( "Value1" ), Equals( std::vector<Catch::StringRef>{"Value1"} ) )
 with expansion:
-  { "Value1" } Equals: { "Value1" }
+  { Value1 } Equals: { Value1 }
 
 ToString.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( parseEnums( "EnumName::Value1" ), Equals(std::vector<std::string>{"Value1"} ) )
+  CHECK_THAT( parseEnums( "EnumName::Value1" ), Equals(std::vector<Catch::StringRef>{"Value1"} ) )
 with expansion:
-  { "Value1" } Equals: { "Value1" }
+  { Value1 } Equals: { Value1 }
 
 -------------------------------------------------------------------------------
 parseEnums
@@ -10300,19 +13058,19 @@ ToString.tests.cpp:<line number>
 ...............................................................................
 
 ToString.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1, ClassName::EnumName::Value2" ), Equals( std::vector<std::string>{"Value1", "Value2"} ) )
+  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1, ClassName::EnumName::Value2" ), Equals( std::vector<Catch::StringRef>{"Value1", "Value2"} ) )
 with expansion:
-  { "Value1", "Value2" } Equals: { "Value1", "Value2" }
+  { Value1, Value2 } Equals: { Value1, Value2 }
 
 ToString.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1, ClassName::EnumName::Value2, ClassName::EnumName::Value3" ), Equals( std::vector<std::string>{"Value1", "Value2", "Value3"} ) )
+  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1, ClassName::EnumName::Value2, ClassName::EnumName::Value3" ), Equals( std::vector<Catch::StringRef>{"Value1", "Value2", "Value3"} ) )
 with expansion:
-  { "Value1", "Value2", "Value3" } Equals: { "Value1", "Value2", "Value3" }
+  { Value1, Value2, Value3 } Equals: { Value1, Value2, Value3 }
 
 ToString.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1,ClassName::EnumName::Value2 , ClassName::EnumName::Value3" ), Equals( std::vector<std::string>{"Value1", "Value2", "Value3"} ) )
+  CHECK_THAT( parseEnums( "ClassName::EnumName::Value1,ClassName::EnumName::Value2 , ClassName::EnumName::Value3" ), Equals( std::vector<Catch::StringRef>{"Value1", "Value2", "Value3"} ) )
 with expansion:
-  { "Value1", "Value2", "Value3" } Equals: { "Value1", "Value2", "Value3" }
+  { Value1, Value2, Value3 } Equals: { Value1, Value2, Value3 }
 
 -------------------------------------------------------------------------------
 pointer to class
@@ -10403,15 +13161,15 @@ with expansion:
 replaceInPlace
   replace single char
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK( Catch::replaceInPlace( letters, "b", "z" ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK( Catch::replaceInPlace(letters, "b", "z") )
 with expansion:
   true
 
-String.tests.cpp:<line number>: PASSED:
+StringManip.tests.cpp:<line number>: PASSED:
   CHECK( letters == "azcdefcg" )
 with expansion:
   "azcdefcg" == "azcdefcg"
@@ -10420,15 +13178,15 @@ with expansion:
 replaceInPlace
   replace two chars
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK( Catch::replaceInPlace( letters, "c", "z" ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK( Catch::replaceInPlace(letters, "c", "z") )
 with expansion:
   true
 
-String.tests.cpp:<line number>: PASSED:
+StringManip.tests.cpp:<line number>: PASSED:
   CHECK( letters == "abzdefzg" )
 with expansion:
   "abzdefzg" == "abzdefzg"
@@ -10437,15 +13195,15 @@ with expansion:
 replaceInPlace
   replace first char
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK( Catch::replaceInPlace( letters, "a", "z" ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK( Catch::replaceInPlace(letters, "a", "z") )
 with expansion:
   true
 
-String.tests.cpp:<line number>: PASSED:
+StringManip.tests.cpp:<line number>: PASSED:
   CHECK( letters == "zbcdefcg" )
 with expansion:
   "zbcdefcg" == "zbcdefcg"
@@ -10454,15 +13212,15 @@ with expansion:
 replaceInPlace
   replace last char
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK( Catch::replaceInPlace( letters, "g", "z" ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK( Catch::replaceInPlace(letters, "g", "z") )
 with expansion:
   true
 
-String.tests.cpp:<line number>: PASSED:
+StringManip.tests.cpp:<line number>: PASSED:
   CHECK( letters == "abcdefcz" )
 with expansion:
   "abcdefcz" == "abcdefcz"
@@ -10471,15 +13229,15 @@ with expansion:
 replaceInPlace
   replace all chars
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK( Catch::replaceInPlace( letters, letters, "replaced" ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK( Catch::replaceInPlace(letters, letters, "replaced") )
 with expansion:
   true
 
-String.tests.cpp:<line number>: PASSED:
+StringManip.tests.cpp:<line number>: PASSED:
   CHECK( letters == "replaced" )
 with expansion:
   "replaced" == "replaced"
@@ -10488,15 +13246,15 @@ with expansion:
 replaceInPlace
   replace no chars
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK_FALSE( Catch::replaceInPlace( letters, "x", "z" ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK_FALSE( Catch::replaceInPlace(letters, "x", "z") )
 with expansion:
   !false
 
-String.tests.cpp:<line number>: PASSED:
+StringManip.tests.cpp:<line number>: PASSED:
   CHECK( letters == letters )
 with expansion:
   "abcdefcg" == "abcdefcg"
@@ -10505,15 +13263,15 @@ with expansion:
 replaceInPlace
   escape '
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK( Catch::replaceInPlace( s, "'", "|'" ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK( Catch::replaceInPlace(s, "'", "|'") )
 with expansion:
   true
 
-String.tests.cpp:<line number>: PASSED:
+StringManip.tests.cpp:<line number>: PASSED:
   CHECK( s == "didn|'t" )
 with expansion:
   "didn|'t" == "didn|'t"
@@ -10559,26 +13317,26 @@ Tag.tests.cpp:<line number>
 Tag.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( testcase.tags, Catch::VectorContains(std::string("magic-tag")) && Catch::VectorContains(std::string(".")) )
 with expansion:
-  { ".", "magic-tag" } ( Contains: "magic-tag" and Contains: "." )
+  { "!hide", ".", "magic-tag" } ( Contains: "magic-tag" and Contains: "." )
 
 -------------------------------------------------------------------------------
 splitString
 -------------------------------------------------------------------------------
-String.tests.cpp:<line number>
+StringManip.tests.cpp:<line number>
 ...............................................................................
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( splitStringRef("", ',' ), Equals(std::vector<StringRef>() ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( splitStringRef("", ','), Equals(std::vector<StringRef>()) )
 with expansion:
   {  } Equals: {  }
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( splitStringRef("abc", ',' ), Equals(std::vector<StringRef>{"abc"} ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( splitStringRef("abc", ','), Equals(std::vector<StringRef>{"abc"}) )
 with expansion:
   { abc } Equals: { abc }
 
-String.tests.cpp:<line number>: PASSED:
-  CHECK_THAT( splitStringRef("abc,def", ',' ), Equals(std::vector<StringRef>{"abc", "def"} ) )
+StringManip.tests.cpp:<line number>: PASSED:
+  CHECK_THAT( splitStringRef("abc,def", ','), Equals(std::vector<StringRef>{"abc", "def"}) )
 with expansion:
   { abc, def } Equals: { abc, def }
 
@@ -11423,6 +14181,6 @@ Misc.tests.cpp:<line number>
 Misc.tests.cpp:<line number>: PASSED:
 
 ===============================================================================
-test cases:  267 |  184 passed |  79 failed |  4 failed as expected
-assertions: 1470 | 1308 passed | 141 failed | 21 failed as expected
+test cases:  323 |  232 passed |  86 failed |  5 failed as expected
+assertions: 1781 | 1608 passed | 148 failed | 25 failed as expected
 

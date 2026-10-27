@@ -10,7 +10,7 @@ in-memory logs if they are not needed (the test case passed).
 Unlike reporters, each registered event listener is always active. Event
 listeners are always notified before reporter(s).
 
-To write your own event listener, you should derive from `Catch::TestEventListenerBase`,
+To write your own event listener, you should derive from `Catch::EventListenerBase`,
 as it provides empty stubs for all reporter events, allowing you to
 only override events you care for. Afterwards you have to register it
 with Catch2 using `CATCH_REGISTER_LISTENER` macro, so that Catch2 knows

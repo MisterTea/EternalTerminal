@@ -14,7 +14,7 @@
 namespace Catch {
     namespace Benchmark {
         namespace Detail {
-            struct optimized_away_error : std::exception {
+            struct optimized_away_error final : std::exception {
                 const char* what() const noexcept override;
             };
 

@@ -22,6 +22,7 @@ static_library("base") {
     "debug/alias.h",
     "files/file_path.cc",
     "files/file_path.h",
+    "files/file_util.cc",
     "files/file_util.h",
     "files/scoped_file.cc",
     "files/scoped_file.h",
@@ -63,7 +64,6 @@ static_library("base") {
     "strings/strcat_internal.h",
     "strings/string_number_conversions.cc",
     "strings/string_number_conversions.h",
-    "strings/string_piece.h",
     "strings/string_util.h",
     "strings/stringprintf.cc",
     "strings/stringprintf.h",
@@ -155,9 +155,9 @@ static_library("base") {
     ]
 
     if (defined(is_fuchsia_tree) && is_fuchsia_tree) {
-      deps = [ "//zircon/system/ulib/syslog" ]
+      deps = [ "//sdk/lib/syslog/cpp" ]
     } else {
-      deps = [ "//third_party/fuchsia/sdk/$host_os-amd64/pkg/syslog" ]
+      deps = [ "//third_party/fuchsia/sdk/$host_os-amd64/pkg/syslog_cpp" ]
     }
   }
 

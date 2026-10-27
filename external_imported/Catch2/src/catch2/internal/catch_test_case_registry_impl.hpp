@@ -28,7 +28,7 @@ namespace Catch {
     std::vector<TestCaseHandle> filterTests( std::vector<TestCaseHandle> const& testCases, TestSpec const& testSpec, IConfig const& config );
     std::vector<TestCaseHandle> const& getAllTestCasesSorted( IConfig const& config );
 
-    class TestRegistry : public ITestCaseRegistry {
+    class TestRegistry final : public ITestCaseRegistry {
     public:
         void registerTest( Detail::unique_ptr<TestCaseInfo> testInfo, Detail::unique_ptr<ITestInvoker> testInvoker );
 

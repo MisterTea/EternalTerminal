@@ -31,6 +31,7 @@
 #include "util/mac/mac_util.h"
 #include "util/mach/bootstrap.h"
 #include "util/mach/child_port_handshake.h"
+#include "util/mach/exception_handler_protocol.h"
 #include "util/mach/exception_ports.h"
 #include "util/mach/mach_extensions.h"
 #include "util/mach/mach_message.h"
@@ -64,13 +65,13 @@ std::string FormatArgumentInt(const std::string& name, int value) {
 // reasons, an EXC_CRASH exception will be sent. See 10.9.5
 // xnu-2422.115.4/bsd/kern/kern_exit.c proc_prepareexit().
 //
-// EXC_RESOURCE and EXC_GUARD do not become signals or EXC_CRASH exceptions. The
-// host-level exception handler in the kernel does not receive these exception
-// types, and even if it did, it would not map them to signals. Instead, the
-// first Mach service loaded by the root (process ID 1) launchd with a boolean
-// “ExceptionServer” property in its job dictionary (regardless of its value) or
-// with any subdictionary property will become the host-level exception handler
-// for EXC_CRASH, EXC_RESOURCE, and EXC_GUARD. See 10.9.5
+// EXC_RESOURCE and EXC_GUARD (pre-macOS 13) do not become signals or EXC_CRASH
+// exceptions. The host-level exception handler in the kernel does not receive
+// these exception types, and even if it did, it would not map them to signals.
+// Instead, the first Mach service loaded by the root (process ID 1) launchd
+// with a boolean “ExceptionServer” property in its job dictionary (regardless
+// of its value) or with any subdictionary property will become the host-level
+// exception handler for EXC_CRASH, EXC_RESOURCE, and EXC_GUARD. See 10.9.5
 // launchd-842.92.1/src/core.c job_setup_exception_port(). Normally, this job is
 // com.apple.ReportCrash.Root, the systemwide Apple Crash Reporter. Since it is
 // impossible to receive EXC_RESOURCE and EXC_GUARD exceptions through the
@@ -83,8 +84,15 @@ std::string FormatArgumentInt(const std::string& name, int value) {
 // so AND them with ExcMaskValid(). EXC_MASK_CRASH is always supported.
 bool SetCrashExceptionPorts(exception_handler_t exception_handler) {
   ExceptionPorts exception_ports(ExceptionPorts::kTargetTypeTask, TASK_NULL);
+
+  exception_mask_t mask = EXC_MASK_CRASH | EXC_MASK_RESOURCE;
+  if (MacOSVersionNumber() < 13'00'00) {
+    // EXC_GUARD is delivered as an EXC_CRASH macOS 13 and later.
+    mask |= EXC_MASK_GUARD;
+  }
+
   return exception_ports.SetExceptionPort(
-      (EXC_MASK_CRASH | EXC_MASK_RESOURCE | EXC_MASK_GUARD) & ExcMaskValid(),
+      mask & ExcMaskValid(),
       exception_handler,
       EXCEPTION_STATE_IDENTITY | MACH_EXCEPTION_CODES,
       MACHINE_THREAD_STATE);
@@ -132,6 +140,10 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments,
+      const base::FilePath& crash_reporter,
+      const base::FilePath& crash_envelope,
+      const std::string& report_id,
+      bool wait_for_upload,
       bool restartable) {
     base::apple::ScopedMachReceiveRight receive_right(
         NewMachPort(MACH_PORT_RIGHT_RECEIVE));
@@ -173,6 +185,10 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                      annotations,
                      arguments,
                      attachments,
+                     crash_reporter,
+                     crash_envelope,
+                     report_id,
+                     wait_for_upload,
                      std::move(receive_right),
                      handler_restarter.get(),
                      false)) {
@@ -187,7 +203,11 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                                               http_proxy,
                                               annotations,
                                               arguments,
-                                              attachments)) {
+                                              attachments,
+                                              crash_reporter,
+                                              crash_envelope,
+                                              report_id,
+                                              wait_for_upload)) {
       // The thread owns the object now.
       std::ignore = handler_restarter.release();
     }
@@ -224,6 +244,10 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                 annotations_,
                 arguments_,
                 attachments_,
+                crash_reporter_,
+                crash_envelope_,
+                report_id_,
+                wait_for_upload_,
                 base::apple::ScopedMachReceiveRight(rights),
                 this,
                 true);
@@ -241,9 +265,12 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
         annotations_(),
         arguments_(),
         attachments_(),
+        crash_reporter_(),
+        crash_envelope_(),
+        report_id_(),
+        wait_for_upload_(false),
         notify_port_(NewMachPort(MACH_PORT_RIGHT_RECEIVE)),
-        last_start_time_(0) {
-  }
+        last_start_time_(0) {}
 
   //! \brief Starts a Crashpad handler.
   //!
@@ -272,6 +299,10 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                           const std::map<std::string, std::string>& annotations,
                           const std::vector<std::string>& arguments,
                           const std::vector<base::FilePath>& attachments,
+                          const base::FilePath& crash_reporter,
+                          const base::FilePath& crash_envelope,
+                          const std::string& report_id,
+                          bool wait_for_upload,
                           base::apple::ScopedMachReceiveRight receive_right,
                           HandlerStarter* handler_restarter,
                           bool restart) {
@@ -360,6 +391,22 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
       argv.push_back(FormatArgumentString("attachment", attachment.value()));
     }
 
+    if (!crash_reporter.empty()) {
+      argv.push_back(
+          FormatArgumentString("crash-reporter", crash_reporter.value()));
+    }
+    if (!crash_envelope.empty()) {
+      argv.push_back(
+          FormatArgumentString("crash-envelope", crash_envelope.value()));
+    }
+
+    if (!report_id.empty()) {
+      argv.push_back(FormatArgumentString("report-id", report_id));
+    }
+    if (wait_for_upload) {
+      argv.push_back("--wait-for-upload");
+    }
+
     argv.push_back(FormatArgumentInt("handshake-fd", server_write_fd.get()));
 
     // When restarting, reset the system default crash handler first. Otherwise,
@@ -397,7 +444,11 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
                           const std::string& http_proxy,
                           const std::map<std::string, std::string>& annotations,
                           const std::vector<std::string>& arguments,
-                          const std::vector<base::FilePath>& attachments) {
+                          const std::vector<base::FilePath>& attachments,
+                          const base::FilePath& crash_reporter,
+                          const base::FilePath& crash_envelope,
+                          const std::string& report_id,
+                          bool wait_for_upload) {
     handler_ = handler;
     database_ = database;
     metrics_dir_ = metrics_dir;
@@ -406,6 +457,10 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
     annotations_ = annotations;
     arguments_ = arguments;
     attachments_ = attachments;
+    crash_reporter_ = crash_reporter;
+    crash_envelope_ = crash_envelope;
+    report_id_ = report_id;
+    wait_for_upload_ = wait_for_upload;
 
     pthread_attr_t pthread_attr;
     errno = pthread_attr_init(&pthread_attr);
@@ -460,6 +515,10 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
   std::map<std::string, std::string> annotations_;
   std::vector<std::string> arguments_;
   std::vector<base::FilePath> attachments_;
+  base::FilePath crash_reporter_;
+  base::FilePath crash_envelope_;
+  std::string report_id_;
+  bool wait_for_upload_;
   base::apple::ScopedMachReceiveRight notify_port_;
   uint64_t last_start_time_;
 };
@@ -484,9 +543,10 @@ bool CrashpadClient::StartHandler(
     bool asynchronous_start,
     const std::vector<base::FilePath>& attachments,
     const base::FilePath& screenshot,
-    bool wait_for_upload) {
-  (void) wait_for_upload; // unused in mac (for now)
-
+    bool wait_for_upload,
+    const base::FilePath& crash_reporter,
+    const base::FilePath& crash_envelope,
+    const std::string& report_id) {
   // The “restartable” behavior can only be selected on OS X 10.10 and later. In
   // previous OS versions, if the initial client were to crash while attempting
   // to restart the handler, it would become an unkillable process.
@@ -499,6 +559,10 @@ bool CrashpadClient::StartHandler(
       annotations,
       arguments,
       attachments,
+      crash_reporter,
+      crash_envelope,
+      report_id,
+      wait_for_upload,
       restartable && (__MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_10 ||
                       MacOSVersionNumber() >= 10'10'00)));
   if (!exception_port.is_valid()) {
@@ -558,6 +622,23 @@ base::apple::ScopedMachSendRight CrashpadClient::GetHandlerMachPort() const {
   }
 
   return base::apple::ScopedMachSendRight(exception_port_.get());
+}
+
+void CrashpadClient::RequestRetry() {
+  SendClientToServerMessage(exception_port_.get(),
+                            ClientToServerMessage::kRequestRetry);
+}
+
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  SendClientToServerMessage(exception_port_.get(),
+                            ClientToServerMessage::kAddAttachment,
+                            attachment.value());
+}
+
+void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  SendClientToServerMessage(exception_port_.get(),
+                            ClientToServerMessage::kRemoveAttachment,
+                            attachment.value());
 }
 
 // static

@@ -7,8 +7,60 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include <catch2/catch_test_macros.hpp>
-#include <catch2/internal/catch_enum_values_registry.hpp>
+#include <catch2/internal/catch_enum_info.hpp>
+#include <catch2/matchers/catch_matchers_vector.hpp>
 
+namespace Bikeshed {
+    enum class Colours { Red, Green, Blue };
+}
+
+// Important!: This macro must appear at top level scope - not inside a namespace
+// You can fully qualify the names, or use a using if you prefer
+CATCH_REGISTER_ENUM( Bikeshed::Colours,
+                     Bikeshed::Colours::Red,
+                     Bikeshed::Colours::Green,
+                     Bikeshed::Colours::Blue )
+
+TEST_CASE( "Enums in namespaces can quickly have stringification enabled using CATCH_REGISTER_ENUM" ) {
+    using Catch::Detail::stringify;
+    REQUIRE( stringify( Bikeshed::Colours::Red ) == "Red" );
+    REQUIRE( stringify( Bikeshed::Colours::Blue ) == "Blue" );
+}
+
+TEST_CASE( "parseEnums", "[Strings][enums]" ) {
+    using namespace Catch::Matchers;
+    using Catch::Detail::parseEnums;
+
+    SECTION( "No enums" )
+        CHECK_THAT( parseEnums( "" ), Equals( std::vector<Catch::StringRef>{} ) );
+
+    SECTION( "One enum value" ) {
+        CHECK_THAT( parseEnums( "ClassName::EnumName::Value1" ),
+                Equals(std::vector<Catch::StringRef>{"Value1"} ) );
+        CHECK_THAT( parseEnums( "Value1" ),
+                Equals( std::vector<Catch::StringRef>{"Value1"} ) );
+        CHECK_THAT( parseEnums( "EnumName::Value1" ),
+                Equals(std::vector<Catch::StringRef>{"Value1"} ) );
+    }
+
+    SECTION( "Multiple enum values" ) {
+        CHECK_THAT( parseEnums( "ClassName::EnumName::Value1, ClassName::EnumName::Value2" ),
+                    Equals( std::vector<Catch::StringRef>{"Value1", "Value2"} ) );
+        CHECK_THAT( parseEnums( "ClassName::EnumName::Value1, ClassName::EnumName::Value2, ClassName::EnumName::Value3" ),
+                    Equals( std::vector<Catch::StringRef>{"Value1", "Value2", "Value3"} ) );
+        CHECK_THAT( parseEnums( "ClassName::EnumName::Value1,ClassName::EnumName::Value2 , ClassName::EnumName::Value3" ),
+                    Equals( std::vector<Catch::StringRef>{"Value1", "Value2", "Value3"} ) );
+    }
+}
+
+TEST_CASE( "Directly creating an EnumInfo" ) {
+    using namespace Catch::Detail;
+    auto enumInfo = makeEnumInfo( "EnumName", "EnumName::Value1, EnumName::Value2", {0, 1} );
+
+    CHECK( enumInfo.lookup(0) == "Value1" );
+    CHECK( enumInfo.lookup(1) == "Value2" );
+    CHECK( enumInfo.lookup(3) == "{** unexpected enum value **}" );
+}
 
 namespace {
 // Enum without user-provided stream operator
@@ -90,19 +142,24 @@ TEST_CASE( "Enums can quickly have stringification enabled using CATCH_REGISTER_
     REQUIRE( stringify( ec3 ) == "Value2" );
 }
 
-namespace Bikeshed {
-    enum class Colours { Red, Green, Blue };
-}
+enum class LargeEnum : std::int64_t {
+    Flag1 = 0x01,
+    Flag2 = 0x02,
+    Flag3 = 0x04,
+    Flag4 = 0x08,
+    Flag5 = 0x10,
+};
 
-// Important!: This macro must appear at top level scope - not inside a namespace
-// You can fully qualify the names, or use a using if you prefer
-CATCH_REGISTER_ENUM( Bikeshed::Colours,
-                     Bikeshed::Colours::Red,
-                     Bikeshed::Colours::Green,
-                     Bikeshed::Colours::Blue )
+CATCH_REGISTER_ENUM( LargeEnum,
+                     LargeEnum::Flag1,
+                     LargeEnum::Flag2,
+                     LargeEnum::Flag3,
+                     LargeEnum::Flag4,
+                     LargeEnum::Flag5 )
 
-TEST_CASE( "Enums in namespaces can quickly have stringification enabled using CATCH_REGISTER_ENUM" ) {
+TEST_CASE( "Enum backed by larger underlying type", "[enum][toString]" ) {
     using Catch::Detail::stringify;
-    REQUIRE( stringify( Bikeshed::Colours::Red ) == "Red" );
-    REQUIRE( stringify( Bikeshed::Colours::Blue ) == "Blue" );
+    REQUIRE( stringify( LargeEnum::Flag1 ) == "Flag1" );
+    REQUIRE( stringify( LargeEnum::Flag2 ) == "Flag2" );
+    REQUIRE( stringify( LargeEnum::Flag5 ) == "Flag5" );
 }

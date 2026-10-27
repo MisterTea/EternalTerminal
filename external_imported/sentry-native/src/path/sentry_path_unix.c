@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #ifdef SENTRY_PLATFORM_DARWIN
+#    include <copyfile.h>
 #    include <mach-o/dyld.h>
 #endif
 
@@ -29,7 +30,8 @@
 #endif
 
 // only read this many bytes to memory ever
-static const size_t MAX_READ_TO_BUFFER = 134217728;
+// Increased to 512MB to support large minidumps from TSAN/ASAN builds
+static const size_t MAX_READ_TO_BUFFER = 536870912;
 
 #ifndef SENTRY_PLATFORM_PS
 struct sentry_pathiter_s {
@@ -189,36 +191,7 @@ sentry__path_dir(const sentry_path_t *path)
 }
 #endif
 
-sentry_path_t *
-sentry__path_from_str_n(const char *s, size_t s_len)
-{
-    char *path = sentry__string_clone_n(s, s_len);
-    if (!path) {
-        return NULL;
-    }
-    // NOTE: function will free `path` on error
-    return sentry__path_from_str_owned(path);
-}
-
-sentry_path_t *
-sentry__path_from_str(const char *s)
-{
-    return s ? sentry__path_from_str_n(s, strlen(s)) : NULL;
-}
-
-sentry_path_t *
-sentry__path_from_str_owned(char *s)
-{
-    sentry_path_t *rv = SENTRY_MAKE(sentry_path_t);
-    if (!rv) {
-        sentry_free(s);
-        return NULL;
-    }
-    rv->path = s;
-    return rv;
-}
-
-const sentry_pathchar_t *
+const char *
 sentry__path_filename(const sentry_path_t *path)
 {
     const char *c = strrchr(path->path, '/');
@@ -256,12 +229,35 @@ sentry__path_is_file(const sentry_path_t *path)
     return stat(path->path, &buf) == 0 && S_ISREG(buf.st_mode);
 }
 
+bool
+sentry__path_is_symlink(const sentry_path_t *path)
+{
+#if defined(SENTRY_PLATFORM_NX) || defined(SENTRY_PLATFORM_PS)
+    (void)path;
+    return false;
+#else
+    struct stat buf;
+    return lstat(path->path, &buf) == 0 && S_ISLNK(buf.st_mode);
+#endif
+}
+
 size_t
 sentry__path_get_size(const sentry_path_t *path)
 {
     struct stat buf;
     if (stat(path->path, &buf) == 0 && S_ISREG(buf.st_mode)) {
         return (size_t)buf.st_size;
+    } else {
+        return 0;
+    }
+}
+
+time_t
+sentry__path_get_mtime(const sentry_path_t *path)
+{
+    struct stat buf;
+    if (stat(path->path, &buf) == 0) {
+        return (time_t)buf.st_mtime;
     } else {
         return 0;
     }
@@ -325,7 +321,7 @@ int
 sentry__path_remove(const sentry_path_t *path)
 {
     int status;
-    if (!sentry__path_is_dir(path)) {
+    if (!sentry__path_is_dir(path) || sentry__path_is_symlink(path)) {
         EINTR_RETRY(unlink(path->path), &status);
         if (status == 0) {
             return 0;
@@ -340,6 +336,79 @@ sentry__path_remove(const sentry_path_t *path)
         return 0;
     }
     return 1;
+}
+
+int
+sentry__path_rename(const sentry_path_t *src, const sentry_path_t *dst)
+{
+    int status;
+    EINTR_RETRY(rename(src->path, dst->path), &status);
+    return status == 0 ? 0 : 1;
+}
+
+int
+sentry__path_copy(const sentry_path_t *src, const sentry_path_t *dst)
+{
+#ifdef SENTRY_PLATFORM_DARWIN
+    return copyfile(src->path, dst->path, NULL, COPYFILE_DATA) == 0 ? 0 : 1;
+#else
+    int src_fd = open(src->path, O_RDONLY);
+    if (src_fd < 0) {
+        return 1;
+    }
+    int dst_fd = open(dst->path, O_WRONLY | O_CREAT | O_TRUNC,
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+    if (dst_fd < 0) {
+        close(src_fd);
+        return 1;
+    }
+
+    int rv = 0;
+
+#    ifdef SENTRY_HAVE_COPY_FILE_RANGE
+    while (true) {
+        ssize_t n
+            = copy_file_range(src_fd, NULL, dst_fd, NULL, SIZE_MAX / 2, 0);
+        if (n > 0) {
+            continue;
+        } else if (n == 0) {
+            goto done;
+        } else if (errno == EAGAIN || errno == EINTR) {
+            continue;
+        } else if (errno == ENOSYS || errno == EXDEV || errno == EOPNOTSUPP
+            || errno == EINVAL) {
+            break;
+        } else {
+            rv = 1;
+            goto done;
+        }
+    }
+#    endif
+
+    {
+        char buf[16384];
+        while (true) {
+            ssize_t n = read(src_fd, buf, sizeof(buf));
+            if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
+                continue;
+            } else if (n <= 0) {
+                rv = n < 0;
+                break;
+            }
+            if (write_loop(dst_fd, buf, (size_t)n) != 0) {
+                rv = 1;
+                break;
+            }
+        }
+    }
+
+#    ifdef SENTRY_HAVE_COPY_FILE_RANGE
+done:
+#    endif
+    close(src_fd);
+    close(dst_fd);
+    return rv;
+#endif
 }
 
 int
@@ -532,6 +601,8 @@ sentry__path_append_buffer(
 struct sentry_filewriter_s {
     size_t byte_count;
     int fd;
+    bool failed;
+    bool closed;
 };
 
 MUST_USE sentry_filewriter_t *
@@ -551,6 +622,8 @@ sentry__filewriter_new(const sentry_path_t *path)
 
     result->fd = fd;
     result->byte_count = 0;
+    result->failed = false;
+    result->closed = false;
     return result;
 }
 
@@ -558,14 +631,15 @@ size_t
 sentry__filewriter_write(
     sentry_filewriter_t *filewriter, const char *buf, size_t buf_len)
 {
-    if (!filewriter) {
-        return 0;
+    if (!filewriter || filewriter->failed || filewriter->closed) {
+        return buf_len;
     }
     while (buf_len > 0) {
         ssize_t n = write(filewriter->fd, buf, buf_len);
         if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
             continue;
         } else if (n <= 0) {
+            filewriter->failed = true;
             break;
         }
         filewriter->byte_count += n;
@@ -576,6 +650,30 @@ sentry__filewriter_write(
     return buf_len;
 }
 
+bool
+sentry__filewriter_close(sentry_filewriter_t *filewriter)
+{
+    if (!filewriter) {
+        return false;
+    }
+    if (filewriter->closed) {
+        return !filewriter->failed;
+    }
+
+    filewriter->closed = true;
+    if (close(filewriter->fd) != 0) {
+        filewriter->failed = true;
+    }
+    filewriter->fd = -1;
+    return !filewriter->failed;
+}
+
+bool
+sentry__filewriter_has_failed(const sentry_filewriter_t *filewriter)
+{
+    return !filewriter || filewriter->failed;
+}
+
 void
 sentry__filewriter_free(sentry_filewriter_t *filewriter)
 {
@@ -583,12 +681,12 @@ sentry__filewriter_free(sentry_filewriter_t *filewriter)
         return;
     }
 
-    close(filewriter->fd);
+    sentry__filewriter_close(filewriter);
     sentry_free(filewriter);
 }
 
 size_t
-sentry__filewriter_byte_count(sentry_filewriter_t *filewriter)
+sentry__filewriter_byte_count(const sentry_filewriter_t *filewriter)
 {
-    return filewriter->byte_count;
+    return filewriter ? filewriter->byte_count : 0;
 }

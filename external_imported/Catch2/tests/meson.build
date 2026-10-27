@@ -49,6 +49,7 @@ self_test_sources = files(
   'SelfTest/UsageTests/Exception.tests.cpp',
   'SelfTest/UsageTests/Generators.tests.cpp',
   'SelfTest/UsageTests/Matchers.tests.cpp',
+  'SelfTest/UsageTests/MatchersConstexpr.tests.cpp',
   'SelfTest/UsageTests/MatchersRanges.tests.cpp',
   'SelfTest/UsageTests/Message.tests.cpp',
   'SelfTest/UsageTests/Misc.tests.cpp',

@@ -4,7 +4,7 @@ $installerPath = [System.IO.Path]::Combine($Env:USERPROFILE, "Downloads", "OpenC
 
 if(-Not (Test-Path $installerPath)) {
     Write-Host -ForegroundColor White ("Downloading OpenCppCoverage from: " + $downloadUrl)
-    Start-FileDownload $downloadUrl -FileName $installerPath
+    Start-BitsTransfer $downloadUrl -Destination $installerPath
 }
 
 Write-Host -ForegroundColor White "About to install OpenCppCoverage..."

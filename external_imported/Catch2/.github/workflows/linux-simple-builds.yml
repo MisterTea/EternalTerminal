@@ -1,40 +1,43 @@
-name: Linux builds (basic)
+name: Linux Builds (Basic)
 
 on: [push, pull_request]
+
+env:
+  CTEST_OUTPUT_ON_FAILURE: 1
+  CTEST_NO_TESTS_ACTION: error
 
 jobs:
   build:
     name: ${{matrix.cxx}}, C++${{matrix.std}}, ${{matrix.build_type}}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         cxx:
-          - g++-5
-          - g++-6
-          - g++-7
-          - g++-8
           - g++-9
           - g++-10
+          - g++-11
+          - g++-12
           - clang++-6.0
           - clang++-7
           - clang++-8
           - clang++-9
           - clang++-10
+          - clang++-11
+          - clang++-12
+          - clang++-13
+          - clang++-14
         build_type: [Debug, Release]
         std: [14]
         include:
-          - cxx: g++-5
-            other_pkgs: g++-5
-          - cxx: g++-6
-            other_pkgs: g++-6
-          - cxx: g++-7
-            other_pkgs: g++-7
-          - cxx: g++-8
-            other_pkgs: g++-8
           - cxx: g++-9
             other_pkgs: g++-9
           - cxx: g++-10
             other_pkgs: g++-10
+          - cxx: g++-11
+            other_pkgs: g++-11
+          - cxx: g++-12
+            other_pkgs: g++-12
           - cxx: clang++-6.0
             other_pkgs: clang-6.0
           - cxx: clang++-7
@@ -45,79 +48,62 @@ jobs:
             other_pkgs: clang-9
           - cxx: clang++-10
             other_pkgs: clang-10
-          # Clang 6 + C++17
-          # does not work with the default libstdc++ version thanks
-          # to a disagreement on variant implementation.
-          # - cxx: clang++-6.0
-          #   build_type: Debug
-          #   std: 17
-          #   other_pkgs: clang-6.0
-          # - cxx: clang++-6.0
-          #   build_type: Release
-          #   std: 17
-          #   other_pkgs: clang-6.0
-          # Clang 10 + C++17
-          - cxx: clang++-10
+          - cxx: clang++-11
+            other_pkgs: clang-11
+          - cxx: clang++-12
+            other_pkgs: clang-12
+          - cxx: clang++-13
+            other_pkgs: clang-13
+          - cxx: clang++-14
+            other_pkgs: clang-14
+          # Clang 14 + C++17
+          - cxx: clang++-14
             build_type: Debug
             std: 17
-            other_pkgs: clang-10
-          - cxx: clang++-10
+            other_pkgs: clang-14
+          - cxx: clang++-14
             build_type: Release
             std: 17
-            other_pkgs: clang-10
-          - cxx: clang++-10
+            other_pkgs: clang-14
+          - cxx: clang++-14
             build_type: Debug
             std: 20
-            other_pkgs: clang-10
-          - cxx: clang++-10
+            other_pkgs: clang-14
+          - cxx: clang++-14
             build_type: Release
             std: 20
-            other_pkgs: clang-10
-          - cxx: g++-10
+            other_pkgs: clang-14
+          - cxx: g++-11
             build_type: Debug
             std: 20
-            other_pkgs: g++-10
-          - cxx: g++-10
+            other_pkgs: g++-11
+          - cxx: g++-11
             build_type: Release
             std: 20
-            other_pkgs: g++-10
+            other_pkgs: g++-11
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
-    - name: Add repositories for older GCC
+    - name: Add repositories for older compilers
       run: |
-        sudo apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ bionic main'
-        sudo apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ bionic universe'
-      if: ${{ matrix.cxx == 'g++-5' || matrix.cxx == 'g++-6' }}
+        sudo apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ focal main'
+        sudo apt-add-repository 'deb http://azure.archive.ubuntu.com/ubuntu/ focal universe'
 
     - name: Prepare environment
       run: |
         sudo apt-get update
         sudo apt-get install -y ninja-build ${{matrix.other_pkgs}}
 
-    - name: Configure build
-      working-directory: ${{runner.workspace}}
-      env:
-        CXX: ${{matrix.cxx}}
-        CXXFLAGS: ${{matrix.cxxflags}}
-      # Note: $GITHUB_WORKSPACE is distinct from ${{runner.workspace}}.
-      #       This is important
+    - name: Configure
       run: |
-        cmake -Bbuild -H$GITHUB_WORKSPACE \
+        cmake --preset basic-tests -GNinja \
               -DCMAKE_BUILD_TYPE=${{matrix.build_type}} \
-              -DCMAKE_CXX_STANDARD=${{matrix.std}} \
-              -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-              -DCMAKE_CXX_EXTENSIONS=OFF \
-              -DCATCH_DEVELOPMENT_BUILD=ON \
-              -G Ninja
+              -DCMAKE_CXX_COMPILER=${{matrix.cxx}} \
+              -DCMAKE_CXX_STANDARD=${{matrix.std}}
 
-    - name: Build tests + lib
-      working-directory: ${{runner.workspace}}/build
-      run: ninja
+    - name: Build
+      run: cmake --build build
 
-    - name: Run tests
-      env:
-          CTEST_OUTPUT_ON_FAILURE: 1
-      working-directory: ${{runner.workspace}}/build
-      run: ctest -C ${{matrix.build_type}} -j `nproc`
+    - name: Test
+      run: ctest --test-dir build -j

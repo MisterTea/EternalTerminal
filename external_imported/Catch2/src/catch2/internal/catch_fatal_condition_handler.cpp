@@ -79,12 +79,18 @@ namespace Catch {
     // There is no 1-1 mapping between signals and windows exceptions.
     // Windows can easily distinguish between SO and SigSegV,
     // but SigInt, SigTerm, etc are handled differently.
-    static SignalDefs signalDefs[] = {
+    static constexpr SignalDefs signalDefs[] = {
         { EXCEPTION_ILLEGAL_INSTRUCTION,  "SIGILL - Illegal instruction signal" },
         { EXCEPTION_STACK_OVERFLOW, "SIGSEGV - Stack overflow" },
         { EXCEPTION_ACCESS_VIOLATION, "SIGSEGV - Segmentation violation signal" },
         { EXCEPTION_INT_DIVIDE_BY_ZERO, "Divide by zero error" },
     };
+
+    // Since we do not support multiple instantiations, we put these
+    // into global variables and rely on cleaning them up in outlined
+    // constructors/destructors
+    static LPTOP_LEVEL_EXCEPTION_FILTER previousTopLevelExceptionFilter = nullptr;
+
 
     static LONG CALLBACK topLevelExceptionFilter(PEXCEPTION_POINTERS ExceptionInfo) {
         for (auto const& def : signalDefs) {
@@ -92,16 +98,14 @@ namespace Catch {
                 reportFatal(def.name);
             }
         }
-        // If its not an exception we care about, pass it along.
+        // If a filter was previously registered, invoke it
+        if (previousTopLevelExceptionFilter) {
+            return previousTopLevelExceptionFilter(ExceptionInfo);
+        }
+        // Otherwise, pass along all exceptions.
         // This stops us from eating debugger breaks etc.
         return EXCEPTION_CONTINUE_SEARCH;
     }
-
-    // Since we do not support multiple instantiations, we put these
-    // into global variables and rely on cleaning them up in outlined
-    // constructors/destructors
-    static LPTOP_LEVEL_EXCEPTION_FILTER previousTopLevelExceptionFilter = nullptr;
-
 
     // For MSVC, we reserve part of the stack memory for handling
     // memory overflow structured exception.
@@ -150,7 +154,7 @@ namespace Catch {
         const char* name;
     };
 
-    static SignalDefs signalDefs[] = {
+    static constexpr SignalDefs signalDefs[] = {
         { SIGINT,  "SIGINT - Terminal interrupt signal" },
         { SIGILL,  "SIGILL - Illegal instruction signal" },
         { SIGFPE,  "SIGFPE - Floating point error signal" },

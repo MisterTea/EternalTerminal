@@ -18,6 +18,7 @@
 #include <mach/mach.h>
 
 #include "base/apple/scoped_mach_port.h"
+#include "base/files/file_path.h"
 #include "util/mach/exc_server_variants.h"
 
 namespace crashpad {
@@ -26,6 +27,25 @@ namespace crashpad {
 //!     process.
 class ExceptionHandlerServer {
  public:
+  //! \brief Interface for an object that receives exceptions and
+  //!     client-to-server control messages dispatched by the server.
+  class Delegate : public UniversalMachExcServer::Interface {
+   public:
+    ~Delegate() = default;
+
+    //! \brief Called when the server has received a request to retry pending
+    //!     report uploads.
+    virtual void RequestRetry() = 0;
+
+    //! \brief Called when the server has received a request to add a file to
+    //!     the list of files attached to crash reports.
+    virtual void AddAttachment(const base::FilePath& attachment) = 0;
+
+    //! \brief Called when the server has received a request to remove a file
+    //!     from the list of files attached to crash reports.
+    virtual void RemoveAttachment(const base::FilePath& attachment) = 0;
+  };
+
   //! \brief Constructs an ExceptionHandlerServer object.
   //!
   //! \param[in] receive_port The port that exception messages and no-senders
@@ -44,7 +64,8 @@ class ExceptionHandlerServer {
 
   //! \brief Runs the exception-handling server.
   //!
-  //! \param[in] exception_interface An object to send exception messages to.
+  //! \param[in] delegate An object to send exception messages and
+  //!     client-to-server control messages to.
   //!
   //! This method monitors the receive port for exception messages and, if
   //! not being run by launchd, no-senders notifications. It continues running
@@ -54,15 +75,13 @@ class ExceptionHandlerServer {
   //! queued by `mach_msg()` to be sent to a client) prior to calling this
   //! method, or it will detect that it is sender-less and return immediately.
   //!
-  //! All exception messages will be passed to \a exception_interface.
-  //!
   //! This method must only be called once on an ExceptionHandlerServer object.
   //!
   //! If an unexpected condition that prevents this method from functioning is
   //! encountered, it will log a message and terminate execution. Receipt of an
   //! invalid message on the receive port will cause a message to be logged, but
   //! this method will continue running normally.
-  void Run(UniversalMachExcServer::Interface* exception_interface);
+  void Run(Delegate* delegate);
 
   //! \brief Stops a running exception-handling server.
   //!

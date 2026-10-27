@@ -1,0 +1,31 @@
+# Invalid UTF-8 sequences (hex). SI_UTF8::Decode and ConvertFromStore must reject each.
+# Unexpected continuation bytes
+80
+bf
+8080
+808080
+# Lonely start bytes
+c0
+df
+e0
+f0
+f7
+# Impossible bytes
+fe
+ff
+fefeffff
+# Overlong sequences (Kuhn section 4)
+c0af
+e080af
+f08080af
+c080
+c1bf
+e09fbf
+f08fbfbf
+# UTF-16 surrogate code points encoded in UTF-8 (Kuhn section 5.1)
+eda080
+edadbf
+edb080
+edbfbf
+# Paired surrogates as UTF-8
+eda080edb080

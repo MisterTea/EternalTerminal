@@ -14,7 +14,7 @@
 namespace Catch {
     CATCH_INTERNAL_START_WARNINGS_SUPPRESSION
     CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS
-    static LeakDetector leakDetector;
+    static const LeakDetector leakDetector;
     CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION
 }
 

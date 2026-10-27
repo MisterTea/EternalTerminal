@@ -10,7 +10,7 @@ class CatchConan(ConanFile):
     homepage = url
     license = "BSL-1.0"
     exports = "LICENSE.txt"
-    exports_sources = ("single_include/*", "CMakeLists.txt", "CMake/*", "contrib/*")
+    exports_sources = ("single_include/*", "CMakeLists.txt", "CMake/*", "contrib/*", "src/*")
     generators = "cmake"
 
     def package(self):
@@ -18,10 +18,13 @@ class CatchConan(ConanFile):
         cmake.definitions["BUILD_TESTING"] = "OFF"
         cmake.definitions["CATCH_INSTALL_DOCS"] = "OFF"
         cmake.definitions["CATCH_INSTALL_HELPERS"] = "ON"
-        cmake.configure()
+        cmake.configure(build_folder='build')
         cmake.install()
 
         self.copy(pattern="LICENSE.txt", dst="licenses")
 
     def package_id(self):
         self.info.header_only()
+
+    def package_info(self):
+        self.cpp_info.builddirs.append("lib/cmake/Catch2")

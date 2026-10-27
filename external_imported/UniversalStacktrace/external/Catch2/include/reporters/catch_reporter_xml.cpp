@@ -193,9 +193,9 @@ namespace Catch {
             e.writeAttribute( "durationInSeconds", m_testCaseTimer.getElapsedSeconds() );
 
         if( !testCaseStats.stdOut.empty() )
-            m_xml.scopedElement( "StdOut" ).writeText( trim( testCaseStats.stdOut ), false );
+            m_xml.scopedElement( "StdOut" ).writeText( trim( testCaseStats.stdOut ), XmlFormatting::Newline );
         if( !testCaseStats.stdErr.empty() )
-            m_xml.scopedElement( "StdErr" ).writeText( trim( testCaseStats.stdErr ), false );
+            m_xml.scopedElement( "StdErr" ).writeText( trim( testCaseStats.stdErr ), XmlFormatting::Newline );
 
         m_xml.endElement();
     }
@@ -207,6 +207,10 @@ namespace Catch {
             .writeAttribute( "successes", testGroupStats.totals.assertions.passed )
             .writeAttribute( "failures", testGroupStats.totals.assertions.failed )
             .writeAttribute( "expectedFailures", testGroupStats.totals.assertions.failedButOk );
+        m_xml.scopedElement( "OverallResultsCases")
+            .writeAttribute( "successes", testGroupStats.totals.testCases.passed )
+            .writeAttribute( "failures", testGroupStats.totals.testCases.failed )
+            .writeAttribute( "expectedFailures", testGroupStats.totals.testCases.failedButOk );
         m_xml.endElement();
     }
 
@@ -216,8 +220,57 @@ namespace Catch {
             .writeAttribute( "successes", testRunStats.totals.assertions.passed )
             .writeAttribute( "failures", testRunStats.totals.assertions.failed )
             .writeAttribute( "expectedFailures", testRunStats.totals.assertions.failedButOk );
+        m_xml.scopedElement( "OverallResultsCases")
+            .writeAttribute( "successes", testRunStats.totals.testCases.passed )
+            .writeAttribute( "failures", testRunStats.totals.testCases.failed )
+            .writeAttribute( "expectedFailures", testRunStats.totals.testCases.failedButOk );
         m_xml.endElement();
     }
+
+#if defined(CATCH_CONFIG_ENABLE_BENCHMARKING)
+    void XmlReporter::benchmarkPreparing(std::string const& name) {
+        m_xml.startElement("BenchmarkResults")
+            .writeAttribute("name", name);
+    }
+
+    void XmlReporter::benchmarkStarting(BenchmarkInfo const &info) {
+        m_xml.writeAttribute("samples", info.samples)
+            .writeAttribute("resamples", info.resamples)
+            .writeAttribute("iterations", info.iterations)
+            .writeAttribute("clockResolution", info.clockResolution)
+            .writeAttribute("estimatedDuration", info.estimatedDuration)
+            .writeComment("All values in nano seconds");
+    }
+
+    void XmlReporter::benchmarkEnded(BenchmarkStats<> const& benchmarkStats) {
+        m_xml.startElement("mean")
+            .writeAttribute("value", benchmarkStats.mean.point.count())
+            .writeAttribute("lowerBound", benchmarkStats.mean.lower_bound.count())
+            .writeAttribute("upperBound", benchmarkStats.mean.upper_bound.count())
+            .writeAttribute("ci", benchmarkStats.mean.confidence_interval);
+        m_xml.endElement();
+        m_xml.startElement("standardDeviation")
+            .writeAttribute("value", benchmarkStats.standardDeviation.point.count())
+            .writeAttribute("lowerBound", benchmarkStats.standardDeviation.lower_bound.count())
+            .writeAttribute("upperBound", benchmarkStats.standardDeviation.upper_bound.count())
+            .writeAttribute("ci", benchmarkStats.standardDeviation.confidence_interval);
+        m_xml.endElement();
+        m_xml.startElement("outliers")
+            .writeAttribute("variance", benchmarkStats.outlierVariance)
+            .writeAttribute("lowMild", benchmarkStats.outliers.low_mild)
+            .writeAttribute("lowSevere", benchmarkStats.outliers.low_severe)
+            .writeAttribute("highMild", benchmarkStats.outliers.high_mild)
+            .writeAttribute("highSevere", benchmarkStats.outliers.high_severe);
+        m_xml.endElement();
+        m_xml.endElement();
+    }
+
+    void XmlReporter::benchmarkFailed(std::string const &error) {
+        m_xml.scopedElement("failed").
+            writeAttribute("message", error);
+        m_xml.endElement();
+    }
+#endif // CATCH_CONFIG_ENABLE_BENCHMARKING
 
     CATCH_REGISTER_REPORTER( "xml", XmlReporter )
 

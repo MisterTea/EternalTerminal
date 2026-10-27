@@ -5,6 +5,8 @@
 #ifndef MINI_CHROMIUM_BASE_TEMPLATE_UTIL_H_
 #define MINI_CHROMIUM_BASE_TEMPLATE_UTIL_H_
 
+#include <stddef.h>
+
 #include <type_traits>
 
 namespace base {

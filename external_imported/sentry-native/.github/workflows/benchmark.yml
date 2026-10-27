@@ -31,13 +31,13 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: recursive
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: "pip"
 
       - name: Install Linux dependencies
@@ -52,7 +52,7 @@ jobs:
           pip install --upgrade --requirement tests/requirements.txt
           pytest --verbose --benchmark_out=benchmark.json tests/benchmark.py
 
-      - uses: benchmark-action/github-action-benchmark@v1
+      - uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # pin@v1.22.1
         if: ${{ github.event_name == 'push' }}
         with:
           name: ${{ runner.os }}

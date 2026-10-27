@@ -11,4 +11,11 @@
  */
 sentry_transport_t *sentry_new_disk_transport(const sentry_run_t *run);
 
+/**
+ * This creates a new transport that serializes envelopes to disk in the given
+ * `external` directory.
+ * See `sentry__run_write_external`.
+ */
+sentry_transport_t *sentry_new_external_disk_transport(const sentry_run_t *run);
+
 #endif

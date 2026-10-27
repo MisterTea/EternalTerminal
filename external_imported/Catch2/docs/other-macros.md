@@ -91,6 +91,30 @@ TEST_CASE("STATIC_CHECK showcase", "[traits]") {
 }
 ```
 
+* `STATIC_REQUIRE_THAT` and `STATIC_CHECK_THAT`
+
+> `STATIC_REQUIRE_THAT` and `STATIC_CHECK_THAT` was introduced in Catch2 3.15.0
+
+`STATIC_{REQUIRE,CHECK}_THAT` are analogous to `STATIC_{REQUIRE,CHECK}`,
+but for matchers. They are always defined, even if the current compiler
+does not support `constexpr` matchers, but in that case the compilation
+will always fail.
+
+Just like `STATIC_{REQUIRE,CHECK}`, `STATIC_{REQUIRE,CHECK}_THAT` can be
+delayed into runtime through the `CATCH_CONFIG_RUNTIME_STATIC_REQUIRE`
+configuration option.
+
+Example:
+```cpp
+TEST_CASE("Constexpr support for matchers", "[constexpr][matchers]") {
+    STATIC_REQUIRE_THAT( 1, MatchAll() );
+    STATIC_REQUIRE_THAT( 1, MatchAll() && MatchAll() );
+    STATIC_REQUIRE_THAT( 1, MatchAll() || MatchAll() );
+    STATIC_REQUIRE_THAT( 1, !!MatchAll() );
+}
+```
+
+
 ## Test case related macros
 
 * `REGISTER_TEST_CASE`

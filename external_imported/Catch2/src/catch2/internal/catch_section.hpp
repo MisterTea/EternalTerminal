@@ -62,7 +62,7 @@ namespace Catch {
 #else
 
 // These section definitions imply that at most one section at one level
-// will be intered (because only one section's __LINE__ can be equal to
+// will be entered (because only one section's __LINE__ can be equal to
 // the dummy `catchInternalSectionHint` variable from `TEST_CASE`).
 
 namespace Catch {

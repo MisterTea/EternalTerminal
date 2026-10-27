@@ -46,10 +46,15 @@ env["TEST_SHARD_INDEX"] = "0"
 env["TEST_TOTAL_SHARDS"] = "2"
 env["TEST_SHARD_STATUS_FILE"] = info_file_path
 
+cmd = [
+  bin_path,
+  # We rely on the test order being deterministic
+  '--order', 'decl'
+]
 
 try:
     ret = subprocess.run(
-        bin_path,
+        cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,

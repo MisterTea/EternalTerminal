@@ -7,20 +7,21 @@ vcpkg_from_github(
     #[[
         Attention: pdal-dimbuilder must be updated together with pdal
     #]]
-    SHA512 85aaab726d172ef46b8cf05bd72772da72cf5615db549cd262acc4d468f631f1093577b9866ca598b7bef72507f7774e599e66a6cbbf589bd1b5b85bb8107642
+    SHA512 051e0a8ee2f03ad6eaf55b5843a41626ebc6d2517cf9eeedffda52878fbb9b7d854ea24174e2b3434f69ef41ab244e20e250f6c2c1083325b496489526fb8fea
     HEAD_REF master
     PATCHES
         dependencies.diff
         external-dimbuilder.diff
         find-library-suffix.diff
         no-rpath.patch
-        spz-zlib.diff  # https://github.com/PDAL/PDAL/issues/4745
+        rapidxml.diff
 )
 file(REMOVE_RECURSE
     "${SOURCE_PATH}/cmake/modules/FindCurl.cmake"
     "${SOURCE_PATH}/cmake/modules/FindGeoTIFF.cmake"
     "${SOURCE_PATH}/cmake/modules/FindICONV.cmake"
     "${SOURCE_PATH}/cmake/modules/FindZSTD.cmake"
+    "${SOURCE_PATH}/plugins/e57/libE57Format"
     "${SOURCE_PATH}/vendor/eigen"
     "${SOURCE_PATH}/vendor/h3"
     "${SOURCE_PATH}/vendor/nanoflann"
@@ -37,6 +38,8 @@ file(APPEND "${SOURCE_PATH}/vendor/nlohmann/nlohmann/json_fwd.hpp" "\nnamespace 
 file(WRITE "${SOURCE_PATH}/pdal/JsonFwd.hpp" "/* vcpkg redacted */\n#include <nlohmann/json_fwd.hpp>\nnamespace NL = nlohmann;\n")
 file(MAKE_DIRECTORY "${SOURCE_PATH}/vendor/nlohmann/schema-validator")
 file(WRITE "${SOURCE_PATH}/vendor/nlohmann/schema-validator/json-schema.hpp" "/* vcpkg redacted */\n#include <nlohmann/json-schema.hpp>\n")
+# PDAL vendors arbiter vendors rapidxml
+file(COPY "${CURRENT_INSTALLED_DIR}/include/rapidxml/rapidxml.hpp" DESTINATION "${SOURCE_PATH}/vendor/arbiter/")
 
 unset(ENV{OSGEO4W_HOME})
 
@@ -47,6 +50,7 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
         hdf5        BUILD_PLUGIN_HDF
         lzma        WITH_LZMA
         pgpointcloud BUILD_PLUGIN_PGPOINTCLOUD
+        spz         BUILD_PLUGIN_SPZ
         zstd        WITH_ZSTD
 )
 
@@ -54,7 +58,7 @@ vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         "-DCMAKE_PROJECT_INCLUDE=${CMAKE_CURRENT_LIST_DIR}/cmake-project-include.cmake"
-        "-DDIMBUILDER_EXECUTABLE=${CURRENT_HOST_INSTALLED_DIR}/manual-tools/pdal-dimbuilder/dimbuilder${VCPKG_HOST_EXECUTABLE_SUFFIX}"
+        "-DDIMBUILDER_EXECUTABLE=${CURRENT_HOST_INSTALLED_DIR}/manual-tools/pdal-dimbuilder/${VERSION}/dimbuilder${VCPKG_HOST_EXECUTABLE_SUFFIX}"
         -DPDAL_PLUGIN_INSTALL_PATH=.
         -DWITH_TESTS:BOOL=OFF
         -DWITH_COMPLETION:BOOL=OFF
@@ -107,14 +111,10 @@ file(READ "${SOURCE_PATH}/vendor/lepcc/src/LEPCC.h" license)
 string(REGEX REPLACE "^/\\*\n|\\*/.*\$" "" license "${license}")
 file(WRITE "${lepcc_license}" "${license}")
 
-set(spz_license "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/spz LICENSE")
-file(COPY_FILE "${SOURCE_PATH}/vendor/spz/LICENSE" "${spz_license}")
-
 vcpkg_install_copyright(FILE_LIST
     "${SOURCE_PATH}/LICENSE.txt"
     "${arbiter_license}"
     "${kazhdan_license}"
     "${lazperf_license}"
     "${lepcc_license}"
-    "${spz_license}"
 )

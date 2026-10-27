@@ -1,4 +1,5 @@
 #!/usr/bin/env lucicfg
+
 # Copyright 2021 The Crashpad Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -150,7 +151,7 @@ def crashpad_caches(platform):
     elif platform == "mac":
         return [swarming.cache("osx_sdk", name = "osx_sdk_mac")]
 
-def crashpad_dimensions(platform, bucket):
+def crashpad_dimensions(platform, cpu, bucket):
     dimensions = {}
     dimensions["cpu"] = "x86-64"
     dimensions["pool"] = "luci.flex." + bucket
@@ -162,7 +163,11 @@ def crashpad_dimensions(platform, bucket):
     elif platform == "linux":
         dimensions["os"] = "Ubuntu-22.04"
     elif platform == "mac":
-        dimensions["os"] = "Mac-13|Mac-14"
+        if cpu == "x64":
+            dimensions["os"] = "Mac-13|Mac-14"
+        elif cpu == "arm64":
+            dimensions["cpu"] = cpu
+            dimensions["os"] = "Mac-15"
     elif platform == "win":
         dimensions["os"] = "Windows-10"
 
@@ -227,7 +232,7 @@ def crashpad_builder(platform, cpu, config, bucket):
         executable = crashpad_recipe(),
         build_numbers = True,
         caches = crashpad_caches(platform),
-        dimensions = crashpad_dimensions(platform, bucket),
+        dimensions = crashpad_dimensions(platform, cpu, bucket),
         execution_timeout = 3 * time.hour,
         properties = crashpad_properties(platform, cpu, config, bucket),
         service_account = "crashpad-" + bucket + "-builder@chops-service-accounts.iam.gserviceaccount.com",
@@ -246,6 +251,8 @@ crashpad_builder("linux", "x64", "dbg", "ci")
 crashpad_builder("linux", "x64", "rel", "ci")
 crashpad_builder("mac", "x64", "dbg", "ci")
 crashpad_builder("mac", "x64", "rel", "ci")
+crashpad_builder("mac", "arm64", "dbg", "ci")
+crashpad_builder("mac", "arm64", "rel", "ci")
 crashpad_builder("win", "x64", "dbg", "ci")
 crashpad_builder("win", "x64", "rel", "ci")
 
@@ -261,5 +268,7 @@ crashpad_builder("linux", "x64", "dbg", "try")
 crashpad_builder("linux", "x64", "rel", "try")
 crashpad_builder("mac", "x64", "dbg", "try")
 crashpad_builder("mac", "x64", "rel", "try")
+crashpad_builder("mac", "arm64", "dbg", "try")
+crashpad_builder("mac", "arm64", "rel", "try")
 crashpad_builder("win", "x64", "dbg", "try")
 crashpad_builder("win", "x64", "rel", "try")

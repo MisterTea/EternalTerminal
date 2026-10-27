@@ -17,4 +17,10 @@ public interface INativeScope {
       String level, String message, String category, String type, String timestamp, String data);
 
   void setTrace(String traceId, String parentSpanId);
+
+  void addAttachment(String path);
+
+  void addAttachmentBytes(byte[] data, String filename);
+
+  void clearAttachments();
 }

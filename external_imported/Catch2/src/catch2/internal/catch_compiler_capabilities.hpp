@@ -27,16 +27,24 @@
 #include <catch2/internal/catch_platform.hpp>
 #include <catch2/catch_user_config.hpp>
 
-#ifdef __cplusplus
+#if (__cplusplus >= 201703L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+#  define CATCH_CPP17_OR_GREATER
+#endif
 
-#  if (__cplusplus >= 201703L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
-#    define CATCH_CPP17_OR_GREATER
-#  endif
+#if (__cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
+#  define CATCH_CPP20_OR_GREATER
+#endif
 
-#  if (__cplusplus >= 202002L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 202002L)
-#    define CATCH_CPP20_OR_GREATER
-#  endif
-
+// Matchers are only constexpr-able in C++20
+#if defined( CATCH_CPP20_OR_GREATER ) && \
+    defined( __cpp_constexpr_dynamic_alloc ) && \
+    __cpp_constexpr_dynamic_alloc >= 201907L && \
+    /* GCC < 13 define the feature macro, but compiler bugs stop us from using it */ \
+    ( !defined( __GNUC__ ) || __GNUC__ >= 13 || defined(__clang__) )
+#    define CATCH_INTERNAL_CONSTEXPR_MATCHERS_ENABLED
+#    define CATCH_DESTRUCTOR_CONSTEXPR constexpr
+#else
+#    define CATCH_DESTRUCTOR_CONSTEXPR
 #endif
 
 // Only GCC compiler should be used in this block, so other compilers trying to
@@ -110,8 +118,13 @@
 #        define CATCH_INTERNAL_SUPPRESS_ZERO_VARIADIC_WARNINGS \
 	         _Pragma( "clang diagnostic ignored \"-Wc++20-extensions\"" )
 #    else
-#        define CATCH_INTERNAL_SUPPRESS_ZERO_VARIADIC_WARNINGS
+#        define CATCH_INTERNAL_SUPPRESS_ZERO_VARIADIC_WARNINGS \
              _Pragma( "clang diagnostic ignored \"-Wgnu-zero-variadic-macro-arguments\"" )
+#    endif
+
+#    if ( __clang_major__ >= 22 )
+#        define CATCH_INTERNAL_SUPPRESS_COUNTER_WARNINGS \
+            _Pragma( "clang diagnostic ignored \"-Wc2y-extensions\"" )
 #    endif
 
 #    define CATCH_INTERNAL_SUPPRESS_UNUSED_TEMPLATE_WARNINGS \
@@ -208,7 +221,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 // Visual C++
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 
 // We want to defer to nvcc-specific warning suppression if we are compiled
 // with nvcc masquerading for MSVC.
@@ -219,12 +232,21 @@
             __pragma( warning( pop ) )
 #    endif
 
+// Suppress MSVC C++ Core Guidelines checker warning 26426:
+// "Global initializer calls a non-constexpr function (i.22)"
+#    define CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS \
+         __pragma( warning( disable : 26426 ) )
+
 // Universal Windows platform does not support SEH
-// Or console colours (or console at all...)
-#  if defined(CATCH_PLATFORM_WINDOWS_UWP)
-#    define CATCH_INTERNAL_CONFIG_NO_COLOUR_WIN32
-#  else
+#  if !defined(CATCH_PLATFORM_WINDOWS_UWP)
 #    define CATCH_INTERNAL_CONFIG_WINDOWS_SEH
+#  endif
+
+// Only some Windows platform families support the console
+#  if defined(WINAPI_FAMILY_PARTITION)
+#    if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
+#      define CATCH_INTERNAL_CONFIG_NO_COLOUR_WIN32
+#    endif
 #  endif
 
 // MSVC traditional preprocessor needs some workaround for __VA_ARGS__
@@ -419,6 +441,9 @@
 #endif
 #if !defined( CATCH_INTERNAL_SUPPRESS_SHADOW_WARNINGS )
 #    define CATCH_INTERNAL_SUPPRESS_SHADOW_WARNINGS
+#endif
+#if !defined( CATCH_INTERNAL_SUPPRESS_COUNTER_WARNINGS )
+#    define CATCH_INTERNAL_SUPPRESS_COUNTER_WARNINGS
 #endif
 
 #if defined(__APPLE__) && defined(__apple_build_version__) && (__clang_major__ < 10)

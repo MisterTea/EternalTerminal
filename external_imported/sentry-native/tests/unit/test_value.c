@@ -3,6 +3,52 @@
 #include "sentry_value.h"
 #include <locale.h>
 #include <math.h>
+#include <stdint.h>
+#include <string.h>
+
+static sentry_value_t
+breadcrumb_with_ts(const char *message, const char *timestamp)
+{
+    sentry_value_t breadcrumb = sentry_value_new_breadcrumb(NULL, message);
+    sentry_value_set_by_key(
+        breadcrumb, "timestamp", sentry_value_new_string(timestamp));
+    return breadcrumb;
+}
+
+typedef struct {
+    const char *keys[4];
+    sentry_value_t values[4];
+    size_t count;
+} value_foreach_key_value_collector_t;
+
+static void
+collect_value_pair(const char *key, sentry_value_t value, void *userdata)
+{
+    value_foreach_key_value_collector_t *collector
+        = (value_foreach_key_value_collector_t *)userdata;
+    if (collector->count >= 4) {
+        return;
+    }
+    collector->keys[collector->count] = key;
+    collector->values[collector->count] = value;
+    collector->count++;
+}
+
+static void
+write_nested_msgpack_arrays(char *buf, size_t depth)
+{
+    memset(buf, 0x91, depth); // fixarray[1]
+    buf[depth] = (char)0xc0; // nil
+}
+
+static void
+write_nested_json_arrays(char *buf, size_t depth)
+{
+    memset(buf, '[', depth);
+    memcpy(buf + depth, "null", 4);
+    memset(buf + depth + 4, ']', depth);
+    buf[depth * 2 + 4] = '\0';
+}
 
 SENTRY_TEST(value_null)
 {
@@ -69,6 +115,112 @@ SENTRY_TEST(value_int32)
     TEST_CHECK(sentry_value_is_frozen(val));
     sentry_value_decref(val);
     TEST_CHECK(sentry_value_refcount(val) == 1);
+}
+
+SENTRY_TEST(value_int64)
+{
+    sentry_value_t val = sentry_value_new_int64(42LL);
+    TEST_CHECK(sentry_value_get_type(val) == SENTRY_VALUE_TYPE_INT64);
+    TEST_CHECK(sentry_value_as_int64(val) == 42LL);
+    // We don't convert int64 to double
+    TEST_CHECK(isnan(sentry_value_as_double(val)));
+    // We don't convert int64 to int32
+    TEST_CHECK(sentry_value_as_int32(val) == 0);
+    TEST_CHECK(sentry_value_is_true(val));
+    TEST_CHECK_JSON_VALUE(val, "42");
+    TEST_CHECK(sentry_value_refcount(val) == 1);
+    TEST_CHECK(sentry_value_is_frozen(val));
+    sentry_value_decref(val);
+
+    // Test large positive value
+    val = sentry_value_new_int64(INT64_MAX);
+    TEST_CHECK(sentry_value_get_type(val) == SENTRY_VALUE_TYPE_INT64);
+    TEST_CHECK(sentry_value_as_int64(val) == INT64_MAX);
+    TEST_CHECK(sentry_value_is_true(val));
+    TEST_CHECK_JSON_VALUE(val, "9223372036854775807");
+    sentry_value_decref(val);
+
+    // Test large negative value
+    val = sentry_value_new_int64(INT64_MIN);
+    TEST_CHECK(sentry_value_get_type(val) == SENTRY_VALUE_TYPE_INT64);
+    TEST_CHECK(sentry_value_as_int64(val) == INT64_MIN);
+    TEST_CHECK(sentry_value_is_true(val));
+    TEST_CHECK_JSON_VALUE(val, "-9223372036854775808");
+    sentry_value_decref(val);
+
+    // Test zero
+    val = sentry_value_new_int64(0LL);
+    TEST_CHECK(sentry_value_get_type(val) == SENTRY_VALUE_TYPE_INT64);
+    TEST_CHECK(sentry_value_as_int64(val) == 0LL);
+    TEST_CHECK(!sentry_value_is_true(val));
+    TEST_CHECK_JSON_VALUE(val, "0");
+    TEST_CHECK(sentry_value_refcount(val) == 1);
+    TEST_CHECK(sentry_value_is_frozen(val));
+    sentry_value_decref(val);
+
+    // We do convert int32 to int64
+    val = sentry_value_new_int32(42);
+    TEST_CHECK(sentry_value_as_int64(val) == 42LL);
+    sentry_value_decref(val);
+
+    // We don't convert uint64 to int64
+    val = sentry_value_new_uint64(-42LL);
+    TEST_CHECK(sentry_value_as_int64(val) == 0);
+    sentry_value_decref(val);
+
+    // We don't convert double to int64
+    val = sentry_value_new_double(42.99);
+    TEST_CHECK(sentry_value_as_int64(val) == 0);
+    sentry_value_decref(val);
+}
+
+SENTRY_TEST(value_uint64)
+{
+    sentry_value_t val = sentry_value_new_uint64(42ULL);
+    TEST_CHECK(sentry_value_get_type(val) == SENTRY_VALUE_TYPE_UINT64);
+    TEST_CHECK(sentry_value_as_uint64(val) == 42ULL);
+    // We don't convert uint64 to double
+    TEST_CHECK(isnan(sentry_value_as_double(val)));
+    // We don't convert uint64 to int32
+    TEST_CHECK(sentry_value_as_int32(val) == 0);
+    TEST_CHECK(sentry_value_is_true(val));
+    TEST_CHECK_JSON_VALUE(val, "42");
+    TEST_CHECK(sentry_value_refcount(val) == 1);
+    TEST_CHECK(sentry_value_is_frozen(val));
+    sentry_value_decref(val);
+
+    // Test large positive value
+    val = sentry_value_new_uint64(UINT64_MAX);
+    TEST_CHECK(sentry_value_get_type(val) == SENTRY_VALUE_TYPE_UINT64);
+    TEST_CHECK(sentry_value_as_uint64(val) == UINT64_MAX);
+    TEST_CHECK(sentry_value_is_true(val));
+    TEST_CHECK_JSON_VALUE(val, "18446744073709551615");
+    sentry_value_decref(val);
+
+    // Test zero
+    val = sentry_value_new_uint64(0ULL);
+    TEST_CHECK(sentry_value_get_type(val) == SENTRY_VALUE_TYPE_UINT64);
+    TEST_CHECK(sentry_value_as_uint64(val) == 0ULL);
+    TEST_CHECK(!sentry_value_is_true(val));
+    TEST_CHECK_JSON_VALUE(val, "0");
+    TEST_CHECK(sentry_value_refcount(val) == 1);
+    TEST_CHECK(sentry_value_is_frozen(val));
+    sentry_value_decref(val);
+
+    // We don't convert int32 to uint64
+    val = sentry_value_new_int32(42);
+    TEST_CHECK(sentry_value_as_uint64(val) == 0);
+    sentry_value_decref(val);
+
+    // We don't convert double to uint64
+    val = sentry_value_new_double(123.456);
+    TEST_CHECK(sentry_value_as_uint64(val) == 0);
+    sentry_value_decref(val);
+
+    // We don't convert int64 to uint64
+    val = sentry_value_new_int64(42LL);
+    TEST_CHECK(sentry_value_as_uint64(val) == 0);
+    sentry_value_decref(val);
 }
 
 SENTRY_TEST(value_double)
@@ -174,68 +326,6 @@ SENTRY_TEST(value_list)
     sentry_value_freeze(val);
     TEST_CHECK(sentry_value_is_frozen(val));
     sentry_value_decref(val);
-
-    val = sentry_value_new_list();
-    sentry_value_append(val, sentry_value_new_int32(1));
-    for (int32_t i = 1; i <= 10; i++) {
-        sentry__value_append_ringbuffer(val, sentry_value_new_int32(i), 5);
-    }
-    sentry__value_append_ringbuffer(val, sentry_value_new_int32(1010), 5);
-#define CHECK_IDX(Idx, Val)                                                    \
-    TEST_CHECK_INT_EQUAL(                                                      \
-        sentry_value_as_int32(sentry_value_get_by_index(val, Idx)), Val)
-    CHECK_IDX(1, 1010);
-    CHECK_IDX(2, 7);
-    CHECK_IDX(3, 8);
-    CHECK_IDX(4, 9);
-    CHECK_IDX(5, 10);
-    sentry_value_decref(val);
-}
-
-SENTRY_TEST(value_ringbuffer)
-{
-    sentry_value_t val = sentry_value_new_list();
-    sentry_value_append(val, sentry_value_new_int32(1)); // start index
-
-    const sentry_value_t v0 = sentry_value_new_object();
-    sentry_value_set_by_key(v0, "key", sentry_value_new_int32((int32_t)0));
-    const sentry_value_t v1 = sentry_value_new_object();
-    sentry_value_set_by_key(v1, "key", sentry_value_new_int32((int32_t)1));
-    const sentry_value_t v2 = sentry_value_new_object();
-    sentry_value_set_by_key(v2, "key", sentry_value_new_int32((int32_t)2));
-    const sentry_value_t v3 = sentry_value_new_object();
-    sentry_value_set_by_key(v3, "key", sentry_value_new_int32((int32_t)3));
-
-    sentry__value_append_ringbuffer(val, v0, 3);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v0), 1);
-    sentry_value_incref(v0);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v0), 2);
-
-    sentry__value_append_ringbuffer(val, v1, 3);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v1), 1);
-    sentry__value_append_ringbuffer(val, v2, 3);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v2), 1);
-    sentry__value_append_ringbuffer(val, v3, 3);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v3), 1);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v0), 1);
-
-    const sentry_value_t l = sentry__value_ring_buffer_to_list(val);
-    TEST_CHECK_INT_EQUAL(sentry_value_get_length(l), 3);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v3), 2);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v2), 2);
-    TEST_CHECK_INT_EQUAL(sentry_value_refcount(v1), 2);
-#define CHECK_KEY_IDX(List, Idx, Val)                                          \
-    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(sentry_value_get_by_key(        \
-                             sentry_value_get_by_index(List, Idx), "key")),    \
-        Val)
-
-    CHECK_KEY_IDX(l, 0, 1);
-    CHECK_KEY_IDX(l, 1, 2);
-    CHECK_KEY_IDX(l, 2, 3);
-
-    sentry_value_decref(l);
-    sentry_value_decref(val);
-    sentry_value_decref(v0); // one manual incref
 }
 
 SENTRY_TEST(value_object)
@@ -243,12 +333,12 @@ SENTRY_TEST(value_object)
     sentry_value_t val = sentry_value_new_object();
     for (size_t i = 0; i < 10; i++) {
         char key[100];
-        sprintf(key, "key%d", (int)i);
+        snprintf(key, sizeof(key), "key%d", (int)i);
         sentry_value_set_by_key(val, key, sentry_value_new_int32((int32_t)i));
     }
     for (size_t i = 0; i < 20; i++) {
         char key[100];
-        sprintf(key, "key%d", (int)i);
+        snprintf(key, sizeof(key), "key%d", (int)i);
         sentry_value_t child = sentry_value_get_by_key(val, key);
         if (i < 10) {
             TEST_CHECK(sentry_value_as_int32(child) == (int32_t)i);
@@ -271,7 +361,7 @@ SENTRY_TEST(value_object)
 
     for (size_t i = 0; i < 10; i += 2) {
         char key[100];
-        sprintf(key, "key%d", (int)i);
+        snprintf(key, sizeof(key), "key%d", (int)i);
         sentry_value_remove_by_key(val, key);
     }
 
@@ -383,9 +473,201 @@ SENTRY_TEST(value_user)
     TEST_CHECK(sentry_value_is_null(user_null));
     sentry_value_decref(user_null);
 
+    // Test that empty ID is respected
     sentry_value_t user_empty_str = sentry_value_new_user("", "", "", "");
-    TEST_CHECK(sentry_value_is_null(user_empty_str));
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(user_empty_str, "id")),
+        "");
+    TEST_CHECK(sentry_value_is_null(
+        sentry_value_get_by_key(user_empty_str, "username")));
+    TEST_CHECK(
+        sentry_value_is_null(sentry_value_get_by_key(user_empty_str, "email")));
+    TEST_CHECK(sentry_value_is_null(
+        sentry_value_get_by_key(user_empty_str, "ip_address")));
     sentry_value_decref(user_empty_str);
+}
+
+SENTRY_TEST(value_attribute)
+{
+    // Test valid attribute types
+    sentry_value_t string_attr = sentry_value_new_attribute(
+        sentry_value_new_string("test_value"), NULL);
+    TEST_CHECK(sentry_value_get_type(string_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(string_attr, "type")),
+        "string");
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(string_attr, "value")),
+        "test_value");
+    TEST_CHECK(
+        sentry_value_is_null(sentry_value_get_by_key(string_attr, "unit")));
+    sentry_value_decref(string_attr);
+
+    sentry_value_t integer_attr
+        = sentry_value_new_attribute(sentry_value_new_int32(42), NULL);
+    TEST_CHECK(sentry_value_get_type(integer_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(integer_attr, "type")),
+        "integer");
+    TEST_CHECK(
+        sentry_value_as_int32(sentry_value_get_by_key(integer_attr, "value"))
+        == 42);
+    TEST_CHECK(
+        sentry_value_is_null(sentry_value_get_by_key(integer_attr, "unit")));
+    sentry_value_decref(integer_attr);
+
+    sentry_value_t double_attr
+        = sentry_value_new_attribute(sentry_value_new_double(3.14), NULL);
+    TEST_CHECK(sentry_value_get_type(double_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(double_attr, "type")),
+        "double");
+    TEST_CHECK(
+        sentry_value_as_double(sentry_value_get_by_key(double_attr, "value"))
+        == 3.14);
+    TEST_CHECK(
+        sentry_value_is_null(sentry_value_get_by_key(double_attr, "unit")));
+    sentry_value_decref(double_attr);
+
+    sentry_value_t boolean_attr
+        = sentry_value_new_attribute(sentry_value_new_bool(true), NULL);
+    TEST_CHECK(sentry_value_get_type(boolean_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(boolean_attr, "type")),
+        "boolean");
+    TEST_CHECK(
+        sentry_value_is_true(sentry_value_get_by_key(boolean_attr, "value")));
+    TEST_CHECK(
+        sentry_value_is_null(sentry_value_get_by_key(boolean_attr, "unit")));
+    sentry_value_decref(boolean_attr);
+
+    // Test attribute with unit
+    sentry_value_t attr_with_unit
+        = sentry_value_new_attribute(sentry_value_new_int32(100), "percent");
+    TEST_CHECK(
+        sentry_value_get_type(attr_with_unit) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(attr_with_unit, "type")),
+        "integer");
+    TEST_CHECK(
+        sentry_value_as_int32(sentry_value_get_by_key(attr_with_unit, "value"))
+        == 100);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(attr_with_unit, "unit")),
+        "percent");
+    sentry_value_decref(attr_with_unit);
+
+    // Test invalid sentry_value_t types
+    sentry_value_t invalid_attr
+        = sentry_value_new_attribute(sentry_value_new_list(), NULL);
+    TEST_CHECK(sentry_value_is_null(invalid_attr));
+    sentry_value_decref(invalid_attr);
+
+    // Test NULL type
+    sentry_value_t null_type_attr
+        = sentry_value_new_attribute(sentry_value_new_null(), NULL);
+    TEST_CHECK(sentry_value_is_null(null_type_attr));
+    sentry_value_decref(null_type_attr);
+
+    // Test object type
+    sentry_value_t object_type_attr
+        = sentry_value_new_attribute(sentry_value_new_object(), NULL);
+    TEST_CHECK(sentry_value_is_null(object_type_attr));
+    sentry_value_decref(object_type_attr);
+
+    // Test _n version with explicit lengths
+    sentry_value_t string_attr_n = sentry_value_new_attribute_n(
+        sentry_value_new_string("test_n"), "bytes", 5);
+    TEST_CHECK(
+        sentry_value_get_type(string_attr_n) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(string_attr_n, "type")),
+        "string");
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(string_attr_n, "value")),
+        "test_n");
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(string_attr_n, "unit")),
+        "bytes");
+    sentry_value_decref(string_attr_n);
+
+    // Test list attribute types (arrays)
+    sentry_value_t string_list = sentry_value_new_list();
+    sentry_value_append(string_list, sentry_value_new_string("foo"));
+    sentry_value_append(string_list, sentry_value_new_string("bar"));
+    sentry_value_t string_list_attr
+        = sentry_value_new_attribute(string_list, NULL);
+    TEST_CHECK(
+        sentry_value_get_type(string_list_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
+                                string_list_attr, "type")),
+        "array");
+    sentry_value_t string_list_value
+        = sentry_value_get_by_key(string_list_attr, "value");
+    TEST_CHECK(
+        sentry_value_get_type(string_list_value) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK(sentry_value_get_length(string_list_value) == 2);
+    sentry_value_decref(string_list_attr);
+
+    sentry_value_t integer_list = sentry_value_new_list();
+    sentry_value_append(integer_list, sentry_value_new_int32(1));
+    sentry_value_append(integer_list, sentry_value_new_int32(2));
+    sentry_value_append(integer_list, sentry_value_new_int32(3));
+    sentry_value_t integer_list_attr
+        = sentry_value_new_attribute(integer_list, NULL);
+    TEST_CHECK(
+        sentry_value_get_type(integer_list_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
+                                integer_list_attr, "type")),
+        "array");
+    sentry_value_decref(integer_list_attr);
+
+    sentry_value_t double_list = sentry_value_new_list();
+    sentry_value_append(double_list, sentry_value_new_double(1.1));
+    sentry_value_append(double_list, sentry_value_new_double(2.2));
+    sentry_value_t double_list_attr
+        = sentry_value_new_attribute(double_list, NULL);
+    TEST_CHECK(
+        sentry_value_get_type(double_list_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
+                                double_list_attr, "type")),
+        "array");
+    sentry_value_decref(double_list_attr);
+
+    sentry_value_t boolean_list = sentry_value_new_list();
+    sentry_value_append(boolean_list, sentry_value_new_bool(true));
+    sentry_value_append(boolean_list, sentry_value_new_bool(false));
+    sentry_value_t boolean_list_attr
+        = sentry_value_new_attribute(boolean_list, NULL);
+    TEST_CHECK(
+        sentry_value_get_type(boolean_list_attr) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
+                                boolean_list_attr, "type")),
+        "array");
+    sentry_value_decref(boolean_list_attr);
+
+    // Test empty list (should return null since first element is null)
+    sentry_value_t empty_list = sentry_value_new_list();
+    sentry_value_t empty_list_attr
+        = sentry_value_new_attribute(empty_list, NULL);
+    TEST_CHECK(sentry_value_is_null(empty_list_attr));
+    sentry_value_decref(empty_list_attr);
+
+    // Test list with nested list (unsupported, should return null)
+    sentry_value_t nested_list = sentry_value_new_list();
+    sentry_value_append(nested_list, sentry_value_new_list());
+    sentry_value_t nested_list_attr
+        = sentry_value_new_attribute(nested_list, NULL);
+    TEST_CHECK(sentry_value_is_null(nested_list_attr));
+    sentry_value_decref(nested_list_attr);
+
+    // Test list with object (unsupported, should return null)
+    sentry_value_t object_list = sentry_value_new_list();
+    sentry_value_append(object_list, sentry_value_new_object());
+    sentry_value_t object_list_attr
+        = sentry_value_new_attribute(object_list, NULL);
+    TEST_CHECK(sentry_value_is_null(object_list_attr));
+    sentry_value_decref(object_list_attr);
 }
 
 SENTRY_TEST(value_freezing)
@@ -409,6 +691,96 @@ SENTRY_TEST(value_freezing)
     sentry_value_decref(val);
 }
 
+SENTRY_TEST(value_foreach_key_value)
+{
+    sentry_value_t value = sentry_value_new_object();
+    sentry_value_set_by_key(value, "first", sentry_value_new_string("one"));
+    sentry_value_set_by_key(value, "second", sentry_value_new_int32(2));
+    sentry_value_set_by_key(value, "third", sentry_value_new_bool(true));
+
+    value_foreach_key_value_collector_t collector = { 0 };
+    sentry__value_foreach_key_value(value, collect_value_pair, &collector);
+
+    TEST_CHECK_INT_EQUAL(collector.count, 3);
+    TEST_CHECK_STRING_EQUAL(collector.keys[0], "first");
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(collector.values[0]), "one");
+    TEST_CHECK_STRING_EQUAL(collector.keys[1], "second");
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(collector.values[1]), 2);
+    TEST_CHECK_STRING_EQUAL(collector.keys[2], "third");
+    TEST_CHECK(sentry_value_is_true(collector.values[2]));
+
+    value_foreach_key_value_collector_t ignored = { 0 };
+    sentry_value_t not_object = sentry_value_new_string("not-object");
+    sentry__value_foreach_key_value(not_object, collect_value_pair, &ignored);
+    TEST_CHECK_INT_EQUAL(ignored.count, 0);
+    sentry_value_decref(not_object);
+
+    sentry_value_decref(value);
+}
+
+SENTRY_TEST(value_stringify)
+{
+#define STRINGIFY_AND_CHECK(Val, Expected)                                     \
+    do {                                                                       \
+        char *stringified = sentry__value_stringify(Val);                      \
+        TEST_CHECK_STRING_EQUAL(stringified, Expected);                        \
+        sentry_free(stringified);                                              \
+        sentry_value_decref(Val);                                              \
+    } while (0)
+
+#define STRINGIFY_AND_CHECK_CONTAINS(Val, Expected)                            \
+    do {                                                                       \
+        char *stringified = sentry__value_stringify(Val);                      \
+        for (char *p = stringified; *p; ++p)                                   \
+            *p = tolower(*p);                                                  \
+        TEST_CHECK(strstr(stringified, Expected) != NULL);                     \
+        sentry_free(stringified);                                              \
+        sentry_value_decref(Val);                                              \
+    } while (0)
+
+    sentry_value_t rv = sentry_value_new_list();
+    STRINGIFY_AND_CHECK(rv, "");
+
+    rv = sentry_value_new_object();
+    STRINGIFY_AND_CHECK(rv, "");
+
+    rv = sentry_value_new_null();
+    STRINGIFY_AND_CHECK(rv, "");
+
+    rv = sentry_value_new_bool(true);
+    STRINGIFY_AND_CHECK(rv, "true");
+
+    rv = sentry_value_new_bool(false);
+    STRINGIFY_AND_CHECK(rv, "false");
+
+    rv = sentry_value_new_string("hello");
+    STRINGIFY_AND_CHECK(rv, "hello");
+
+    rv = sentry_value_new_int64(INT64_MIN);
+    STRINGIFY_AND_CHECK(rv, "-9223372036854775808");
+
+    rv = sentry_value_new_uint64(UINT64_MAX);
+    STRINGIFY_AND_CHECK(rv, "18446744073709551615");
+
+    rv = sentry_value_new_int32(42);
+    STRINGIFY_AND_CHECK(rv, "42");
+
+    rv = sentry_value_new_int32(INT32_MAX);
+    STRINGIFY_AND_CHECK(rv, "2147483647");
+
+    rv = sentry_value_new_double(3.14);
+    STRINGIFY_AND_CHECK(rv, "3.14");
+
+    rv = sentry_value_new_double(1000000000000000);
+    STRINGIFY_AND_CHECK(rv, "1e+15");
+
+    rv = sentry_value_new_double(INFINITY);
+    STRINGIFY_AND_CHECK_CONTAINS(rv, "inf");
+
+    rv = sentry_value_new_double(NAN);
+    STRINGIFY_AND_CHECK_CONTAINS(rv, "nan");
+}
+
 #define STRING(X) X, (sizeof(X) - 1)
 
 SENTRY_TEST(value_json_parsing)
@@ -418,6 +790,26 @@ SENTRY_TEST(value_json_parsing)
     rv = sentry__value_from_json(STRING("42"));
     TEST_CHECK(sentry_value_get_type(rv) == SENTRY_VALUE_TYPE_INT32);
     TEST_CHECK_INT_EQUAL(sentry_value_as_int32(rv), 42);
+    sentry_value_decref(rv);
+
+    rv = sentry__value_from_json(STRING("-9223372036854775808"));
+    TEST_CHECK(sentry_value_get_type(rv) == SENTRY_VALUE_TYPE_INT64);
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int64(rv), INT64_MIN);
+    sentry_value_decref(rv);
+
+    rv = sentry__value_from_json(STRING("-9223372036854775809"));
+    TEST_CHECK(sentry_value_get_type(rv) == SENTRY_VALUE_TYPE_DOUBLE);
+    TEST_CHECK_INT_EQUAL(sentry_value_as_double(rv), -9.2233720368547758E+18);
+    sentry_value_decref(rv);
+
+    rv = sentry__value_from_json(STRING("18446744073709551615"));
+    TEST_CHECK(sentry_value_get_type(rv) == SENTRY_VALUE_TYPE_UINT64);
+    TEST_CHECK_UINT64_EQUAL(sentry_value_as_uint64(rv), UINT64_MAX);
+    sentry_value_decref(rv);
+
+    rv = sentry__value_from_json(STRING("18446744073709551616"));
+    TEST_CHECK(sentry_value_get_type(rv) == SENTRY_VALUE_TYPE_DOUBLE);
+    TEST_CHECK(sentry_value_as_double(rv) == 1.8446744073709552E+19);
     sentry_value_decref(rv);
 
     rv = sentry__value_from_json(STRING("false"));
@@ -452,7 +844,7 @@ SENTRY_TEST(value_json_parsing)
         "\"surrogates\":\"𐐷\"}");
     sentry_value_decref(rv);
 
-    // unmatched surrogates don’t parse
+    // unmatched surrogates don't parse
     rv = sentry__value_from_json(STRING("\"\\uD801\""));
     TEST_CHECK(sentry_value_is_null(rv));
     rv = sentry__value_from_json(
@@ -498,6 +890,39 @@ SENTRY_TEST(value_json_deeply_nested)
     sentry_value_decref(parsed);
 }
 
+SENTRY_TEST(value_json_max_depth)
+{
+    char accepted[64 * 2 + sizeof("null")]; // SENTRY_JSON_MAX_DEPTH
+    write_nested_json_arrays(accepted, 64);
+    sentry_value_t value = sentry__value_from_json(accepted, strlen(accepted));
+    TEST_CHECK(sentry_value_get_type(value) == SENTRY_VALUE_TYPE_LIST);
+    sentry_value_decref(value);
+
+    char too_deep[65 * 2 + sizeof("null")]; // SENTRY_JSON_MAX_DEPTH + 1
+    write_nested_json_arrays(too_deep, 65);
+    value = sentry__value_from_json(too_deep, strlen(too_deep));
+    TEST_CHECK(sentry_value_is_null(value));
+    sentry_value_decref(value);
+}
+
+SENTRY_TEST(value_json_len_out)
+{
+    const char expected[] = "{\"message\":\"escaped\\nvalue\"}";
+    sentry_value_t value = sentry_value_new_object();
+    sentry_value_set_by_key(
+        value, "message", sentry_value_new_string("escaped\nvalue"));
+
+    size_t json_len = 0;
+    char *json = sentry__value_to_json(value, &json_len);
+    sentry_value_decref(value);
+
+    TEST_ASSERT(!!json);
+    TEST_CHECK_STRING_EQUAL(json, expected);
+    TEST_CHECK_INT_EQUAL(json_len, sizeof(expected) - 1);
+
+    sentry_free(json);
+}
+
 SENTRY_TEST(value_json_escaping)
 {
     sentry_value_t rv = sentry__value_from_json(
@@ -523,7 +948,7 @@ SENTRY_TEST(value_json_surrogates)
     TEST_CHECK_JSON_VALUE(rv, "{\"surrogates\":\"oh 𐐷 hi\"}");
     sentry_value_decref(rv);
 
-    // unmatched surrogates don’t parse
+    // unmatched surrogates don't parse
     rv = sentry__value_from_json(STRING("\"\\uD801\""));
     TEST_CHECK(sentry_value_is_null(rv));
     rv = sentry__value_from_json(
@@ -550,10 +975,10 @@ SENTRY_TEST(value_json_locales)
     TEST_CHECK(sentry_value_as_double(sentry_value_get_by_key(rv, "dbl_min"))
         == 2.2250738585072014e-308);
 
-    TEST_CHECK(sentry_value_as_double(sentry_value_get_by_key(rv, "max_int32"))
+    TEST_CHECK(sentry_value_as_int64(sentry_value_get_by_key(rv, "max_int32"))
         == 4294967295.);
     TEST_CHECK(
-        sentry_value_as_double(sentry_value_get_by_key(rv, "max_safe_int"))
+        sentry_value_as_int64(sentry_value_get_by_key(rv, "max_safe_int"))
         == 9007199254740991.);
 
     // we format to 16 digits:
@@ -686,8 +1111,9 @@ SENTRY_TEST(value_get_by_null_key)
 SENTRY_TEST(value_set_stacktrace)
 {
 #if defined(SENTRY_PLATFORM_NX)
-    return SKIP_TEST();
+    SKIP_TEST();
 #endif
+
     sentry_value_t exc
         = sentry_value_new_exception("std::out_of_range", "vector");
     sentry_value_set_stacktrace(exc, NULL, 0);
@@ -814,12 +1240,14 @@ SENTRY_TEST(thread_without_name_still_valid)
     sentry_value_decref(thread);
 }
 
-SENTRY_TEST(user_feedback_is_valid)
+SENTRY_TEST(user_report_is_valid)
 {
     sentry_uuid_t event_id
         = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
-    sentry_value_t user_feedback = sentry_value_new_user_feedback(
-        &event_id, "some-name", "some-email", "some-comment");
+    sentry_value_t user_feedback;
+    SENTRY_TEST_DEPRECATED(
+        user_feedback = sentry_value_new_user_feedback(
+            &event_id, "some-name", "some-email", "some-comment"));
 
     TEST_CHECK(!sentry_value_is_null(user_feedback));
     TEST_CHECK_STRING_EQUAL(
@@ -839,8 +1267,9 @@ SENTRY_TEST(user_feedback_with_null_args)
 {
     sentry_uuid_t event_id
         = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
-    sentry_value_t user_feedback
-        = sentry_value_new_user_feedback(&event_id, NULL, NULL, NULL);
+    sentry_value_t user_feedback;
+    SENTRY_TEST_DEPRECATED(user_feedback
+        = sentry_value_new_user_feedback(&event_id, NULL, NULL, NULL));
 
     TEST_CHECK(!sentry_value_is_null(user_feedback));
     TEST_CHECK(
@@ -852,8 +1281,8 @@ SENTRY_TEST(user_feedback_with_null_args)
 
     sentry_value_decref(user_feedback);
 
-    user_feedback = sentry_value_new_user_feedback(
-        &event_id, NULL, "some-email", "some-comment");
+    SENTRY_TEST_DEPRECATED(user_feedback = sentry_value_new_user_feedback(
+                               &event_id, NULL, "some-email", "some-comment"));
 
     TEST_CHECK(!sentry_value_is_null(user_feedback));
     TEST_CHECK(
@@ -867,8 +1296,8 @@ SENTRY_TEST(user_feedback_with_null_args)
 
     sentry_value_decref(user_feedback);
 
-    user_feedback = sentry_value_new_user_feedback(
-        &event_id, "some-name", NULL, "some-comment");
+    SENTRY_TEST_DEPRECATED(user_feedback = sentry_value_new_user_feedback(
+                               &event_id, "some-name", NULL, "some-comment"));
 
     TEST_CHECK(!sentry_value_is_null(user_feedback));
     TEST_CHECK_STRING_EQUAL(
@@ -882,8 +1311,8 @@ SENTRY_TEST(user_feedback_with_null_args)
 
     sentry_value_decref(user_feedback);
 
-    user_feedback = sentry_value_new_user_feedback(
-        &event_id, "some-name", "some-email", NULL);
+    SENTRY_TEST_DEPRECATED(user_feedback = sentry_value_new_user_feedback(
+                               &event_id, "some-name", "some-email", NULL));
 
     TEST_CHECK(!sentry_value_is_null(user_feedback));
 
@@ -897,4 +1326,511 @@ SENTRY_TEST(user_feedback_with_null_args)
         sentry_value_get_by_key(user_feedback, "comments")));
 
     sentry_value_decref(user_feedback);
+}
+
+SENTRY_TEST(user_feedback_is_valid)
+{
+    sentry_uuid_t event_id
+        = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
+    sentry_value_t user_feedback = sentry_value_new_feedback(
+        "some-message", "some-email", "some-name", &event_id);
+
+    TEST_CHECK(!sentry_value_is_null(user_feedback));
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(user_feedback, "name")),
+        "some-name");
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
+                                user_feedback, "contact_email")),
+        "some-email");
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
+                                user_feedback, "message")),
+        "some-message");
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
+                                user_feedback, "associated_event_id")),
+        "c993afb6b4ac48a6b61b2558e601d65d");
+
+    sentry_value_decref(user_feedback);
+}
+
+SENTRY_TEST(event_with_id)
+{
+    sentry_uuid_t event_id
+        = sentry_uuid_from_string("ad59c6f8-eb88-4dca-b330-94dee9a46fe8");
+
+    sentry_value_t event = sentry__value_new_event_with_id(&event_id);
+
+    TEST_CHECK(!sentry_value_is_null(event));
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(event, "event_id")),
+        "ad59c6f8-eb88-4dca-b330-94dee9a46fe8");
+    TEST_CHECK(
+        !sentry_value_is_null(sentry_value_get_by_key(event, "timestamp")));
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(event, "platform")),
+        "native");
+
+    sentry_value_decref(event);
+}
+
+SENTRY_TEST(value_from_msgpack_empty)
+{
+    TEST_CHECK(sentry_value_is_null(sentry__value_from_msgpack(NULL, 0)));
+    TEST_CHECK(sentry_value_is_null(sentry__value_from_msgpack("", 0)));
+}
+
+SENTRY_TEST(value_from_msgpack_null)
+{
+    sentry_value_t val = sentry_value_new_null();
+    size_t size = 0;
+    char *buf = sentry_value_to_msgpack(val, &size);
+
+    sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+    TEST_CHECK(sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_NULL);
+    TEST_CHECK(sentry_value_is_null(deserialized));
+
+    sentry_free(buf);
+    sentry_value_decref(val);
+    sentry_value_decref(deserialized);
+}
+
+SENTRY_TEST(value_from_msgpack_bool)
+{
+    {
+        sentry_value_t val = sentry_value_new_bool(true);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_BOOL);
+        TEST_CHECK(sentry_value_is_true(deserialized));
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+    {
+        sentry_value_t val = sentry_value_new_bool(false);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_BOOL);
+        TEST_CHECK(!sentry_value_is_true(deserialized));
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+}
+
+SENTRY_TEST(value_from_msgpack_int32)
+{
+    {
+        sentry_value_t val = sentry_value_new_int32(42);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_INT32);
+        TEST_CHECK(sentry_value_as_int32(deserialized) == 42);
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+    {
+        sentry_value_t val = sentry_value_new_int32(-123);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_INT32);
+        TEST_CHECK(sentry_value_as_int32(deserialized) == -123);
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+}
+
+SENTRY_TEST(value_from_msgpack_int64)
+{
+    {
+        sentry_value_t val = sentry_value_new_int64((int64_t)INT32_MIN - 1);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_INT64);
+        TEST_CHECK(
+            sentry_value_as_int64(deserialized) == (int64_t)INT32_MIN - 1);
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+    {
+        sentry_value_t val = sentry_value_new_int64(INT64_MIN);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_INT64);
+        TEST_CHECK(sentry_value_as_int64(deserialized) == INT64_MIN);
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+    {
+        sentry_value_t val = sentry_value_new_int64((int64_t)INT32_MAX + 1);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_INT64);
+        TEST_CHECK(
+            sentry_value_as_int64(deserialized) == (int64_t)INT32_MAX + 1);
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+    {
+        sentry_value_t val = sentry_value_new_int64(INT64_MAX);
+        size_t size = 0;
+        char *buf = sentry_value_to_msgpack(val, &size);
+
+        sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+        TEST_CHECK(
+            sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_INT64);
+        TEST_CHECK(sentry_value_as_int64(deserialized) == INT64_MAX);
+
+        sentry_free(buf);
+        sentry_value_decref(val);
+        sentry_value_decref(deserialized);
+    }
+}
+
+SENTRY_TEST(value_from_msgpack_uint64)
+{
+    sentry_value_t val = sentry_value_new_uint64(UINT64_MAX);
+    size_t size = 0;
+    char *buf = sentry_value_to_msgpack(val, &size);
+
+    sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+    TEST_CHECK(sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_UINT64);
+    TEST_CHECK(sentry_value_as_uint64(deserialized) == UINT64_MAX);
+
+    sentry_free(buf);
+    sentry_value_decref(val);
+    sentry_value_decref(deserialized);
+}
+
+SENTRY_TEST(value_from_msgpack_double)
+{
+    sentry_value_t val = sentry_value_new_double(3.14159);
+    size_t size = 0;
+    char *buf = sentry_value_to_msgpack(val, &size);
+
+    sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+    TEST_CHECK(sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_DOUBLE);
+    double d = sentry_value_as_double(deserialized);
+    TEST_CHECK(d > 3.14 && d < 3.15);
+
+    sentry_free(buf);
+    sentry_value_decref(val);
+    sentry_value_decref(deserialized);
+}
+
+SENTRY_TEST(value_from_msgpack_string)
+{
+    sentry_value_t val = sentry_value_new_string("őá…–🤮🚀¿ 한글 테스트 \a\v");
+    size_t size = 0;
+    char *buf = sentry_value_to_msgpack(val, &size);
+
+    sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+    TEST_CHECK(sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_STRING);
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(deserialized), "őá…–🤮🚀¿ 한글 테스트 \a\v");
+
+    sentry_free(buf);
+    sentry_value_decref(val);
+    sentry_value_decref(deserialized);
+}
+
+SENTRY_TEST(value_from_msgpack_list)
+{
+    sentry_value_t inner = sentry_value_new_list();
+    sentry_value_append(inner, sentry_value_new_int32(1));
+    sentry_value_append(inner, sentry_value_new_int32(2));
+
+    sentry_value_t val = sentry_value_new_list();
+    sentry_value_append(val, inner);
+    sentry_value_append(val, sentry_value_new_string("outer"));
+
+    size_t size = 0;
+    char *buf = sentry_value_to_msgpack(val, &size);
+
+    sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+    TEST_CHECK(sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK(sentry_value_get_length(deserialized) == 2);
+
+    sentry_value_t nested = sentry_value_get_by_index(deserialized, 0);
+    TEST_CHECK(sentry_value_get_type(nested) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK(sentry_value_get_length(nested) == 2);
+
+    sentry_value_t nested_elem0 = sentry_value_get_by_index(nested, 0);
+    TEST_CHECK(sentry_value_as_int32(nested_elem0) == 1);
+
+    sentry_value_t nested_elem1 = sentry_value_get_by_index(nested, 1);
+    TEST_CHECK(sentry_value_as_int32(nested_elem1) == 2);
+
+    sentry_free(buf);
+    sentry_value_decref(val);
+    sentry_value_decref(deserialized);
+}
+
+SENTRY_TEST(value_from_msgpack_deeply_nested)
+{
+    char accepted[64 + 1]; // SENTRY_MPACK_MAX_DEPTH + 1
+    write_nested_msgpack_arrays(accepted, sizeof(accepted) - 1);
+    sentry_value_t value
+        = sentry__value_from_msgpack(accepted, sizeof(accepted));
+    TEST_CHECK(sentry_value_get_type(value) == SENTRY_VALUE_TYPE_LIST);
+    sentry_value_decref(value);
+
+    char too_deep[64 + 2]; // SENTRY_MPACK_MAX_DEPTH + 2
+    write_nested_msgpack_arrays(too_deep, sizeof(too_deep) - 1);
+    value = sentry__value_from_msgpack(too_deep, sizeof(too_deep));
+    TEST_CHECK(sentry_value_is_null(value));
+    sentry_value_decref(value);
+}
+
+SENTRY_TEST(value_from_msgpack_object)
+{
+    sentry_value_t inner = sentry_value_new_object();
+    sentry_value_set_by_key(inner, "x", sentry_value_new_int32(10));
+    sentry_value_set_by_key(inner, "y", sentry_value_new_int32(20));
+
+    sentry_value_t val = sentry_value_new_object();
+    sentry_value_set_by_key(val, "position", inner);
+    sentry_value_set_by_key(val, "label", sentry_value_new_string("point"));
+
+    size_t size = 0;
+    char *buf = sentry_value_to_msgpack(val, &size);
+
+    sentry_value_t deserialized = sentry__value_from_msgpack(buf, size);
+    TEST_CHECK(sentry_value_get_type(deserialized) == SENTRY_VALUE_TYPE_OBJECT);
+
+    sentry_value_t position = sentry_value_get_by_key(deserialized, "position");
+    TEST_CHECK(sentry_value_get_type(position) == SENTRY_VALUE_TYPE_OBJECT);
+
+    sentry_value_t x = sentry_value_get_by_key(position, "x");
+    TEST_CHECK(sentry_value_as_int32(x) == 10);
+
+    sentry_value_t y = sentry_value_get_by_key(position, "y");
+    TEST_CHECK(sentry_value_as_int32(y) == 20);
+
+    sentry_free(buf);
+    sentry_value_decref(val);
+    sentry_value_decref(deserialized);
+}
+
+SENTRY_TEST(value_from_msgpack_flat_buffer)
+{
+    sentry_value_t val1 = sentry_value_new_list();
+    sentry_value_append(val1, sentry_value_new_int32(1));
+    sentry_value_append(val1, sentry_value_new_int32(2));
+    size_t size1 = 0;
+    char *buf1 = sentry_value_to_msgpack(val1, &size1);
+
+    sentry_value_t val2 = sentry_value_new_int32(2);
+    size_t size2 = 0;
+    char *buf2 = sentry_value_to_msgpack(val2, &size2);
+
+    sentry_value_t val3 = sentry_value_new_string("three");
+    size_t size3 = 0;
+    char *buf3 = sentry_value_to_msgpack(val3, &size3);
+
+    char combined[256];
+    size_t combined_size = 0;
+    memcpy(combined + combined_size, buf1, size1);
+    combined_size += size1;
+    memcpy(combined + combined_size, buf2, size2);
+    combined_size += size2;
+    memcpy(combined + combined_size, buf3, size3);
+    combined_size += size3;
+
+    sentry_value_t result = sentry__value_from_msgpack(combined, combined_size);
+    TEST_CHECK(sentry_value_get_type(result) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK(sentry_value_get_length(result) == 3);
+
+    sentry_value_t elem0 = sentry_value_get_by_index(result, 0);
+    TEST_CHECK(sentry_value_get_type(elem0) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK(sentry_value_get_length(elem0) == 2);
+    TEST_CHECK(sentry_value_as_int32(sentry_value_get_by_index(elem0, 0)) == 1);
+    TEST_CHECK(sentry_value_as_int32(sentry_value_get_by_index(elem0, 1)) == 2);
+
+    sentry_value_t elem1 = sentry_value_get_by_index(result, 1);
+    TEST_CHECK(sentry_value_as_int32(elem1) == 2);
+
+    sentry_value_t elem2 = sentry_value_get_by_index(result, 2);
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(elem2), "three");
+
+    sentry_free(buf1);
+    sentry_free(buf2);
+    sentry_free(buf3);
+    sentry_value_decref(val1);
+    sentry_value_decref(val2);
+    sentry_value_decref(val3);
+    sentry_value_decref(result);
+}
+
+#define TEST_CHECK_MESSAGE_EQUAL(breadcrumbs, index, message)                  \
+    TEST_CHECK_STRING_EQUAL(                                                   \
+        sentry_value_as_string(sentry_value_get_by_key(                        \
+            sentry_value_get_by_index(breadcrumbs, index), "message")),        \
+        message)
+
+SENTRY_TEST(value_merge_breadcrumbs_both_empty)
+{
+    sentry_value_t list_a = sentry_value_new_list();
+    sentry_value_t list_b = sentry_value_new_list();
+
+    sentry_value_t result = sentry__value_merge_breadcrumbs(list_a, list_b, 10);
+    TEST_CHECK(sentry_value_is_null(result));
+
+    sentry_value_decref(list_a);
+    sentry_value_decref(list_b);
+}
+
+SENTRY_TEST(value_merge_breadcrumbs_one_empty)
+{
+    sentry_value_t list_a = sentry_value_new_list();
+    sentry_value_append(
+        list_a, breadcrumb_with_ts("a1", "2024-01-01T00:00:01"));
+    sentry_value_append(
+        list_a, breadcrumb_with_ts("a2", "2024-01-01T00:00:02"));
+    sentry_value_t list_b = sentry_value_new_list();
+
+    // list_b is empty -> return list_a
+    sentry_value_t result = sentry__value_merge_breadcrumbs(list_a, list_b, 10);
+    TEST_CHECK(sentry_value_get_type(result) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK_INT_EQUAL(sentry_value_get_length(result), 2);
+    TEST_CHECK_MESSAGE_EQUAL(result, 0, "a1");
+    TEST_CHECK_MESSAGE_EQUAL(result, 1, "a2");
+    sentry_value_decref(result);
+
+    // list_a is empty -> return list_b
+    sentry_value_t list_c = sentry_value_new_list();
+    result = sentry__value_merge_breadcrumbs(list_c, list_a, 10);
+    TEST_CHECK(sentry_value_get_type(result) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK_INT_EQUAL(sentry_value_get_length(result), 2);
+    TEST_CHECK_MESSAGE_EQUAL(result, 0, "a1");
+    TEST_CHECK_MESSAGE_EQUAL(result, 1, "a2");
+    sentry_value_decref(result);
+
+    sentry_value_decref(list_a);
+    sentry_value_decref(list_b);
+    sentry_value_decref(list_c);
+}
+
+SENTRY_TEST(value_merge_breadcrumbs_interleaved)
+{
+    sentry_value_t list_a = sentry_value_new_list();
+    sentry_value_append(
+        list_a, breadcrumb_with_ts("a1", "2024-01-01T00:00:01"));
+    sentry_value_append(
+        list_a, breadcrumb_with_ts("a4", "2024-01-01T00:00:04"));
+
+    sentry_value_t list_b = sentry_value_new_list();
+    sentry_value_append(
+        list_b, breadcrumb_with_ts("b2", "2024-01-01T00:00:02"));
+    sentry_value_append(
+        list_b, breadcrumb_with_ts("b3", "2024-01-01T00:00:03"));
+
+    sentry_value_t result = sentry__value_merge_breadcrumbs(list_a, list_b, 10);
+    TEST_CHECK(sentry_value_get_type(result) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK_INT_EQUAL(sentry_value_get_length(result), 4);
+    TEST_CHECK_MESSAGE_EQUAL(result, 0, "a1");
+    TEST_CHECK_MESSAGE_EQUAL(result, 1, "b2");
+    TEST_CHECK_MESSAGE_EQUAL(result, 2, "b3");
+    TEST_CHECK_MESSAGE_EQUAL(result, 3, "a4");
+
+    sentry_value_decref(result);
+    sentry_value_decref(list_a);
+    sentry_value_decref(list_b);
+}
+
+SENTRY_TEST(value_merge_breadcrumbs_max_limit)
+{
+    sentry_value_t list_a = sentry_value_new_list();
+    sentry_value_append(
+        list_a, breadcrumb_with_ts("a1", "2024-01-01T00:00:01"));
+    sentry_value_append(
+        list_a, breadcrumb_with_ts("a3", "2024-01-01T00:00:03"));
+
+    sentry_value_t list_b = sentry_value_new_list();
+    sentry_value_append(
+        list_b, breadcrumb_with_ts("b2", "2024-01-01T00:00:02"));
+    sentry_value_append(
+        list_b, breadcrumb_with_ts("b4", "2024-01-01T00:00:04"));
+
+    // max=3 -> oldest (a1) should be dropped
+    sentry_value_t result = sentry__value_merge_breadcrumbs(list_a, list_b, 3);
+    TEST_CHECK(sentry_value_get_type(result) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK_INT_EQUAL(sentry_value_get_length(result), 3);
+    TEST_CHECK_MESSAGE_EQUAL(result, 0, "b2");
+    TEST_CHECK_MESSAGE_EQUAL(result, 1, "a3");
+    TEST_CHECK_MESSAGE_EQUAL(result, 2, "b4");
+    sentry_value_decref(result);
+
+    // max=2 -> oldest two (a1, b2) should be dropped
+    result = sentry__value_merge_breadcrumbs(list_a, list_b, 2);
+    TEST_CHECK(sentry_value_get_type(result) == SENTRY_VALUE_TYPE_LIST);
+    TEST_CHECK_INT_EQUAL(sentry_value_get_length(result), 2);
+    TEST_CHECK_MESSAGE_EQUAL(result, 0, "a3");
+    TEST_CHECK_MESSAGE_EQUAL(result, 1, "b4");
+    sentry_value_decref(result);
+
+    sentry_value_decref(list_a);
+    sentry_value_decref(list_b);
+}
+
+SENTRY_TEST(value_refcount)
+{
+    // primitive values always report refcount 1, and decref is a no-op
+    sentry_value_t null_val = sentry_value_new_null();
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(null_val));
+    TEST_CHECK(!sentry_value_decref(null_val));
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(null_val));
+
+    sentry_value_t bool_val = sentry_value_new_bool(true);
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(bool_val));
+    TEST_CHECK(!sentry_value_decref(bool_val));
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(bool_val));
+
+    sentry_value_t int_val = sentry_value_new_int32(42);
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(int_val));
+    TEST_CHECK(!sentry_value_decref(int_val));
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(int_val));
+
+    // thing-allocated values track refcount through incref/decref
+    sentry_value_t obj = sentry_value_new_object();
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(obj));
+    TEST_CHECK_INT_EQUAL(2, sentry_value_refcount(sentry_value_incref(obj)));
+    TEST_CHECK_INT_EQUAL(3, sentry_value_refcount(sentry_value_incref(obj)));
+    TEST_CHECK(!!sentry_value_decref(obj));
+    TEST_CHECK_INT_EQUAL(2, sentry_value_refcount(obj));
+    TEST_CHECK(!!sentry_value_decref(obj));
+    TEST_CHECK_INT_EQUAL(1, sentry_value_refcount(obj));
+    TEST_CHECK(!sentry_value_decref(obj));
 }

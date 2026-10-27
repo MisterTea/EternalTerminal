@@ -13,13 +13,13 @@ namespace Catch {
 namespace Matchers {
 
     std::string MatcherUntypedBase::toString() const {
-        if (m_cachedToString.empty()) {
-            m_cachedToString = describe();
-        }
-        return m_cachedToString;
+        return describe();
     }
 
-    MatcherUntypedBase::~MatcherUntypedBase() = default;
+    std::string MatcherUntypedBase::describe() const {
+        using namespace std::string_literals;
+        return "Undescribed matcher"s;
+    }
 
 } // namespace Matchers
 } // namespace Catch

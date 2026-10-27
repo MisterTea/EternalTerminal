@@ -45,7 +45,7 @@
  *    when the compiler handles `ExprLhs<T> == b`, it also tries to resolve
  *    the overload set for `b == ExprLhs<T>`.
  *
- * To accomodate these use cases, decomposer ended up rather complex.
+ * To accommodate these use cases, decomposer ended up rather complex.
  *
  * 1) These types are handled by adding SFINAE overloads to our comparison
  *    operators, checking whether `T == U` are comparable with the given
@@ -78,10 +78,11 @@
  *
  * 3) If a type has no linkage, we also cannot capture it by reference.
  *    The solution is once again to capture them by value. We handle
- *    the common cases by using `std::is_arithmetic` as the default
- *    for `Catch::capture_by_value`, but that is only a some-effort
- *    heuristic. But as with 2), users can specialize `capture_by_value`
- *    for their own types as needed.
+ *    the common cases by using `std::is_arithmetic` and `std::is_enum`
+ *    as the default for `Catch::capture_by_value`, but that is only a
+ *    some-effort heuristic. These combine to capture all possible bitfield
+ *    bases, and also some trait-like types. As with 2), users can
+ *    specialize `capture_by_value` for their own types as needed.
  *
  * 4) To support C++20 and make the SFINAE on our decomposing operators
  *    work, the SFINAE has to happen in return type, rather than in
@@ -133,13 +134,22 @@ namespace Catch {
         using RemoveCVRef_t = std::remove_cv_t<std::remove_reference_t<T>>;
     }
 
-    // Note: There is nothing that stops us from extending this,
-    //       e.g. to `std::is_scalar`, but the more encompassing
-    //       traits are usually also more expensive. For now we
-    //       keep this as it used to be and it can be changed later.
+    // Note: This is about as much as we can currently reasonably support.
+    //       In an ideal world, we could capture by value small trivially
+    //       copyable types, but the actual `std::is_trivially_copyable`
+    //       trait is a huge mess with standard-violating results on
+    //       GCC and Clang, which are unlikely to be fixed soon due to ABI
+    //       concerns.
+    //       `std::is_scalar` also causes issues due to the `is_pointer`
+    //       component, which causes ambiguity issues with (references-to)
+    //       function pointer. If those are resolved, we still need to
+    //       disambiguate the overload set for arrays, through explicit
+    //       overload for references to sized arrays.
     template <typename T>
     struct capture_by_value
-        : std::integral_constant<bool, std::is_arithmetic<T>{}> {};
+        : std::integral_constant<bool,
+                                 std::is_arithmetic<T>::value ||
+                                     std::is_enum<T>::value> {};
 
 #if defined( CATCH_CONFIG_CPP20_COMPARE_OVERLOADS )
     template <>
@@ -163,7 +173,7 @@ namespace Catch {
     public:
         constexpr auto isBinaryExpression() const -> bool { return m_isBinaryExpression; }
         constexpr auto getResult() const -> bool { return m_result; }
-        //! This function **has** to be overriden by the derived class.
+        //! This function **has** to be overridden by the derived class.
         virtual void streamReconstructedExpression( std::ostream& os ) const;
 
         constexpr ITransientExpression( bool isBinaryExpression, bool result )
@@ -183,7 +193,7 @@ namespace Catch {
     void formatReconstructedExpression( std::ostream &os, std::string const& lhs, StringRef op, std::string const& rhs );
 
     template<typename LhsT, typename RhsT>
-    class BinaryExpr  : public ITransientExpression {
+    class BinaryExpr final : public ITransientExpression {
         LhsT m_lhs;
         StringRef m_op;
         RhsT m_rhs;
@@ -259,7 +269,7 @@ namespace Catch {
     };
 
     template<typename LhsT>
-    class UnaryExpr : public ITransientExpression {
+    class UnaryExpr final : public ITransientExpression {
         LhsT m_lhs;
 
         void streamReconstructedExpression( std::ostream &os ) const override {

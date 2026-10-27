@@ -57,40 +57,6 @@ again.
 ## Features
 This section outlines some missing features, what is their status and their possible workarounds.
 
-### Thread safe assertions
-Catch2's assertion macros are not thread safe. This does not mean that
-you cannot use threads inside Catch's test, but that only single thread
-can interact with Catch's assertions and other macros.
-
-This means that this is ok
-```cpp
-    std::vector<std::thread> threads;
-    std::atomic<int> cnt{ 0 };
-    for (int i = 0; i < 4; ++i) {
-        threads.emplace_back([&]() {
-            ++cnt; ++cnt; ++cnt; ++cnt;
-        });
-    }
-    for (auto& t : threads) { t.join(); }
-    REQUIRE(cnt == 16);
-```
-because only one thread passes the `REQUIRE` macro and this is not
-```cpp
-    std::vector<std::thread> threads;
-    std::atomic<int> cnt{ 0 };
-    for (int i = 0; i < 4; ++i) {
-        threads.emplace_back([&]() {
-            ++cnt; ++cnt; ++cnt; ++cnt;
-            CHECK(cnt == 16);
-        });
-    }
-    for (auto& t : threads) { t.join(); }
-    REQUIRE(cnt == 16);
-```
-
-We currently do not plan to support thread-safe assertions.
-
-
 ### Process isolation in a test
 Catch does not support running tests in isolated (forked) processes. While this might in the future, the fact that Windows does not support forking and only allows full-on process creation and the desire to keep code as similar as possible across platforms, mean that this is likely to take significant development time, that is not currently available.
 
@@ -187,5 +153,5 @@ but only when compiled with a C++20 conforming compiler. MSVC is currently
 not conformant enough, but `clang-cl` will compile the assertion above
 using MSVC STL without problem.
 
-This change got in with MSVC v19.37](https://godbolt.org/z/KG9obzdvE).
+[This change got in with MSVC v19.37](https://godbolt.org/z/KG9obzdvE).
 

@@ -4,7 +4,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO qicosmos/iguana
     REF "${VERSION}"
-    SHA512 278d96bc3586104904c91bd62c5579b1db6a844ab5ef64ba3853f55bd04852cf7c035e4c88211bbab3348fba662edab5e6fd1df0d113d41cfed7b455467f9fb3
+    SHA512 528dc6e21872d25890127b74da55f88652ac7ca09216ba9546a27135b2451da53a070c46085abbb9de2480059f7ab9adc4ff851082f548a4408eea316097ed1f
     HEAD_REF master
 )
 
@@ -12,5 +12,7 @@ file(INSTALL
     "${SOURCE_PATH}/iguana"
     DESTINATION "${CURRENT_PACKAGES_DIR}/include"
 )
+
+vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/iguana/version.hpp" "#define IGUANA_VERSION 100005  // 1.0.5" "#define IGUANA_VERSION 100200  // 1.2.0")
 
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

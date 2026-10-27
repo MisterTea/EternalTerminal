@@ -7,21 +7,23 @@ if("tao" IN_LIST FEATURES)
     # Don't change to vcpkg_from_github! This points to a release and not an archive
     vcpkg_download_distfile(ARCHIVE
         URLS "https://github.com/DOCGroup/ACE_TAO/releases/download/ACE%2BTAO-${VERSION_DIRECTORY}/ACE%2BTAO-src-${VERSION}.tar.gz"
-        FILENAME "ACE-TAO-${VERSION}.tar.gz"
-        SHA512 11707f5c4c3a67b437ed2112612640d19a5d11c3909597dae2ce60a34979578e3376871a698d43f9c4236a26d37b301f2148314535f66242444a0849c42fedbe
+        FILENAME "ACE-TAO-src-${VERSION}.tar.gz"
+        SHA512 955fa4de8df23fb0b91c3d7b3d6a23c2e16b15d16305efda874688bfa1cd3c9f6f7997d2cc19585daab1781bba7daca397179453d652edfc06b513f6028518c6
     )
 else()
     # Don't change to vcpkg_from_github! This points to a release and not an archive
     vcpkg_download_distfile(ARCHIVE
         URLS "https://github.com/DOCGroup/ACE_TAO/releases/download/ACE%2BTAO-${VERSION_DIRECTORY}/ACE-src-${VERSION}.tar.gz"
         FILENAME "ACE-src-${VERSION}.tar.gz"
-        SHA512 208b6101c1415ee64f7a9a99c1fe53a3b51078408809716ea9bf744667f853c86e7656e02c49c55e6866218033336de4ed8bfbd39254bf94f8a332861ea6e97f
+        SHA512 eb7ac914438136cf98a3952bdd1d43543729019812b13509a6d805465f9016ec866dc6f07aed0a489555d3ac54c1ebe931ffd74a0687e29086bc5b063ab25cbc
     )
 endif()
 
 vcpkg_extract_source_archive(
     SOURCE_PATH
     ARCHIVE "${ARCHIVE}"
+    PATCHES
+        zlib.patch
 )
 
 set(ACE_ROOT "${SOURCE_PATH}")
@@ -128,6 +130,7 @@ if(VCPKG_TARGET_IS_WINDOWS)
   vcpkg_msbuild_install(
     SOURCE_PATH "${SOURCE_PATH}"
     PROJECT_SUBPATH "${PROJECT_SUBPATH}"
+    OPTIONS "/p:UseMultiToolTask=false" # tao_idl uses static temp file buffers; parallel custom builds cause mkstemp name collisions on Windows
   )
 
   # ACE itself does not define an install target, so it is not clear which

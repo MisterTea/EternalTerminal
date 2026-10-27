@@ -2,17 +2,18 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO unum-cloud/usearch
     REF "v${VERSION}"
-    SHA512 d023759cfb2c21811ce5e5df0ea7b344326cc45ab9a6b4e72e95a7db1cf157c282241920e3aeae4a8028bd1fa5c186b910a8fd4baa568209208aeed182615f81
+    SHA512 b56c6646a54157a8111d9c0085a2f9d1000f9a3f22efa6a43aa7eaa62604a29bd4250dc2938026225e8f612bc6e70920af7bb5c51492d59303f88445ef52f992
     HEAD_REF main
     PATCHES
         use-vcpkg-ports.patch
+        fix-map-failed.patch # official fix: https://github.com/unum-cloud/USearch/pull/720 , remove this patch in the next release
 )
 
 vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
     FEATURES
         fp16     USEARCH_USE_FP16LIB
         jemalloc USEARCH_USE_JEMALLOC
-        simsimd  USEARCH_USE_SIMSIMD
+        numkong  USEARCH_USE_NUMKONG
 )
 
 vcpkg_cmake_configure(

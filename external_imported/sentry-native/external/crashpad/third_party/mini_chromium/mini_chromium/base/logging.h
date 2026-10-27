@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 
+#include "base/files/file_path.h"
 #include "build/build_config.h"
 
 namespace logging {
@@ -40,15 +41,6 @@ enum : LoggingDestination {
 #endif
 };
 
-struct LoggingSettings {
-  LoggingDestination logging_dest = LOG_DEFAULT;
-};
-
-// Sets the logging destination.
-//
-// TODO(jperaza): LOG_TO_FILE is not yet supported.
-bool InitLogging(const LoggingSettings& settings);
-
 typedef int LogSeverity;
 const LogSeverity LOG_VERBOSE = -1;
 const LogSeverity LOG_INFO = 0;
@@ -57,6 +49,21 @@ const LogSeverity LOG_ERROR = 2;
 const LogSeverity LOG_ERROR_REPORT = 3;
 const LogSeverity LOG_FATAL = 4;
 const LogSeverity LOG_NUM_SEVERITIES = 5;
+
+struct LoggingSettings {
+  LoggingDestination logging_dest = LOG_DEFAULT;
+
+  // The log file path, used when logging_dest includes LOG_TO_FILE. The file
+  // is opened lazily for appending on the first emitted message.
+  base::FilePath log_file_path;
+
+  // Minimum severity that will be emitted. Defaults to LOG_INFO so every
+  // non-verbose message passes through.
+  int min_log_level = LOG_INFO;
+};
+
+// Sets the logging destination.
+bool InitLogging(const LoggingSettings& settings);
 
 #if defined(NDEBUG)
 const LogSeverity LOG_DFATAL = LOG_ERROR;
@@ -73,9 +80,8 @@ typedef bool (*LogMessageHandlerFunction)(LogSeverity severity,
 void SetLogMessageHandler(LogMessageHandlerFunction log_message_handler);
 LogMessageHandlerFunction GetLogMessageHandler();
 
-static inline int GetMinLogLevel() {
-  return LOG_INFO;
-}
+int GetMinLogLevel();
+void SetMinLogLevel(int level);
 
 static inline int GetVlogLevel(const char*) {
   return std::numeric_limits<int>::max();
@@ -123,11 +129,10 @@ class LogMessage {
   LogSeverity severity_;
 };
 
-class LogMessageVoidify {
+class LogMessageFatal final : public LogMessage {
  public:
-  LogMessageVoidify() {}
-
-  void operator&(const std::ostream&) const {}
+  using LogMessage::LogMessage;
+  [[noreturn]] ~LogMessageFatal() override;
 };
 
 #if BUILDFLAG(IS_WIN)
@@ -144,9 +149,19 @@ class Win32ErrorLogMessage : public LogMessage {
 
   ~Win32ErrorLogMessage();
 
+ protected:
+  void AppendError();
+
  private:
   unsigned long err_;
 };
+
+class Win32ErrorLogMessageFatal final : public Win32ErrorLogMessage {
+ public:
+  using Win32ErrorLogMessage::Win32ErrorLogMessage;
+  [[noreturn]] ~Win32ErrorLogMessageFatal() override;
+};
+
 #elif BUILDFLAG(IS_POSIX)
 class ErrnoLogMessage : public LogMessage {
  public:
@@ -161,8 +176,17 @@ class ErrnoLogMessage : public LogMessage {
 
   ~ErrnoLogMessage();
 
+ protected:
+  void AppendError();
+
  private:
   int err_;
+};
+
+class ErrnoLogMessageFatal final : public ErrnoLogMessage {
+ public:
+  using ErrnoLogMessage::ErrnoLogMessage;
+  [[noreturn]] ~ErrnoLogMessageFatal() override;
 };
 #endif
 
@@ -187,8 +211,11 @@ class ErrnoLogMessage : public LogMessage {
     logging::ClassName(FUNCTION_SIGNATURE, __FILE__, __LINE__, \
                        logging::LOG_ERROR_REPORT, ## __VA_ARGS__)
 #define COMPACT_GOOGLE_LOG_EX_FATAL(ClassName, ...) \
-    logging::ClassName(FUNCTION_SIGNATURE, __FILE__, __LINE__, \
-                       logging::LOG_FATAL, ## __VA_ARGS__)
+  logging::ClassName##Fatal(FUNCTION_SIGNATURE,     \
+                            __FILE__,               \
+                            __LINE__,               \
+                            logging::LOG_FATAL,     \
+                            ##__VA_ARGS__)
 #define COMPACT_GOOGLE_LOG_EX_DFATAL(ClassName, ...) \
     logging::ClassName(FUNCTION_SIGNATURE, __FILE__, __LINE__, \
                        logging::LOG_DFATAL, ## __VA_ARGS__)
@@ -228,10 +255,19 @@ const LogSeverity LOG_0 = LOG_ERROR;
 #endif  // BUILDFLAG(IS_WIN)
 
 #define LAZY_STREAM(stream, condition) \
-    !(condition) ? (void) 0 : ::logging::LogMessageVoidify() & (stream)
+  switch (0)                           \
+  case 0:                              \
+  default:                             \
+    if (!(condition))                  \
+      ;                                \
+    else                               \
+      (stream)
 
-#define LOG_IS_ON(severity) \
-    ((::logging::LOG_ ## severity) >= ::logging::GetMinLogLevel())
+// FATAL is always enabled and required to be resolved in compile time for
+// LOG(FATAL) to be properly understood as [[noreturn]].
+#define LOG_IS_ON(severity)                               \
+  ((::logging::LOG_##severity) == ::logging::LOG_FATAL || \
+   (::logging::LOG_##severity) >= ::logging::GetMinLogLevel())
 #define VLOG_IS_ON(verbose_level) \
     ((verbose_level) <= ::logging::GetVlogLevel(__FILE__))
 

@@ -2,16 +2,14 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO cursey/safetyhook
     REF "v${VERSION}"
-    SHA512 6eca97f480ef86680646feb0581e587d856475da211ddcbcf1a837dda7ef289dee989128a714779924f48b192ee1e776f529c9c43e81d18ce776c5260090753a
+    SHA512 863aad37f9236f151be6a2e6f29d962cd2d356c6ff80a1e9e5a4f6d6a22c1dddbd52462ce48203ae67ae124f7d71eb60f6e2829c8eba417bb6b5569aab5683f2
     HEAD_REF main
 )
-
-vcpkg_find_acquire_program(GIT)
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
-        "-DGIT_EXECUTABLE=${GIT}"
+    	"-DCMKR_SKIP_GENERATION=ON"
         "-DSAFETYHOOK_FETCH_ZYDIS=OFF"
 )
 

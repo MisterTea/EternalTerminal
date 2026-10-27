@@ -12,6 +12,7 @@
 #include <catch2/catch_config.hpp>
 #include <catch2/interfaces/catch_interfaces_reporter.hpp>
 #include <catch2/interfaces/catch_interfaces_reporter_factory.hpp>
+#include <catch2/interfaces/catch_interfaces_registry_hub.hpp>
 #include <catch2/internal/catch_console_colour.hpp>
 #include <catch2/internal/catch_enforce.hpp>
 #include <catch2/internal/catch_list.hpp>
@@ -54,7 +55,7 @@ TEST_CASE( "The default listing implementation write to provided stream",
     SECTION( "Listing tags" ) {
         std::vector<Catch::TagInfo> tags(1);
         tags[0].add("fakeTag"_catch_sr);
-        Catch::defaultListTags(sstream.stream(), tags, false);
+        Catch::defaultListTags(sstream.stream(), tags, false, Catch::Verbosity::Normal);
 
         auto listingString = sstream.str();
         REQUIRE_THAT(listingString, ContainsSubstring("[fakeTag]"s));
@@ -87,7 +88,7 @@ TEST_CASE( "The default listing implementation write to provided stream",
         std::vector<Catch::ListenerDescription> listeners(
             { { "fakeListener"_catch_sr, "fake description" } } );
 
-        Catch::defaultListListeners( sstream.stream(), listeners );
+        Catch::defaultListListeners( sstream.stream(), listeners, Catch::Verbosity::Normal );
         auto listingString = sstream.str();
         REQUIRE_THAT( listingString,
                       ContainsSubstring( "fakeListener"s ) &&

@@ -39,7 +39,8 @@ CrashpadInfoClientOptions::CrashpadInfoClientOptions()
     : crashpad_handler_behavior(TriState::kUnset),
       system_crash_reporter_forwarding(TriState::kUnset),
       gather_indirectly_referenced_memory(TriState::kUnset),
-      indirectly_referenced_memory_cap(0) {
+      indirectly_referenced_memory_cap(0),
+      limit_stack_capture_to_sp(TriState::kUnset) {
 }
 
 }  // namespace crashpad

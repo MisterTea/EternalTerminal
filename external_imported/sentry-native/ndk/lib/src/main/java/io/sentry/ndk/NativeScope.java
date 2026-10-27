@@ -19,6 +19,12 @@ public final class NativeScope implements INativeScope {
 
   public static native void nativeSetTrace(String traceId, String parentSpanId);
 
+  public static native void nativeAddAttachment(String path);
+
+  public static native void nativeAddAttachmentBytes(byte[] data, String filename);
+
+  public static native void nativeClearAttachments();
+
   @Override
   public void setTag(String key, String value) {
     nativeSetTag(key, value);
@@ -62,5 +68,20 @@ public final class NativeScope implements INativeScope {
   @Override
   public void setTrace(String traceId, String parentSpanId) {
     nativeSetTrace(traceId, parentSpanId);
+  }
+
+  @Override
+  public void addAttachment(String path) {
+    nativeAddAttachment(path);
+  }
+
+  @Override
+  public void addAttachmentBytes(byte[] data, String filename) {
+    nativeAddAttachmentBytes(data, filename);
+  }
+
+  @Override
+  public void clearAttachments() {
+    nativeClearAttachments();
   }
 }

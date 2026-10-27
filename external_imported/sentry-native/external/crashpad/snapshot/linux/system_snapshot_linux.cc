@@ -19,13 +19,13 @@
 #include <sys/utsname.h>
 
 #include <algorithm>
+#include <string_view>
 
 #include "base/check_op.h"
 #include "base/files/file_path.h"
 #include "base/logging.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/strings/string_piece.h"
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
 #include "snapshot/cpu_context.h"
@@ -63,8 +63,8 @@ bool ReadCPUsOnline(uint32_t* first_cpu, uint8_t* cpu_count) {
     std::string left, right;
     if (SplitStringFirst(range, '-', &left, &right)) {
       unsigned int start, end;
-      if (!base::StringToUint(base::StringPiece(left), &start) ||
-          !base::StringToUint(base::StringPiece(right), &end) || end <= start) {
+      if (!base::StringToUint(left, &start) ||
+          !base::StringToUint(right, &end) || end <= start) {
         LOG(ERROR) << "format error: " << range;
         return false;
       }
@@ -79,7 +79,7 @@ bool ReadCPUsOnline(uint32_t* first_cpu, uint8_t* cpu_count) {
       }
     } else {
       unsigned int cpuno;
-      if (!base::StringToUint(base::StringPiece(range), &cpuno)) {
+      if (!base::StringToUint(range, &cpuno)) {
         LOG(ERROR) << "format error";
         return false;
       }
@@ -111,7 +111,7 @@ bool ReadFreqFile(const std::string& filename, uint64_t* hz) {
   contents.pop_back();
 
   uint64_t khz;
-  if (!base::StringToUint64(base::StringPiece(contents), &khz)) {
+  if (!base::StringToUint64(contents, &khz)) {
     LOG(ERROR) << "format error";
     return false;
   }
@@ -121,14 +121,35 @@ bool ReadFreqFile(const std::string& filename, uint64_t* hz) {
 }
 
 #if BUILDFLAG(IS_ANDROID)
+struct ReadPropertyData {
+  std::string* value;
+  bool read = false;
+};
+
+void ReadPropertyCallback(void* cookie,
+                          const char* name,
+                          const char* value,
+                          uint32_t serial) {
+  auto* data = static_cast<ReadPropertyData*>(cookie);
+  data->value->assign(value);
+  data->read = true;
+}
+
 bool ReadProperty(const char* property, std::string* value) {
-  char value_buffer[PROP_VALUE_MAX];
-  int length = __system_property_get(property, value_buffer);
-  if (length <= 0) {
+  const prop_info* prop = __system_property_find(property);
+  if (!prop) {
     LOG(ERROR) << "Couldn't read property " << property;
     return false;
   }
-  *value = value_buffer;
+
+  ReadPropertyData data;
+  data.value = value;
+  __system_property_read_callback(prop, ReadPropertyCallback, &data);
+
+  if (!data.read) {
+    LOG(ERROR) << "Couldn't read property " << property;
+    return false;
+  }
   return true;
 }
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -276,8 +297,7 @@ uint32_t SystemSnapshotLinux::CPUX86Signature() const {
 #if defined(ARCH_CPU_X86_FAMILY)
   return cpuid_.Signature();
 #else
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 #endif
 }
 
@@ -286,8 +306,7 @@ uint64_t SystemSnapshotLinux::CPUX86Features() const {
 #if defined(ARCH_CPU_X86_FAMILY)
   return cpuid_.Features();
 #else
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 #endif
 }
 
@@ -296,8 +315,7 @@ uint64_t SystemSnapshotLinux::CPUX86ExtendedFeatures() const {
 #if defined(ARCH_CPU_X86_FAMILY)
   return cpuid_.ExtendedFeatures();
 #else
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 #endif
 }
 
@@ -306,8 +324,7 @@ uint32_t SystemSnapshotLinux::CPUX86Leaf7Features() const {
 #if defined(ARCH_CPU_X86_FAMILY)
   return cpuid_.Leaf7Features();
 #else
-  NOTREACHED_IN_MIGRATION();
-  return 0;
+  NOTREACHED();
 #endif
 }
 
@@ -316,8 +333,7 @@ bool SystemSnapshotLinux::CPUX86SupportsDAZ() const {
 #if defined(ARCH_CPU_X86_FAMILY)
   return cpuid_.SupportsDAZ();
 #else
-  NOTREACHED_IN_MIGRATION();
-  return false;
+  NOTREACHED();
 #endif  // ARCH_CPU_X86_FMAILY
 }
 
@@ -411,13 +427,13 @@ void SystemSnapshotLinux::ReadKernelVersion(const std::string& version_string) {
     return;
   }
 
-  if (!base::StringToInt(base::StringPiece(versions[0]), &os_version_major_)) {
+  if (!base::StringToInt(versions[0], &os_version_major_)) {
     LOG(WARNING) << "no kernel version";
     return;
   }
   DCHECK_GE(os_version_major_, 3);
 
-  if (!base::StringToInt(base::StringPiece(versions[1]), &os_version_minor_)) {
+  if (!base::StringToInt(versions[1], &os_version_minor_)) {
     LOG(WARNING) << "no major revision";
     return;
   }
@@ -427,7 +443,7 @@ void SystemSnapshotLinux::ReadKernelVersion(const std::string& version_string) {
   if (minor_rev_end == std::string::npos) {
     minor_rev_end = versions[2].size();
   }
-  if (!base::StringToInt(base::StringPiece(versions[2].c_str(), minor_rev_end),
+  if (!base::StringToInt(std::string_view(versions[2].c_str(), minor_rev_end),
                          &os_version_bugfix_)) {
     LOG(WARNING) << "no minor revision";
     return;

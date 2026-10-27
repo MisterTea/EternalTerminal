@@ -20,7 +20,7 @@ namespace Catch {
 
 
     template<typename SingletonImplT, typename InterfaceT = SingletonImplT, typename MutableInterfaceT = InterfaceT>
-    class Singleton : SingletonImplT, public ISingleton {
+    class Singleton final : SingletonImplT, public ISingleton {
 
         static auto getInternal() -> Singleton* {
             static Singleton* s_instance = nullptr;

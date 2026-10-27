@@ -3,6 +3,49 @@
 <testExecutions version="1"loose text artifact
 >
   <file path="tests/<exe-name>/IntrospectiveTests/AssertionHandler.tests.cpp">
+    <testCase name="Assertions can be nested - CHECK" duration="{duration}">
+      <skipped message="REQUIRE(i > 10)">
+FAILED:
+	REQUIRE( i > 10 )
+with expansion:
+	2 > 10
+at AssertionHandler.tests.cpp:<line number>
+      </skipped>
+      <skipped message="CHECK(foo( 2 ) == 2)">
+FAILED:
+	CHECK( foo( 2 ) == 2 )
+{ nested assertion failed }
+at AssertionHandler.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="Assertions can be nested - REQUIRE" duration="{duration}">
+      <skipped message="REQUIRE(i > 10)">
+FAILED:
+	REQUIRE( i > 10 )
+with expansion:
+	2 > 10
+at AssertionHandler.tests.cpp:<line number>
+      </skipped>
+      <skipped message="REQUIRE(foo( 2 ) == 2)">
+FAILED:
+	REQUIRE( foo( 2 ) == 2 )
+{ nested assertion failed }
+at AssertionHandler.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="FAIL can be nested in assertion" duration="{duration}">
+      <skipped message="FAIL()">
+FAILED:
+Throw a Catch::TestFailureException
+at AssertionHandler.tests.cpp:<line number>
+      </skipped>
+      <skipped message="CHECK_NOTHROW(do_fail())">
+FAILED:
+	CHECK_NOTHROW( do_fail() )
+{ nested assertion failed }
+at AssertionHandler.tests.cpp:<line number>
+      </skipped>
+    </testCase>
     <testCase name="Incomplete AssertionHandler" duration="{duration}">
       <skipped message="REQUIRE(Dummy)">
 FAILED:
@@ -21,6 +64,17 @@ at AssertionHandler.tests.cpp:<line number>
     <testCase name="is_unary_function" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/CmdLine.tests.cpp">
+    <testCase name="Parsing path filter specs" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Only section specs leads to old filter behaviour" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Generator specs enable new filter behaviour" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Generator specs do not accept stringish arguments" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Generator specs accept star as argument" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Generator specs do not accept negative numbers" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Generic path spec enables new filter behaviour" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Generic path spec for generator is validated" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Generic path spec without colon is rejected" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Using both section and generator filters creates filter stack" duration="{duration}"/>
+    <testCase name="Parsing path filter specs/Section/generator filters are whitespace trimmed" duration="{duration}"/>
     <testCase name="Parsing sharding-related cli flags" duration="{duration}"/>
     <testCase name="Parsing sharding-related cli flags/shard-count" duration="{duration}"/>
     <testCase name="Parsing sharding-related cli flags/Negative shard count reports error" duration="{duration}"/>
@@ -76,6 +130,8 @@ at AssertionHandler.tests.cpp:<line number>
     <testCase name="Process can be configured on command line/use-colour/error" duration="{duration}"/>
     <testCase name="Process can be configured on command line/Benchmark options" duration="{duration}"/>
     <testCase name="Process can be configured on command line/Benchmark options/samples" duration="{duration}"/>
+    <testCase name="Process can be configured on command line/Benchmark options/samples must be greater than zero" duration="{duration}"/>
+    <testCase name="Process can be configured on command line/Benchmark options/samples must be parseable" duration="{duration}"/>
     <testCase name="Process can be configured on command line/Benchmark options/resamples" duration="{duration}"/>
     <testCase name="Process can be configured on command line/Benchmark options/confidence-interval" duration="{duration}"/>
     <testCase name="Process can be configured on command line/Benchmark options/no-analysis" duration="{duration}"/>
@@ -100,7 +156,18 @@ at AssertionHandler.tests.cpp:<line number>
     <testCase name="convertToBits" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/GeneratorsImpl.tests.cpp">
+    <testCase name="ConcatGenerator" duration="{duration}"/>
+    <testCase name="ConcatGenerator/Cat support single-generator construction" duration="{duration}"/>
+    <testCase name="ConcatGenerator/Iterating over multiple generators" duration="{duration}"/>
     <testCase name="Filter generator throws exception for empty generator" duration="{duration}"/>
+    <testCase name="FixedValuesGenerator can be skipped forward" duration="{duration}"/>
+    <testCase name="Generator adapters properly handle isFinite" duration="{duration}"/>
+    <testCase name="Generator adapters properly handle isFinite/concat generator" duration="{duration}"/>
+    <testCase name="Generator adapters properly handle isFinite/take generator" duration="{duration}"/>
+    <testCase name="Generator adapters properly handle isFinite/chunk generator" duration="{duration}"/>
+    <testCase name="Generator adapters properly handle isFinite/map" duration="{duration}"/>
+    <testCase name="Generator adapters properly handle isFinite/filter" duration="{duration}"/>
+    <testCase name="Generators can be skipped forward" duration="{duration}"/>
     <testCase name="Generators internals" duration="{duration}"/>
     <testCase name="Generators internals/Single value" duration="{duration}"/>
     <testCase name="Generators internals/Preset values" duration="{duration}"/>
@@ -110,6 +177,7 @@ at AssertionHandler.tests.cpp:<line number>
     <testCase name="Generators internals/Filter generator/Simple filtering" duration="{duration}"/>
     <testCase name="Generators internals/Filter generator/Filter out multiple elements at the start and end" duration="{duration}"/>
     <testCase name="Generators internals/Filter generator/Throws on construction if it can't get initial element" duration="{duration}"/>
+    <testCase name="Generators internals/Filter generator/Out-of-line predicates are copied into the generator" duration="{duration}"/>
     <testCase name="Generators internals/Take generator" duration="{duration}"/>
     <testCase name="Generators internals/Take generator/Take less" duration="{duration}"/>
     <testCase name="Generators internals/Take generator/Take more" duration="{duration}"/>
@@ -137,6 +205,17 @@ at AssertionHandler.tests.cpp:<line number>
     <testCase name="Generators internals/Range/Negative manual step/Integer/Exact" duration="{duration}"/>
     <testCase name="Generators internals/Range/Negative manual step/Integer/Slightly over end" duration="{duration}"/>
     <testCase name="Generators internals/Range/Negative manual step/Integer/Slightly under end" duration="{duration}"/>
+    <testCase name="MapGenerator can be skipped forward efficiently" duration="{duration}"/>
+    <testCase name="MapGenerator can be skipped forward efficiently/via calls to next()" duration="{duration}"/>
+    <testCase name="MapGenerator can be skipped forward efficiently/via calls to skipToNthElement()" duration="{duration}"/>
+    <testCase name="MapGenerator can handle not default constructible types" duration="{duration}"/>
+    <testCase name="RandomGenerator reports itself as infinite - float" duration="{duration}"/>
+    <testCase name="RandomGenerator reports itself as infinite - int" duration="{duration}"/>
+    <testCase name="RandomGenerator reports itself as infinite - long double" duration="{duration}"/>
+    <testCase name="RepeatGenerator refuses infinite generators" duration="{duration}"/>
+    <testCase name="TakeGenerator can be skipped forward" duration="{duration}"/>
+    <testCase name="TakeGenerator can be skipped forward/take is shorter than underlying" duration="{duration}"/>
+    <testCase name="TakeGenerator can be skipped forward/take is longer than underlying" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/InternalBenchmark.tests.cpp">
     <testCase name="analyse no analysis" duration="{duration}"/>
@@ -173,16 +252,16 @@ at AssertionHandler.tests.cpp:<line number>
     <testCase name="JsonWriter/Moved from JsonObjectWriter shall not insert superfluous brace" duration="{duration}"/>
     <testCase name="JsonWriter/Moved from JsonArrayWriter shall not insert superfluous bracket" duration="{duration}"/>
     <testCase name="JsonWriter/Custom class shall be quoted" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/Quote in a string is escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/Backslash in a string is escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/Forward slash in a string is **not** escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/Backspace in a string is escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/Formfeed in a string is escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/linefeed in a string is escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/carriage return in a string is escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/tab in a string is escaped" duration="{duration}"/>
-    <testCase name="JsonWriter escapes charaters in strings properly/combination of characters is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/Quote in a string is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/Backslash in a string is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/Forward slash in a string is **not** escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/Backspace in a string is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/Formfeed in a string is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/linefeed in a string is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/carriage return in a string is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/tab in a string is escaped" duration="{duration}"/>
+    <testCase name="JsonWriter escapes characters in strings properly/combination of characters is escaped" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/Parse.tests.cpp">
     <testCase name="Parse uints" duration="{duration}"/>
@@ -343,15 +422,11 @@ at AssertionHandler.tests.cpp:<line number>
     <testCase name="Parsing tags with non-alphabetical characters is pass-through" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/ToString.tests.cpp">
-    <testCase name="Directly creating an EnumInfo" duration="{duration}"/>
+    <testCase name="Exception thrown inside stringify does not fail the test" duration="{duration}"/>
     <testCase name="Range type with sentinel" duration="{duration}"/>
     <testCase name="Stringifying char arrays with statically known sizes - char" duration="{duration}"/>
     <testCase name="Stringifying char arrays with statically known sizes - signed char" duration="{duration}"/>
     <testCase name="Stringifying char arrays with statically known sizes - unsigned char" duration="{duration}"/>
-    <testCase name="parseEnums" duration="{duration}"/>
-    <testCase name="parseEnums/No enums" duration="{duration}"/>
-    <testCase name="parseEnums/One enum value" duration="{duration}"/>
-    <testCase name="parseEnums/Multiple enum values" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/UniquePtr.tests.cpp">
     <testCase name="Upcasting special member functions" duration="{duration}"/>
@@ -612,6 +687,7 @@ at Class.tests.cpp:<line number>
     <testCase name="#1319: Sections can have description (even if it is not saved/SectionName" duration="{duration}"/>
     <testCase name="#1403" duration="{duration}"/>
     <testCase name="#1548" duration="{duration}"/>
+    <testCase name="#3001: Enum-based bitfields can be captured" duration="{duration}"/>
     <testCase name="#809" duration="{duration}"/>
     <testCase name="#833" duration="{duration}"/>
     <testCase name="#872" duration="{duration}"/>
@@ -998,8 +1074,14 @@ at Decomposition.tests.cpp:<line number>
     </testCase>
   </file>
   <file path="tests/<exe-name>/UsageTests/EnumToString.tests.cpp">
+    <testCase name="Directly creating an EnumInfo" duration="{duration}"/>
+    <testCase name="Enum backed by larger underlying type" duration="{duration}"/>
     <testCase name="Enums can quickly have stringification enabled using CATCH_REGISTER_ENUM" duration="{duration}"/>
     <testCase name="Enums in namespaces can quickly have stringification enabled using CATCH_REGISTER_ENUM" duration="{duration}"/>
+    <testCase name="parseEnums" duration="{duration}"/>
+    <testCase name="parseEnums/No enums" duration="{duration}"/>
+    <testCase name="parseEnums/One enum value" duration="{duration}"/>
+    <testCase name="parseEnums/Multiple enum values" duration="{duration}"/>
     <testCase name="toString(enum class w/operator&lt;&lt;)" duration="{duration}"/>
     <testCase name="toString(enum class)" duration="{duration}"/>
     <testCase name="toString(enum w/operator&lt;&lt;)" duration="{duration}"/>
@@ -1008,10 +1090,10 @@ at Decomposition.tests.cpp:<line number>
   <file path="tests/<exe-name>/UsageTests/Exception.tests.cpp">
     <testCase name="#748 - captures with unexpected exceptions" duration="{duration}"/>
     <testCase name="#748 - captures with unexpected exceptions/outside assertions" duration="{duration}">
-      <skipped message="TEST_CASE()">
+      <skipped message="({Unknown expression after the reported line})">
 FAILED:
+	{Unknown expression after the reported line}
 expected exception
-answer := 42
 at Exception.tests.cpp:<line number>
       </skipped>
     </testCase>
@@ -1142,8 +1224,9 @@ at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="When unchecked exceptions are thrown from sections they are always failures/section name" duration="{duration}">
-      <error message="TEST_CASE()">
+      <error message="({Unknown expression after the reported line})">
 FAILED:
+	{Unknown expression after the reported line}
 unexpected exception
 at Exception.tests.cpp:<line number>
       </error>
@@ -1161,8 +1244,9 @@ at Exception.tests.cpp:<line number>
     <testCase name="#1913 - GENERATE inside a for loop should not keep recreating the generator" duration="{duration}"/>
     <testCase name="#1913 - GENERATEs can share a line" duration="{duration}"/>
     <testCase name="#2615 - Throwing in constructor generator fails test case but does not abort" duration="{duration}">
-      <skipped message="TEST_CASE()">
+      <skipped message="({Unknown expression after the reported line})">
 FAILED:
+	{Unknown expression after the reported line}
 failure to init
 at Generators.tests.cpp:<line number>
       </skipped>
@@ -1192,6 +1276,9 @@ at Generators.tests.cpp:<line number>
     <testCase name="Generators -- simple/one" duration="{duration}"/>
     <testCase name="Generators -- simple/two" duration="{duration}"/>
     <testCase name="Nested generators and captured variables" duration="{duration}"/>
+    <testCase name="cat generator" duration="{duration}"/>
+    <testCase name="cat generator/Simple usage" duration="{duration}"/>
+    <testCase name="cat generator/Used in map" duration="{duration}"/>
     <testCase name="strlen3" duration="{duration}"/>
     <testCase name="tables" duration="{duration}"/>
   </file>
@@ -1634,6 +1721,31 @@ at Matchers.tests.cpp:<line number>
     <testCase name="CAPTURE can deal with complex expressions" duration="{duration}"/>
     <testCase name="CAPTURE can deal with complex expressions involving commas" duration="{duration}"/>
     <testCase name="CAPTURE parses string and character constants" duration="{duration}"/>
+    <testCase name="Captures do not leave block with an exception" duration="{duration}">
+      <failure message="REQUIRE(false)">
+FAILED:
+	REQUIRE( false )
+a := 1
+at Message.tests.cpp:<line number>
+      </failure>
+    </testCase>
+    <testCase name="Captures outlive section end" duration="{duration}">
+      <failure message="REQUIRE(false)">
+FAILED:
+	REQUIRE( false )
+a := 1
+at Message.tests.cpp:<line number>
+      </failure>
+    </testCase>
+    <testCase name="Captures outlive section end/Dummy section" duration="{duration}"/>
+    <testCase name="Delayed unscoped message clearing does not catch newly inserted messages" duration="{duration}">
+      <skipped message="REQUIRE(false)">
+FAILED:
+	REQUIRE( false )
+b
+at Message.tests.cpp:<line number>
+      </skipped>
+    </testCase>
     <testCase name="FAIL aborts the test" duration="{duration}">
       <failure message="FAIL()">
 FAILED:
@@ -1723,10 +1835,52 @@ at Message.tests.cpp:<line number>
     </testCase>
     <testCase name="SUCCEED counts as a test pass" duration="{duration}"/>
     <testCase name="SUCCEED does not require an argument" duration="{duration}"/>
+    <testCase name="Scoped message applies to all assertions in scope" duration="{duration}">
+      <failure message="CHECK(false)">
+FAILED:
+	CHECK( false )
+This will be reported multiple times
+at Message.tests.cpp:<line number>
+      </failure>
+      <failure message="CHECK(false)">
+FAILED:
+	CHECK( false )
+This will be reported multiple times
+at Message.tests.cpp:<line number>
+      </failure>
+    </testCase>
+    <testCase name="Scoped messages do not leave block with an exception" duration="{duration}">
+      <failure message="REQUIRE(false)">
+FAILED:
+	REQUIRE( false )
+Should be in scope at the end
+at Message.tests.cpp:<line number>
+      </failure>
+    </testCase>
+    <testCase name="Scoped messages outlive section end" duration="{duration}">
+      <failure message="REQUIRE(false)">
+FAILED:
+	REQUIRE( false )
+Should survive a section end
+at Message.tests.cpp:<line number>
+      </failure>
+    </testCase>
+    <testCase name="Scoped messages outlive section end/Dummy section" duration="{duration}"/>
     <testCase name="Standard output from all sections is reported" duration="{duration}"/>
     <testCase name="Standard output from all sections is reported/one" duration="{duration}"/>
     <testCase name="Standard output from all sections is reported/two" duration="{duration}"/>
     <testCase name="The NO_FAIL macro reports a failure but does not fail the test" duration="{duration}"/>
+    <testCase name="Unscoped capture outlives scope" duration="{duration}">
+      <skipped message="REQUIRE(false)">
+FAILED:
+	REQUIRE( false )
+i := 1
+j := 2
+i + j := 3
+at Message.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="Unscoped capture outlives scope/A" duration="{duration}"/>
     <testCase name="just failure" duration="{duration}">
       <failure message="FAIL()">
 FAILED:
@@ -1839,6 +1993,7 @@ at Misc.tests.cpp:<line number>
     <testCase name="A couple of nested sections followed by a failure/Outer" duration="{duration}"/>
     <testCase name="A couple of nested sections followed by a failure/Outer/Inner" duration="{duration}"/>
     <testCase name="An empty test with no assertions" duration="{duration}"/>
+    <testCase name="Comparing (and stringifying) volatile pointers works" duration="{duration}"/>
     <testCase name="Factorials are computed" duration="{duration}"/>
     <testCase name="ManuallyRegistered" duration="{duration}"/>
     <testCase name="Nice descriptive name" duration="{duration}"/>
@@ -1893,6 +2048,10 @@ at Misc.tests.cpp:<line number>
     <testCase name="TemplateTest: vectors can be sized and resized - std::tuple&lt;int,float>/resizing smaller changes size but not capacity/We can use the 'swap trick' to reset the capacity" duration="{duration}"/>
     <testCase name="TemplateTest: vectors can be sized and resized - std::tuple&lt;int,float>/reserving bigger changes capacity but not size" duration="{duration}"/>
     <testCase name="TemplateTest: vectors can be sized and resized - std::tuple&lt;int,float>/reserving smaller does not change size or capacity" duration="{duration}"/>
+    <testCase name="TemplateTestSig: compiles with a single int parameter - 1" duration="{duration}"/>
+    <testCase name="TemplateTestSig: compiles with a single int parameter - 3" duration="{duration}"/>
+    <testCase name="TemplateTestSig: compiles with a single int parameter - 6" duration="{duration}"/>
+    <testCase name="TemplateTestSig: compiles with two type parameters - int,int" duration="{duration}"/>
     <testCase name="TemplateTestSig: vectors can be sized and resized - (std::tuple&lt;int, float>), 6" duration="{duration}"/>
     <testCase name="TemplateTestSig: vectors can be sized and resized - (std::tuple&lt;int, float>), 6/resizing bigger changes size and capacity" duration="{duration}"/>
     <testCase name="TemplateTestSig: vectors can be sized and resized - (std::tuple&lt;int, float>), 6/resizing smaller changes size but not capacity" duration="{duration}"/>
@@ -2200,6 +2359,7 @@ at Skip.tests.cpp:<line number>
     <testCase name="Stringifying std::chrono::duration helpers" duration="{duration}"/>
     <testCase name="Stringifying std::chrono::duration with weird ratios" duration="{duration}"/>
     <testCase name="Stringifying std::chrono::time_point&lt;system_clock>" duration="{duration}"/>
+    <testCase name="system_clock timepoint with non-default duration" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/UsageTests/ToStringGeneral.tests.cpp">
     <testCase name="Capture and info messages" duration="{duration}"/>

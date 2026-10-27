@@ -2,7 +2,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO awslabs/aws-c-mqtt
     REF "v${VERSION}"
-    SHA512 649f11ad5fb90a83643bf29f626c7ee41cafc7e3c3d58f321723fe3c50407981e22bbd6732c17fb96b46c83d6897f7ad63a139c928d6a364b93d20fefd82f70a
+    SHA512 10bff6e2e7d84bcc67e62a83ce91e9ecd5e9cae31a41e749707219d4cc9d5bb694718388de1e4d010f7b14cad580f5cdc4becbdfa502ee9f509d350592e4fffb
     HEAD_REF master
 )
 

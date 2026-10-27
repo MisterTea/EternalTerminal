@@ -18,7 +18,7 @@ namespace Catch {
 
     namespace {
         char toLowerCh(char c) {
-            return static_cast<char>( std::tolower( c ) );
+            return static_cast<char>( std::tolower( static_cast<unsigned char>(c) ) );
         }
     }
 
@@ -51,6 +51,18 @@ namespace Catch {
         std::string::size_type end = str.find_last_not_of( whitespaceChars );
 
         return start != std::string::npos ? str.substr( start, 1+end-start ) : std::string();
+    }
+
+    StringRef trim(StringRef ref) {
+        const auto is_ws = [](char c) {
+            return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+        };
+        size_t real_begin = 0;
+        while (real_begin < ref.size() && is_ws(ref[real_begin])) { ++real_begin; }
+        size_t real_end = ref.size();
+        while (real_end > real_begin && is_ws(ref[real_end - 1])) { --real_end; }
+
+        return ref.substr(real_begin, real_end - real_begin);
     }
 
     bool replaceInPlace( std::string& str, std::string const& replaceThis, std::string const& withThis ) {

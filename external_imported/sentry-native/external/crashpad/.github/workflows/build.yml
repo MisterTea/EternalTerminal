@@ -24,10 +24,10 @@ jobs:
             platform: ubuntu-22.04
             CC: gcc
             CXX: g++
-          - name: Ubuntu (GCC 9.5.0)
+          - name: Ubuntu (GCC 10.5.0)
             platform: ubuntu-22.04
-            CC: gcc-9
-            CXX: g++-9
+            CC: gcc-10
+            CXX: g++-10
           - name: Ubuntu (clang 18.1.3)
             platform: ubuntu-24.04
             CC: clang
@@ -36,6 +36,20 @@ jobs:
             platform: ubuntu-22.04
             CC: clang
             CXX: clang++
+          - name: Linux Arm64 (GCC 13.3.0)
+            platform: ubuntu-24.04-arm
+            CC: gcc
+            CXX: g++
+          - name: Linux Arm64 (clang 18.1.3)
+            platform: ubuntu-24.04-arm
+            CC: clang
+            CXX: clang++
+          - name: Linux Arm32 (gcc-arm-linux-gnueabihf)
+            platform: ubuntu-24.04-arm
+            CC: arm-linux-gnueabihf-gcc
+            CXX: arm-linux-gnueabihf-g++
+            LINUX_ARM32: 1
+            CMAKE_DEFINES: -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=arm -DCMAKE_ASM_COMPILER=arm-linux-gnueabihf-gcc
           - name: Alpine Linux (GCC + musl)
             platform: ubuntu-latest
             container: alpine:3.21
@@ -49,7 +63,7 @@ jobs:
           - name: Windows (x64)
             platform: windows-latest
           - name: Windows ClangCL (x64)
-            platform: windows-latest
+            platform: windows-2022
             CMAKE_DEFINES: -G 'Visual Studio 17 2022' -A x64 -T ClangCL
           - name: Windows (arm64)
             platform: windows-latest
@@ -84,10 +98,22 @@ jobs:
           submodules: "recursive"
 
       - name: Installing Ubuntu Dependencies
-        if: ${{ runner.os == 'Linux' && !matrix.container }}
+        if: ${{ runner.os == 'Linux' && !matrix.container && !matrix.LINUX_ARM32 }}
         run: |
           sudo apt update
           sudo apt install clang zlib1g-dev libcurl4-openssl-dev libssl-dev libunwind-dev pkg-config
+
+      - name: Installing Linux arm32 Dependencies
+        if: ${{ runner.os == 'Linux' && matrix.LINUX_ARM32 && !matrix.container }}
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt update
+          sudo apt install -y \
+            cmake \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            zlib1g-dev:armhf libssl-dev:armhf libcurl4-openssl-dev:armhf \
+            libunwind-dev:armhf pkg-config
+          echo "PKG_CONFIG_LIBDIR=/usr/lib/arm-linux-gnueabihf/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Installing LLVM-MINGW Dependencies
         if: ${{ runner.os == 'Windows' && matrix.MINGW == '1' }}

@@ -48,6 +48,8 @@ public:
         m_current += m_step;
         return (m_positive) ? (m_current < m_end) : (m_current > m_end);
     }
+
+    bool isFinite() const override { return true; }
 };
 
 template <typename T>
@@ -87,6 +89,8 @@ public:
         ++m_current;
         return m_current != m_elems.size();
     }
+
+    bool isFinite() const override { return true; }
 };
 
 template <typename InputIterator,

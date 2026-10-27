@@ -25,12 +25,12 @@ jobs:
 
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: 'recursive'
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@c36620d31ac7c881962c3d9dd939c40ec9434f2b # pin@v2
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # pin@v4.36.2
         with:
           languages: ${{ matrix.language }}
 
@@ -41,16 +41,14 @@ jobs:
 
       - if: matrix.language == 'java'
         name: Setup Java Version
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - if: matrix.language == 'java'
         name: Setup Gradle
-        uses: gradle/actions/setup-gradle@bb0c460cbf5354b0cddd15bacdf0d6aaa3e5a32b # pin@v3
-        with:
-          gradle-home-cache-cleanup: true
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # pin@v6.2.0
 
       - if: matrix.language == 'java'
         name: Build for Android NDK
@@ -64,4 +62,4 @@ jobs:
           cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build --parallel
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@c36620d31ac7c881962c3d9dd939c40ec9434f2b # pin@v2
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # pin@v4.36.2

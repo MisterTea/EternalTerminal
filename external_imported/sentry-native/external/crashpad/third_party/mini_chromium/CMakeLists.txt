@@ -23,6 +23,7 @@ mc_append_sources(
     debug/alias.h
     files/file_path.cc
     files/file_path.h
+    files/file_util.cc
     files/file_util.h
     files/scoped_file.cc
     files/scoped_file.h
@@ -64,7 +65,6 @@ mc_append_sources(
     strings/strcat_internal.h
     strings/string_number_conversions.cc
     strings/string_number_conversions.h
-    strings/string_piece.h
     strings/string_util.h
     strings/stringprintf.cc
     strings/stringprintf.h
@@ -145,12 +145,6 @@ else()
     )
 endif()
 
-if(APPLE)
-    target_compile_options(mini_chromium
-        PUBLIC "-fobjc-arc" "-fno-objc-arc-exceptions"
-        PRIVATE "-Wno-deprecated-declarations"
-    )
-endif()
 if(APPLE AND NOT IOS)
     target_link_libraries(mini_chromium PUBLIC
         "-framework ApplicationServices"

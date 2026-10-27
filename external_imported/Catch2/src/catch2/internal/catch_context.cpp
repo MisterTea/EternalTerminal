@@ -6,25 +6,14 @@
 
 // SPDX-License-Identifier: BSL-1.0
 #include <catch2/internal/catch_context.hpp>
-#include <catch2/internal/catch_noncopyable.hpp>
 #include <catch2/internal/catch_random_number_generator.hpp>
 
 namespace Catch {
 
-    Context* Context::currentContext = nullptr;
-
-    void cleanUpContext() {
-        delete Context::currentContext;
-        Context::currentContext = nullptr;
-    }
-    void Context::createContext() {
-        currentContext = new Context();
-    }
+    Context Context::currentContext;
 
     Context& getCurrentMutableContext() {
-        if ( !Context::currentContext ) { Context::createContext(); }
-        // NOLINTNEXTLINE(clang-analyzer-core.uninitialized.UndefReturn)
-        return *Context::currentContext;
+        return Context::currentContext;
     }
 
     SimplePcg32& sharedRng() {

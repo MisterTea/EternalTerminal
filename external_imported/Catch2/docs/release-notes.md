@@ -2,6 +2,16 @@
 
 # Release notes
 **Contents**<br>
+[3.15.2](#3152)<br>
+[3.15.1](#3151)<br>
+[3.15.0](#3150)<br>
+[3.14.0](#3140)<br>
+[3.13.0](#3130)<br>
+[3.12.0](#3120)<br>
+[3.11.0](#3110)<br>
+[3.10.0](#3100)<br>
+[3.9.1](#391)<br>
+[3.9.0](#390)<br>
 [3.8.1](#381)<br>
 [3.8.0](#380)<br>
 [3.7.1](#371)<br>
@@ -67,6 +77,192 @@
 [Even Older versions](#even-older-versions)<br>
 
 
+## 3.15.2
+
+### Fixes
+* Fixed `--warn InfiniteGenerators` triggering even if the generator was limited to specific element via path filtering.
+* Fixed `-Wunused-parameter` triggering in `-fnoexceptions` builds.
+
+### Improvements
+* `catch_discover_tests` can handle cases where the binary prints out non-Catch2 output due to global constructors (#3162)
+
+
+## 3.15.1
+
+### Fixes
+* Fixed potential OOB access when looking for start of broken UTF-8 sequence during linebreaking (#3096)
+* Fixed `TEMPLATE_LIST_TEST_CASE_METHOD` and `CATCH_TEMPLATE_PRODUCT_TEST_CASE` potentially causing ODR violations (#3161)
+
+
+## 3.15.0
+
+### Fixes
+* Fixed ambiguous overload issue with `std::optional<T>` in C++26. (#3095)
+  * Since `std::optional` was turned into a range, the partial specialization of `StringMaker` for range-like types and for `std::optional<T>` were in conflict.
+
+### Improvements
+* Simplified `CATCH_REGISTER_ENUM` internals for faster compilation and retrieval.
+* Successful assertion are slightly (1-2%) faster.
+* Generic (new-style) matchers support constexpr matching in C++20.
+  * Combining matchers requires C++26.
+  * Catch2-provided generic matchers are all constexpr enabled.
+* Added `STATIC_REQUIRE_THAT` for compile-time matcher assertions.
+  * This requires the compiler to support enough `constexpr` for matchers, see above.
+
+
+## 3.14.0
+
+### Fixes
+* Added missing `<cstdint>` includes. (#3078)
+* Fixed suppression of empty variadic macro arguments warning on Clang <19. (#3085)
+* Fixed `catch_discover_tests` failing during `PRE_TEST` discovery if a target does not have discoverable tests. (#3075)
+* Fixed build of the main library failing with `CATCH_CONFIG_PREFIX_ALL` defined. (#3087)
+* JUnit reporter outputs single failed (errored/skipped) assertion per test case. (#1919)
+
+### Improvements
+* The default implementation of `--list-tags` and `--list-listeners` has a quiet variant.
+* Suppressed the new Clang warning about `__COUNTER__` usage. (#3076)
+* Line-wrapping counts utf-8 codepoints instead of bytes. (#1022, #3086)
+  * Combining character sequences are still miscounted, but Catch2 does not aim to fully support Unicode.
+
+
+## 3.13.0
+
+### Fixes
+* `--benchmark-samples 0` no longer hard crashes (#3056)
+  * The CLI validation fails instead.
+* Fixed warning suppression macros being doubly defined when using Clang on Windows (#3060)
+
+### Improvements
+* Suppressed static analysis 26426 diagnostic for MSVC (#3057)
+* Renamed the internal deprecation macro from `DEPRECATED` to `CATCH_DEPRECATED` to avoid conflicts (#3058)
+* Added `UNSCOPED_CAPTURE` macro (#2954)
+* Added `ConcatGenerator` to combine multiple separate generator into one
+  * The short form is `cat`
+* Generators can now jump forward to nth element efficiently
+  * Custom generators that can jump forward efficiently should override `skipToNthElementImpl`
+* Generators can declare themselves infinite
+  * The generator base defaults to declaring itself finite for backwards compatibility
+  * Custom generators should override `isFinite()` to return the proper value
+* Added `--warn InfiniteGenerators` to error out on `GENERATE` being given an infinite generator
+* Extended options for section filtering from CLI to include generators
+  * The user can specify which element from the generator to use in the test case
+  * See documentation for how the new filters work and how they can be specified
+* `MapGenerator` only calls the mapping function if the output will be used
+
+
+## 3.12.0
+
+### Fixes
+* Fixed unscoped messages after a passing fast-pathed assertion being lost.
+* Fixed the help string for `--order` to mention random order as the default. (#3045)
+* Fixed small documentation typos. (#3039)
+* Fixed compilation with `CATCH_CONFIG_THREAD_SAFE_ASSERTIONS` for older C++ standards.
+* Fixed a thread-safety issue with message macros being used too early after the process starts.
+* Fixed automatic configuration to properly handle PlayStation platform. (#3054)
+* **Fixed the _weird_ behaviour of section filtering when specifying multiple filters.** (#3038)
+  * See #3038 for more details.
+
+### Improvements
+* Added `lifetimebound` attribute to various places.
+  * As an example, compiler that supports lifetime analysis will now diagnose invalid use of Matcher combinators.
+* Minor compile-time improvements to stringification. (#3028)
+  * `std::tuple` printer does not recurse.
+  * Some implementation details were outlined into the cpp file.
+* Global variables will only be marked with `thread_local` in thread-safe builds. (#3044)
+
+### Miscellaneous
+* The thread safety support is no longer experimental.
+  * The new CMake option and C++ define is now `CATCH_CONFIG_THREAD_SAFE_ASSERTIONS`.
+
+
+## 3.11.0
+
+### Fixes
+* Fixed building on non-desktop GDK platforms (#3029)
+* Fixed message macros being susceptible to race in specific scenario (#3031)
+* Catch2's SEH filter will call the previously installed filter after reporting the error (#3033)
+
+### Improvements
+* Handling of scoped messages (e.g. `CAPTURE`) is a bit faster.
+* Better out-of-the-box support for QNX (#2953)
+* Improved performance of assertions by up-to 10%
+  * Release mode assertion fast-path sees the biggest improvement.
+* Faster processing of non-escaped strings in `--invisibles` mode.
+* Added support for Bazel's `TEST_RANDOM_SEED` env var (#3021)
+* Added support for Bazel's `TEST_PREMATURE_EXIT_FILE` env var (#3020)
+  * This creates a file that is deleted if the tests exit normally, but stays around if the process dies unexpectedly.
+  * This functionality is also exposed through CLI as `--premature-exit-guard-file`
+
+### Miscellaneous
+* **[Tuple.app](https://tuple.app/catch2) has sponsored Catch2**
+
+
+## 3.10.0
+
+### Fixes
+* pkg-config files will take `DESTDIR` env var into account when selecting install destination (#3006, #3019)
+* Changed `filter` to store the provided predicate by value (#3002, #3005)
+  * This is done to avoid dangling-by-default behaviour when `filter` is used inside `GENERATE_COPY`/`GENERATE_REF`.
+
+### Improvements
+* Escaping XML and JSON output is faster when the strings do not need escaping.
+  * The improvement starts at about 3x throughput, up to 10x for long strings.
+* Message macros (`INFO`, `CAPTURE`, `WARN`, `SUCCEED`, etc) are now thread safe.
+
+
+## 3.9.1
+
+### Fixes
+* Fixed bad error reporting for multiple nested assertions (#1292)
+* Fixed W4702 (unreachable code) in the polyfill for std::unreachable (#3007)
+* Fixed decomposition of assertions comparing enum-backed bitfields (#3001)
+* Fixed StringMaker specialization for `time_point<system_clock>` with non-default duration type (#2685)
+
+### Improvements
+* Exceptions thrown during stringification of decomposed expression no longer fail the assertion (#2980)
+* The selection logic for `CATCH_TRAP` prefers `__builtin_debugtrap` on all platforms when Catch2 is compiled with Clang
+
+
+## 3.9.0
+
+### Improvements
+* **Added experimental opt-in support for thread safe assertions**
+  * Read the documentation for full details
+* **The default test run order has been changed to random**
+* Passing assertions are significantly faster when the reporter does not ask for `assertionEnded` events on passing assertions.
+  * This is the default behaviour of e.g. Console or Compact reporter
+  * Simple `REQUIRE(true)` is 60% faster in Release and 80% faster in Debug build configuration
+  * Simple `REQUIRE_NOTHROW` is 230% faster in Release and 430% faster in Debug build configuration
+  * Simple `REQUIRE_THROWS` is ~3% faster in Release and 20% faster in Debug build configuration (throwing introduces enough overhead that the optimizations inside Catch2 are mostly irrelevant)
+* Small (2-5%) improvement if the reporter asks for `assertionEnded` events for passing assertions.
+* The exit code constants are part of the Session API. (#2955, #2976)
+* Suppressed unsigned integer overflow checking in locations with intended overflow (#2965)
+* Reporters flush output after writing metadata, e.g. rng seed (#2964)
+* Added unreachable after `FAIL` and `SKIP` macros (#2941)
+  * This allows the compiler to understand that the execution does not continue past the macro, and avoids warnings.
+* Added fast path for `assertionStarting` event when no reporter requires it
+  * For backwards compatibility, this fast path is opt-in
+  * A reporter can opt in by changing its `ReporterPreferences::shouldReportAllAssertionStarts`
+* Improved last seen source location tracking to be more precise
+  * This is used when reporting unexpected exceptions from tests
+
+### Fixes
+* Fixed formatting of tags with more than 100 tests in the default `--list-tags` output (#2963)
+* Fixed Clang-Tidy's `readability-static-accessed-through-instance` in tests
+* Fixed most of Clang-Tidy's `cppcoreguidelines-avoid-non-const-global-variables` (#2582)
+* The lifetime of scoped messages now strictly obeys their scope (#1759, #2019, #2959)
+  * Previously Catch2 would try to keep them around during unexpected exception, to provide helpful context.
+  * The amount of surprises the irregularities caused was not worth the occasional utility provided.
+* `TEMPLATE_TEST_CASE_SIG` can handle signatures consisting of only types (#2680, #2995)
+* Moved `catch_test_run_info.hpp` up from `internal/` subfolder into the main one (#2972)
+
+### Miscellaneous
+* pkg-config files are now generated at install time (#2979)
+  * This fixes missing debug suffix in library names
+  * This fixes install prefix mismatch between build config and actuall installation
+
+
 ## 3.8.1
 
 ### Fixes
@@ -93,7 +289,7 @@
   * Removed redundant `CTEST_FILE` param when creating the indirection file for `PRE_TEST` discovery mode (#2936)
   * Rewrote the test discovery logic to use output from the JSON reporter
     * This means that `catch_discover_tests` now requires CMake 3.19 or newer
-  * Added `ADD_TAGS_AS_LABELS` option. If specified, each CTest test will be labeled with corrensponding Catch2's test tag
+  * Added `ADD_TAGS_AS_LABELS` option. If specified, each CTest test will be labeled with corresponding Catch2's test tag
 * Bumped up the minimum required CMake version to build Catch2 to 3.16
 * Meson build now provides option to avoid installing Catch2
 * Bazel build is moved to Bzlmod.
@@ -175,7 +371,7 @@
 ### Improvements
 * Reintroduced support for GCC 5 and 6 (#2836)
   * As with VS2017, if they start causing trouble again, they will be dropped again.
-* Added workaround for targetting newest MacOS (Sonoma) using GCC (#2837, #2839)
+* Added workaround for targeting newest MacOS (Sonoma) using GCC (#2837, #2839)
 * `CATCH_CONFIG_DEFAULT_REPORTER` can now be an arbitrary reporter spec
   * Previously it could only be a plain reporter name, so it was impossible to compile in custom arguments to the reporter.
 * Improved performance of generating 64bit random integers by 20+%

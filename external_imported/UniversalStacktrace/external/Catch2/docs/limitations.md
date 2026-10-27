@@ -45,6 +45,15 @@ the `REQUIRE` family of macros), Catch2 does not know that there are no
 more sections in that test case and must run the test case again.
 
 
+### MinGW/CygWin compilation (linking) is extremely slow
+
+Compiling Catch2 with MinGW can be exceedingly slow, especially during
+the linking step. As far as we can tell, this is caused by deficiencies
+in its default linker. If you can tell MinGW to instead use lld, via
+`-fuse-ld=lld`, the link time should drop down to reasonable length
+again.
+
+
 ## Features
 This section outlines some missing features, what is their status and their possible workarounds.
 
@@ -94,6 +103,20 @@ Both of these solutions have their problems, but should let you wring parallelis
 
 ## 3rd party bugs
 This section outlines known bugs in 3rd party components (this means compilers, standard libraries, standard runtimes).
+
+### Visual Studio 2015 -- `GENERATE` does not compile if it would deduce char array
+
+VS 2015 refuses to compile `GENERATE` statements that would deduce to a
+char array with known size, e.g. this:
+```cpp
+TEST_CASE("Deducing string lit") {
+    auto param = GENERATE("start", "stop");
+}
+```
+
+A workaround for this is to use the `as` helper and force deduction of
+either a `char const*` or a `std::string`.
+
 
 ### Visual Studio 2017 -- raw string literal in assert fails to compile
 There is a known bug in Visual Studio 2017 (VC 15), that causes compilation error when preprocessor attempts to stringize a raw string literal (`#` preprocessor is applied to it). This snippet is sufficient to trigger the compilation error:

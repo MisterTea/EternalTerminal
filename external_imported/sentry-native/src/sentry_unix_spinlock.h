@@ -2,6 +2,7 @@
 #define SENTRY_UNIX_SPINLOCK_H_INCLUDED
 
 #include "sentry_boot.h"
+#include "sentry_cpu_relax.h"
 
 typedef volatile sig_atomic_t sentry_spinlock_t;
 
@@ -11,17 +12,17 @@ typedef volatile sig_atomic_t sentry_spinlock_t;
  * spinlock.
  */
 
-#if (defined(__i386__) || defined(__amd64__))
-#    define sentry__cpu_relax() __asm__ __volatile__("pause\n")
-#else
-#    define sentry__cpu_relax() (void)0
-#endif
-
 #define SENTRY__SPINLOCK_INIT 0
 #define sentry__spinlock_lock(spinlock_ref)                                    \
-    while (!__sync_bool_compare_and_swap(spinlock_ref, 0, 1)) {                \
-        sentry__cpu_relax();                                                   \
+    for (;;) {                                                                 \
+        while (__atomic_load_n(spinlock_ref, __ATOMIC_RELAXED)) {              \
+            sentry__cpu_relax();                                               \
+        }                                                                      \
+        if (__atomic_exchange_n(spinlock_ref, 1, __ATOMIC_ACQUIRE) == 0) {     \
+            break;                                                             \
+        }                                                                      \
     }
-#define sentry__spinlock_unlock(spinlock_ref) (*spinlock_ref = 0)
+#define sentry__spinlock_unlock(spinlock_ref)                                  \
+    (__atomic_store_n(spinlock_ref, 0, __ATOMIC_RELEASE))
 
 #endif

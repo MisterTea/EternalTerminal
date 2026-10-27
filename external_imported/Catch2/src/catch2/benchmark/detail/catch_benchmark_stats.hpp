@@ -8,6 +8,7 @@
 #ifndef CATCH_BENCHMARK_STATS_HPP_INCLUDED
 #define CATCH_BENCHMARK_STATS_HPP_INCLUDED
 
+#include <catch2/benchmark/catch_clock.hpp>
 #include <catch2/benchmark/catch_estimate.hpp>
 #include <catch2/benchmark/catch_outlier_classification.hpp>
 // The fwd decl & default specialization needs to be seen by VS2017 before

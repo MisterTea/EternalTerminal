@@ -11,33 +11,94 @@
 #include "catch_enforce.h"
 #include "catch_interfaces_registry_hub.h"
 #include "catch_random_number_generator.h"
+#include "catch_run_context.h"
 #include "catch_string_manip.h"
 #include "catch_test_case_info.h"
 
+#include <algorithm>
 #include <sstream>
 
 namespace Catch {
 
+    namespace {
+        struct TestHasher {
+            using hash_t = uint64_t;
+
+            explicit TestHasher( hash_t hashSuffix ):
+                m_hashSuffix{ hashSuffix } {}
+
+            uint32_t operator()( TestCase const& t ) const {
+                // FNV-1a hash with multiplication fold.
+                const hash_t prime = 1099511628211u;
+                hash_t hash = 14695981039346656037u;
+                for ( const char c : t.name ) {
+                    hash ^= c;
+                    hash *= prime;
+                }
+                hash ^= m_hashSuffix;
+                hash *= prime;
+                const uint32_t low{ static_cast<uint32_t>( hash ) };
+                const uint32_t high{ static_cast<uint32_t>( hash >> 32 ) };
+                return low * high;
+            }
+
+        private:
+            hash_t m_hashSuffix;
+        };
+    } // end unnamed namespace
+
+
     std::vector<TestCase> sortTests( IConfig const& config, std::vector<TestCase> const& unsortedTestCases ) {
-
-        std::vector<TestCase> sorted = unsortedTestCases;
-
         switch( config.runOrder() ) {
-            case RunTests::InLexicographicalOrder:
-                std::sort( sorted.begin(), sorted.end() );
-                break;
-            case RunTests::InRandomOrder:
-                seedRng( config );
-                std::shuffle( sorted.begin(), sorted.end(), rng() );
-                break;
             case RunTests::InDeclarationOrder:
                 // already in declaration order
                 break;
+
+            case RunTests::InLexicographicalOrder: {
+                std::vector<TestCase> sorted = unsortedTestCases;
+                std::sort( sorted.begin(), sorted.end() );
+                return sorted;
+            }
+
+            case RunTests::InRandomOrder: {
+                seedRng( config );
+                TestHasher h{ config.rngSeed() };
+
+                using hashedTest = std::pair<TestHasher::hash_t, TestCase const*>;
+                std::vector<hashedTest> indexed_tests;
+                indexed_tests.reserve( unsortedTestCases.size() );
+
+                for (auto const& testCase : unsortedTestCases) {
+                    indexed_tests.emplace_back(h(testCase), &testCase);
+                }
+
+                std::sort(indexed_tests.begin(), indexed_tests.end(),
+                          [](hashedTest const& lhs, hashedTest const& rhs) {
+                          if (lhs.first == rhs.first) {
+                              return lhs.second->name < rhs.second->name;
+                          }
+                          return lhs.first < rhs.first;
+                });
+
+                std::vector<TestCase> sorted;
+                sorted.reserve( indexed_tests.size() );
+
+                for (auto const& hashed : indexed_tests) {
+                    sorted.emplace_back(*hashed.second);
+                }
+
+                return sorted;
+            }
         }
-        return sorted;
+        return unsortedTestCases;
     }
+
+    bool isThrowSafe( TestCase const& testCase, IConfig const& config ) {
+        return !testCase.throws() || config.allowThrows();
+    }
+
     bool matchTest( TestCase const& testCase, TestSpec const& testSpec, IConfig const& config ) {
-        return testSpec.matches( testCase ) && ( config.allowThrows() || !testCase.throws() );
+        return testSpec.matches( testCase ) && isThrowSafe( testCase, config );
     }
 
     void enforceNoDuplicateTestCases( std::vector<TestCase> const& functions ) {
@@ -100,7 +161,7 @@ namespace Catch {
     }
 
     std::string extractClassName( StringRef const& classOrQualifiedMethodName ) {
-        std::string className = classOrQualifiedMethodName;
+        std::string className(classOrQualifiedMethodName);
         if( startsWith( className, '&' ) )
         {
             std::size_t lastColons = className.rfind( "::" );

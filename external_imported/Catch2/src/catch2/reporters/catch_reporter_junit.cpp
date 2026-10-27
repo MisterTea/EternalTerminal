@@ -89,6 +89,7 @@ namespace Catch {
         {
             m_preferences.shouldRedirectStdOut = true;
             m_preferences.shouldReportAllAssertions = false;
+            m_preferences.shouldReportAllAssertionStarts = false;
             m_shouldStoreSuccesfulAssertions = false;
         }
 
@@ -240,70 +241,77 @@ namespace Catch {
     void JunitReporter::writeAssertions( SectionNode const& sectionNode ) {
         for (auto const& assertionOrBenchmark : sectionNode.assertionsAndBenchmarks) {
             if (assertionOrBenchmark.isAssertion()) {
-                writeAssertion(assertionOrBenchmark.asAssertion());
+                // JUnit XML format supports only 1 error/failure/skip
+                // assertion elements per test case
+                if (writeAssertion(assertionOrBenchmark.asAssertion())) {
+                    break;
+                }
             }
         }
     }
 
-    void JunitReporter::writeAssertion( AssertionStats const& stats ) {
+    bool JunitReporter::writeAssertion( AssertionStats const& stats ) {
         AssertionResult const& result = stats.assertionResult;
-        if ( !result.isOk() ||
-             result.getResultType() == ResultWas::ExplicitSkip ) {
-            std::string elementName;
-            switch( result.getResultType() ) {
-                case ResultWas::ThrewException:
-                case ResultWas::FatalErrorCondition:
-                    elementName = "error";
-                    break;
-                case ResultWas::ExplicitFailure:
-                case ResultWas::ExpressionFailed:
-                case ResultWas::DidntThrowException:
-                    elementName = "failure";
-                    break;
-                case ResultWas::ExplicitSkip:
-                    elementName = "skipped";
-                    break;
-                // We should never see these here:
-                case ResultWas::Info:
-                case ResultWas::Warning:
-                case ResultWas::Ok:
-                case ResultWas::Unknown:
-                case ResultWas::FailureBit:
-                case ResultWas::Exception:
-                    elementName = "internalError";
-                    break;
-            }
-
-            XmlWriter::ScopedElement e = xml.scopedElement( elementName );
-
-            xml.writeAttribute( "message"_sr, result.getExpression() );
-            xml.writeAttribute( "type"_sr, result.getTestMacroName() );
-
-            ReusableStringStream rss;
-            if ( result.getResultType() == ResultWas::ExplicitSkip ) {
-                rss << "SKIPPED\n";
-            } else {
-                rss << "FAILED" << ":\n";
-                if (result.hasExpression()) {
-                    rss << "  ";
-                    rss << result.getExpressionInMacro();
-                    rss << '\n';
-                }
-                if (result.hasExpandedExpression()) {
-                    rss << "with expansion:\n";
-                    rss << TextFlow::Column(result.getExpandedExpression()).indent(2) << '\n';
-                }
-            }
-
-            if( result.hasMessage() )
-                rss << result.getMessage() << '\n';
-            for( auto const& msg : stats.infoMessages )
-                if( msg.type == ResultWas::Info )
-                    rss << msg.message << '\n';
-
-            rss << "at " << result.getSourceInfo();
-            xml.writeText( rss.str(), XmlFormatting::Newline );
+        if ( result.isOk() &&
+             result.getResultType() != ResultWas::ExplicitSkip ) {
+            return false;
         }
+        std::string elementName;
+        switch ( result.getResultType() ) {
+        case ResultWas::ThrewException:
+        case ResultWas::FatalErrorCondition:
+            elementName = "error";
+            break;
+        case ResultWas::ExplicitFailure:
+        case ResultWas::ExpressionFailed:
+        case ResultWas::DidntThrowException:
+            elementName = "failure";
+            break;
+        case ResultWas::ExplicitSkip:
+            elementName = "skipped";
+            break;
+        // We should never see these here:
+        case ResultWas::Info:
+        case ResultWas::Warning:
+        case ResultWas::Ok:
+        case ResultWas::Unknown:
+        case ResultWas::FailureBit:
+        case ResultWas::Exception:
+            elementName = "internalError";
+            break;
+        }
+
+        XmlWriter::ScopedElement e = xml.scopedElement( elementName );
+
+        xml.writeAttribute( "message"_sr, result.getExpression() );
+        xml.writeAttribute( "type"_sr, result.getTestMacroName() );
+
+        ReusableStringStream rss;
+        if ( result.getResultType() == ResultWas::ExplicitSkip ) {
+            rss << "SKIPPED\n";
+        } else {
+            rss << "FAILED:\n";
+            if ( result.hasExpression() ) {
+                rss << "  ";
+                rss << result.getExpressionInMacro();
+                rss << '\n';
+            }
+            if ( result.hasExpandedExpression() ) {
+                rss << "with expansion:\n";
+                rss << TextFlow::Column( result.getExpandedExpression() )
+                           .indent( 2 )
+                    << '\n';
+            }
+        }
+
+        if ( result.hasMessage() ) { rss << result.getMessage() << '\n'; }
+        for ( auto const& msg : stats.infoMessages ) {
+            if ( msg.type == ResultWas::Info ) { rss << msg.message << '\n'; }
+        }
+
+        rss << "at " << result.getSourceInfo();
+        xml.writeText( rss.str(), XmlFormatting::Newline );
+        return true;
     }
 
 } // end namespace Catch

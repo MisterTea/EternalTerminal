@@ -37,13 +37,16 @@ SOFTWARE.
 #include <pwd.h>
 #include <unistd.h>
 
+namespace sago {
+namespace internal {
+
 /**
  * Retrives the effective user's home dir.
  * If the user is running as root we ignore the HOME environment. It works badly with sudo.
  * Writing to $HOME as root implies security concerns that a multiplatform program cannot be assumed to handle.
  * @return The home directory. HOME environment is respected for non-root users if it exists.
  */
-static std::string getHome() {
+std::string getHome() {
 	std::string res;
 	int uid = getuid();
 	const char* homeEnv = std::getenv("HOME");
@@ -55,12 +58,18 @@ static std::string getHome() {
 	struct passwd* pw = nullptr;
 	struct passwd pwd;
 	long bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
-	if (bufsize < 0) {
+	if (bufsize < 1) {
 		bufsize = 16384;
 	}
 	std::vector<char> buffer;
 	buffer.resize(bufsize);
 	int error_code = getpwuid_r(uid, &pwd, buffer.data(), buffer.size(), &pw);
+	while (error_code == ERANGE) {
+		// The buffer was too small. Try again with a larger buffer.
+		bufsize *= 2;
+		buffer.resize(bufsize);
+		error_code = getpwuid_r(uid, &pwd, buffer.data(), buffer.size(), &pw);
+	}
 	if (error_code) {
 		throw std::runtime_error("Unable to get passwd struct.");
 	}
@@ -71,6 +80,9 @@ static std::string getHome() {
 	res = tempRes;
 	return res;
 }
+
+}  // namesapce internal
+}  // namespace sago
 
 #endif
 
@@ -171,7 +183,7 @@ static std::string getLinuxFolderDefault(const char* envName, const char* defaul
 		res = tempRes;
 		return res;
 	}
-	res = getHome() + "/" + defaultRelativePath;
+	res = sago::internal::getHome() + "/" + defaultRelativePath;
 	return res;
 }
 
@@ -211,7 +223,7 @@ std::string getDataHome() {
 #ifdef _WIN32
 	return GetAppData();
 #elif defined(__APPLE__)
-	return getHome()+"/Library/Application Support";
+	return sago::internal::getHome()+"/Library/Application Support";
 #else
 	return getLinuxFolderDefault("XDG_DATA_HOME", ".local/share");
 #endif
@@ -221,7 +233,7 @@ std::string getConfigHome() {
 #ifdef _WIN32
 	return GetAppData();
 #elif defined(__APPLE__)
-	return getHome()+"/Library/Application Support";
+	return sago::internal::getHome()+"/Library/Application Support";
 #else
 	return getLinuxFolderDefault("XDG_CONFIG_HOME", ".config");
 #endif
@@ -231,7 +243,7 @@ std::string getCacheDir() {
 #ifdef _WIN32
 	return GetAppDataLocal();
 #elif defined(__APPLE__)
-	return getHome()+"/Library/Caches";
+	return sago::internal::getHome()+"/Library/Caches";
 #else
 	return getLinuxFolderDefault("XDG_CACHE_HOME", ".cache");
 #endif
@@ -241,7 +253,7 @@ std::string getStateDir() {
 #ifdef _WIN32
 	return GetAppDataLocal();
 #elif defined(__APPLE__)
-	return getHome()+"/Library/Application Support";
+	return sago::internal::getHome()+"/Library/Application Support";
 #else
 	return getLinuxFolderDefault("XDG_STATE_HOME", ".local/state");
 #endif
@@ -303,7 +315,7 @@ static void PlatformFoldersFillData(std::map<std::string, std::string>& folders)
 	for (std::map<std::string, std::string>::iterator itr = folders.begin() ; itr != folders.end() ; ++itr ) {
 		std::string& value = itr->second;
 		if (value.compare(0, 5, "$HOME") == 0) {
-			value = getHome() + value.substr(5, std::string::npos);
+			value = sago::internal::getHome() + value.substr(5, std::string::npos);
 		}
 	}
 }
@@ -332,7 +344,7 @@ std::string PlatformFolders::getDocumentsFolder() const {
 #ifdef _WIN32
 	return GetKnownWindowsFolder(FOLDERID_Documents, "Failed to find My Documents folder");
 #elif defined(__APPLE__)
-	return getHome()+"/Documents";
+	return sago::internal::getHome()+"/Documents";
 #else
 	return data->folders["XDG_DOCUMENTS_DIR"];
 #endif
@@ -342,7 +354,7 @@ std::string PlatformFolders::getDesktopFolder() const {
 #ifdef _WIN32
 	return GetKnownWindowsFolder(FOLDERID_Desktop, "Failed to find Desktop folder");
 #elif defined(__APPLE__)
-	return getHome()+"/Desktop";
+	return sago::internal::getHome()+"/Desktop";
 #else
 	return data->folders["XDG_DESKTOP_DIR"];
 #endif
@@ -352,7 +364,7 @@ std::string PlatformFolders::getPicturesFolder() const {
 #ifdef _WIN32
 	return GetKnownWindowsFolder(FOLDERID_Pictures, "Failed to find My Pictures folder");
 #elif defined(__APPLE__)
-	return getHome()+"/Pictures";
+	return sago::internal::getHome()+"/Pictures";
 #else
 	return data->folders["XDG_PICTURES_DIR"];
 #endif
@@ -362,7 +374,7 @@ std::string PlatformFolders::getPublicFolder() const {
 #ifdef _WIN32
 	return GetKnownWindowsFolder(FOLDERID_Public, "Failed to find the Public folder");
 #elif defined(__APPLE__)
-	return getHome()+"/Public";
+	return sago::internal::getHome()+"/Public";
 #else
 	return data->folders["XDG_PUBLICSHARE_DIR"];
 #endif
@@ -372,7 +384,7 @@ std::string PlatformFolders::getDownloadFolder1() const {
 #ifdef _WIN32
 	return GetKnownWindowsFolder(FOLDERID_Downloads, "Failed to find My Downloads folder");
 #elif defined(__APPLE__)
-	return getHome()+"/Downloads";
+	return sago::internal::getHome()+"/Downloads";
 #else
 	return data->folders["XDG_DOWNLOAD_DIR"];
 #endif
@@ -382,7 +394,7 @@ std::string PlatformFolders::getMusicFolder() const {
 #ifdef _WIN32
 	return GetKnownWindowsFolder(FOLDERID_Music, "Failed to find My Music folder");
 #elif defined(__APPLE__)
-	return getHome()+"/Music";
+	return sago::internal::getHome()+"/Music";
 #else
 	return data->folders["XDG_MUSIC_DIR"];
 #endif
@@ -392,7 +404,7 @@ std::string PlatformFolders::getVideoFolder() const {
 #ifdef _WIN32
 	return GetKnownWindowsFolder(FOLDERID_Videos, "Failed to find My Video folder");
 #elif defined(__APPLE__)
-	return getHome()+"/Movies";
+	return sago::internal::getHome()+"/Movies";
 #else
 	return data->folders["XDG_VIDEOS_DIR"];
 #endif
@@ -404,7 +416,7 @@ std::string PlatformFolders::getSaveGamesFolder1() const {
 	//Data that should not be user accessible should be placed under GetDataHome() instead
 	return GetKnownWindowsFolder(FOLDERID_Documents, "Failed to find My Documents folder")+"\\My Games";
 #elif defined(__APPLE__)
-	return getHome()+"/Library/Application Support";
+	return sago::internal::getHome()+"/Library/Application Support";
 #else
 	return getDataHome();
 #endif

@@ -2,9 +2,23 @@
 #
 # SPDX-License-Identifier: MIT
 
-option('cpp-httplib_openssl', type: 'feature', value: 'auto', description: 'Enable OpenSSL support')
-option('cpp-httplib_zlib',    type: 'feature', value: 'auto', description: 'Enable zlib support')
-option('cpp-httplib_brotli',  type: 'feature', value: 'auto', description: 'Enable Brotli support')
-option('cpp-httplib_macosx_keychain', type: 'feature', value: 'auto', description: 'Enable loading certs from the Keychain on Apple devices')
-option('cpp-httplib_compile', type: 'boolean', value: false,  description: 'Split the header into a compilable header & source file (requires python3)')
-option('cpp-httplib_test',    type: 'boolean', value: false,  description: 'Build tests')
+option('tls',     type: 'feature', description: 'Enable TLS support')
+option('tls_backend', type: 'combo', choices: ['openssl', 'mbedtls'], value: 'openssl', description: 'Which TLS library to use')
+option('zlib',    type: 'feature', value: 'auto', description: 'Enable zlib support')
+option('brotli',  type: 'feature', value: 'auto', description: 'Enable Brotli support')
+option('zstd',    type: 'feature', value: 'auto', description: 'Enable zstd support')
+option('disable_macosx_automatic_root_certificates', type: 'boolean', value: false, description: 'Disable loading system certs from the Apple Keychain on macOS')
+option('non_blocking_getaddrinfo', type: 'feature', value: 'auto', description: 'Enable asynchronous name lookup')
+option('compile', type: 'boolean', value: false,  description: 'Split the header into a compilable header & source file (requires python3)')
+option('test',    type: 'boolean', value: false,  description: 'Build tests')
+
+# Old option names
+option('openssl', type: 'feature', deprecated: 'tls')
+option('cpp-httplib_openssl', type: 'feature', deprecated: 'openssl')
+option('cpp-httplib_zlib',    type: 'feature', deprecated: 'zlib')
+option('cpp-httplib_brotli',  type: 'feature', deprecated: 'brotli')
+option('macosx_keychain', type: 'feature', deprecated: true, description: 'Deprecated: use disable_macosx_automatic_root_certificates instead')
+option('cpp-httplib_macosx_keychain', type: 'feature', deprecated: 'macosx_keychain')
+option('cpp-httplib_non_blocking_getaddrinfo', type: 'feature', deprecated: 'non_blocking_getaddrinfo')
+option('cpp-httplib_compile', type: 'boolean', value: false, deprecated: 'compile')
+option('cpp-httplib_test',    type: 'boolean', value: false, deprecated: 'test')

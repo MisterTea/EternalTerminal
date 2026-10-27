@@ -10,8 +10,7 @@
 #include "catch_enforce.h"
 
 #include <iomanip>
-
-using uchar = unsigned char;
+#include <type_traits>
 
 namespace Catch {
 
@@ -51,7 +50,30 @@ namespace {
         os.flags(f);
     }
 
+    bool shouldNewline(XmlFormatting fmt) {
+        return !!(static_cast<std::underlying_type<XmlFormatting>::type>(fmt & XmlFormatting::Newline));
+    }
+
+    bool shouldIndent(XmlFormatting fmt) {
+        return !!(static_cast<std::underlying_type<XmlFormatting>::type>(fmt & XmlFormatting::Indent));
+    }
+
 } // anonymous namespace
+
+    XmlFormatting operator | (XmlFormatting lhs, XmlFormatting rhs) {
+        return static_cast<XmlFormatting>(
+            static_cast<std::underlying_type<XmlFormatting>::type>(lhs) |
+            static_cast<std::underlying_type<XmlFormatting>::type>(rhs)
+        );
+    }
+
+    XmlFormatting operator & (XmlFormatting lhs, XmlFormatting rhs) {
+        return static_cast<XmlFormatting>(
+            static_cast<std::underlying_type<XmlFormatting>::type>(lhs) &
+            static_cast<std::underlying_type<XmlFormatting>::type>(rhs)
+        );
+    }
+
 
     XmlEncode::XmlEncode( std::string const& str, ForWhat forWhat )
     :   m_str( str ),
@@ -63,7 +85,7 @@ namespace {
         // (see: http://www.w3.org/TR/xml/#syntax)
 
         for( std::size_t idx = 0; idx < m_str.size(); ++ idx ) {
-            uchar c = m_str[idx];
+            unsigned char c = m_str[idx];
             switch (c) {
             case '<':   os << "&lt;"; break;
             case '&':   os << "&amp;"; break;
@@ -123,7 +145,7 @@ namespace {
                 bool valid = true;
                 uint32_t value = headerValue(c);
                 for (std::size_t n = 1; n < encBytes; ++n) {
-                    uchar nc = m_str[idx + n];
+                    unsigned char nc = m_str[idx + n];
                     valid &= ((nc & 0xC0) == 0x80);
                     value = (value << 6) | (nc & 0x3F);
                 }
@@ -157,13 +179,17 @@ namespace {
         return os;
     }
 
-    XmlWriter::ScopedElement::ScopedElement( XmlWriter* writer )
-    :   m_writer( writer )
+    XmlWriter::ScopedElement::ScopedElement( XmlWriter* writer, XmlFormatting fmt )
+    :   m_writer( writer ),
+        m_fmt(fmt)
     {}
 
     XmlWriter::ScopedElement::ScopedElement( ScopedElement&& other ) noexcept
-    :   m_writer( other.m_writer ){
+    :   m_writer( other.m_writer ),
+        m_fmt(other.m_fmt)
+    {
         other.m_writer = nullptr;
+        other.m_fmt = XmlFormatting::None;
     }
     XmlWriter::ScopedElement& XmlWriter::ScopedElement::operator=( ScopedElement&& other ) noexcept {
         if ( m_writer ) {
@@ -171,17 +197,20 @@ namespace {
         }
         m_writer = other.m_writer;
         other.m_writer = nullptr;
+        m_fmt = other.m_fmt;
+        other.m_fmt = XmlFormatting::None;
         return *this;
     }
 
 
     XmlWriter::ScopedElement::~ScopedElement() {
-        if( m_writer )
-            m_writer->endElement();
+        if (m_writer) {
+            m_writer->endElement(m_fmt);
+        }
     }
 
-    XmlWriter::ScopedElement& XmlWriter::ScopedElement::writeText( std::string const& text, bool indent ) {
-        m_writer->writeText( text, indent );
+    XmlWriter::ScopedElement& XmlWriter::ScopedElement::writeText( std::string const& text, XmlFormatting fmt ) {
+        m_writer->writeText( text, fmt );
         return *this;
     }
 
@@ -191,37 +220,47 @@ namespace {
     }
 
     XmlWriter::~XmlWriter() {
-        while( !m_tags.empty() )
+        while (!m_tags.empty()) {
             endElement();
+        }
+        newlineIfNecessary();
     }
 
-    XmlWriter& XmlWriter::startElement( std::string const& name ) {
+    XmlWriter& XmlWriter::startElement( std::string const& name, XmlFormatting fmt ) {
         ensureTagClosed();
         newlineIfNecessary();
-        m_os << m_indent << '<' << name;
+        if (shouldIndent(fmt)) {
+            m_os << m_indent;
+            m_indent += "  ";
+        }
+        m_os << '<' << name;
         m_tags.push_back( name );
-        m_indent += "  ";
         m_tagIsOpen = true;
+        applyFormatting(fmt);
         return *this;
     }
 
-    XmlWriter::ScopedElement XmlWriter::scopedElement( std::string const& name ) {
-        ScopedElement scoped( this );
-        startElement( name );
+    XmlWriter::ScopedElement XmlWriter::scopedElement( std::string const& name, XmlFormatting fmt ) {
+        ScopedElement scoped( this, fmt );
+        startElement( name, fmt );
         return scoped;
     }
 
-    XmlWriter& XmlWriter::endElement() {
-        newlineIfNecessary();
-        m_indent = m_indent.substr( 0, m_indent.size()-2 );
+    XmlWriter& XmlWriter::endElement(XmlFormatting fmt) {
+        m_indent = m_indent.substr(0, m_indent.size() - 2);
+
         if( m_tagIsOpen ) {
             m_os << "/>";
             m_tagIsOpen = false;
+        } else {
+            newlineIfNecessary();
+            if (shouldIndent(fmt)) {
+                m_os << m_indent;
+            }
+            m_os << "</" << m_tags.back() << ">";
         }
-        else {
-            m_os << m_indent << "</" << m_tags.back() << ">";
-        }
-        m_os << std::endl;
+        m_os << std::flush;
+        applyFormatting(fmt);
         m_tags.pop_back();
         return *this;
     }
@@ -237,22 +276,26 @@ namespace {
         return *this;
     }
 
-    XmlWriter& XmlWriter::writeText( std::string const& text, bool indent ) {
+    XmlWriter& XmlWriter::writeText( std::string const& text, XmlFormatting fmt) {
         if( !text.empty() ){
             bool tagWasOpen = m_tagIsOpen;
             ensureTagClosed();
-            if( tagWasOpen && indent )
+            if (tagWasOpen && shouldIndent(fmt)) {
                 m_os << m_indent;
+            }
             m_os << XmlEncode( text );
-            m_needsNewline = true;
+            applyFormatting(fmt);
         }
         return *this;
     }
 
-    XmlWriter& XmlWriter::writeComment( std::string const& text ) {
+    XmlWriter& XmlWriter::writeComment( std::string const& text, XmlFormatting fmt) {
         ensureTagClosed();
-        m_os << m_indent << "<!--" << text << "-->";
-        m_needsNewline = true;
+        if (shouldIndent(fmt)) {
+            m_os << m_indent;
+        }
+        m_os << "<!--" << text << "-->";
+        applyFormatting(fmt);
         return *this;
     }
 
@@ -268,9 +311,14 @@ namespace {
 
     void XmlWriter::ensureTagClosed() {
         if( m_tagIsOpen ) {
-            m_os << ">" << std::endl;
+            m_os << '>' << std::flush;
+            newlineIfNecessary();
             m_tagIsOpen = false;
         }
+    }
+
+    void XmlWriter::applyFormatting(XmlFormatting fmt) {
+        m_needsNewline = shouldNewline(fmt);
     }
 
     void XmlWriter::writeDeclaration() {

@@ -38,7 +38,7 @@ macro](skipping-passing-failing.md#top).
 
 ### Non-const function for `TEST_CASE_METHOD`
 
-> Deprecated in Catch2 vX.Y.Z
+> Deprecated in Catch2 3.7.0
 
 Currently, the member function generated for `TEST_CASE_METHOD` is
 not `const` qualified. In the future, the generated member function will
@@ -46,6 +46,32 @@ be `const` qualified, just as `TEST_CASE_PERSISTENT_FIXTURE` does.
 
 If you are mutating the fixture instance from within the test case, and
 want to keep doing so in the future, mark the mutated members as `mutable`.
+
+
+### Section-only filtering with `-c/--section`
+
+> Deprecated in Catch2 3.13.0
+
+Currently, if you use only `-c/--section` parameters to decide which
+sections to enter, the filtering ignores generators completely. In the
+future, using only `-c/--section` will behave the same way as if you
+specified the filters through the new `-p/--path-filter` parameter, which
+means that generators are taken into account.
+
+
+### Generator interfaces
+
+#### Defaulted `UntypedGeneratorBase::isFinite()`
+
+> Deprecated in Catch2 3.13.0
+
+The `UntypedGeneratorBase` currently provides a default implementation
+for `isFinite` that always returns `true`. This was done to keep backwards
+compatibility with pre-existing generators, as infinite generators can
+be diagnosed as errors in some cases.
+
+In the future, all generators will be expected to override `isFinite`.
+
 
 
 ---

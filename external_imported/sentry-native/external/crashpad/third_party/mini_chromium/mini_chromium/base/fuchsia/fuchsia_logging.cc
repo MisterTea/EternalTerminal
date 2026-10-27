@@ -8,6 +8,8 @@
 
 #include <iomanip>
 
+#include "base/immediate_crash.h"
+
 namespace logging {
 
 ZxLogMessage::ZxLogMessage(const char* function,
@@ -18,10 +20,20 @@ ZxLogMessage::ZxLogMessage(const char* function,
     : LogMessage(function, file_path, line, severity), zx_err_(zx_err) {}
 
 ZxLogMessage::~ZxLogMessage() {
+  AppendError();
+}
+
+void ZxLogMessage::AppendError() {
   // zx_status_t error values are negative, so log the numeric version as
   // decimal rather than hex. This is also useful to match zircon/errors.h for
   // grepping.
   stream() << ": " << zx_status_get_string(zx_err_) << " (" << zx_err_ << ")";
+}
+
+ZxLogMessageFatal::~ZxLogMessageFatal() {
+  AppendError();
+  Flush();
+  base::ImmediateCrash();
 }
 
 }  // namespace logging

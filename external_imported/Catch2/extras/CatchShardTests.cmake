@@ -11,7 +11,7 @@
 #  * REPORTER    - reporter spec to use for tests
 #  * TEST_SPEC   - test spec used for filtering tests
 function(catch_add_sharded_tests TARGET)
-  if (${CMAKE_VERSION} VERSION_LESS "3.10.0")
+  if(${CMAKE_VERSION} VERSION_LESS "3.10.0")
     message(FATAL_ERROR "add_sharded_catch_tests only supports CMake versions 3.10.0 and up")
   endif()
 
@@ -23,7 +23,7 @@ function(catch_add_sharded_tests TARGET)
     ${ARGN}
   )
   
-  if (NOT DEFINED _SHARD_COUNT)
+  if(NOT DEFINED _SHARD_COUNT)
     set(_SHARD_COUNT 2)
   endif()
 
@@ -61,8 +61,6 @@ function(catch_add_sharded_tests TARGET)
             -P "${shard_impl_script_file}"
     VERBATIM
   )
-
-
 endfunction()
 
 

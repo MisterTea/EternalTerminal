@@ -12,7 +12,7 @@ Building and testing `sentry-native` currently requires the following tools:
 - **CMake** and a supported C/C++ compiler, to actually build the code.
 - **python** and **pytest**, to run integration tests.
 - **clang-format** and **black**, to format the C/C++ and python code respectively.
-- **curl** and **zlib** libraries (e.g. on Ubuntu: libcurl4-openssl-dev, libz-dev)
+- **curl** and **zlib** libraries (e.g. on Ubuntu: `libcurl4-openssl-dev`, `libz-dev`)
 
 `pytest`, `clang-format` and `black` are installed as virtualenv dependencies automatically.
 
@@ -121,6 +121,10 @@ Some of its behavior is controlled by env-variables:
   - `gcc`: Use the `-fanalyzer` flag of `gcc > 10`.
     This is currently not stable enough to use, as it leads to false positives
     and internal compiler errors.
+- `USE_SCCACHE`: Uses [`sccache`](https://github.com/mozilla/sccache) (`brew`/`choco`/`apt install sccache`)
+  as the compiler launcher to speed up rebuilds. On Windows, this automatically
+  switches to the Ninja generator (`choco install ninja`) and uses `/Z7` debug
+  info format for compatibility.
 - `TEST_X86`: Passes flags to CMake to enable a 32-bit (cross-)compile.
 - `ANDROID_API` / `ANDROID_NDK` / `ANDROID_ARCH`: Instructs the test runner to
   build using the given Android `NDK` version, targeting the given `API` and
@@ -188,6 +192,12 @@ The example currently supports the following commands:
 - `set-trace`: Sets the scope `propagation_context`'s trace data to the given `trace_id="aaaabbbbccccddddeeeeffff00001111"` and `parent_span_id=""f0f0f0f0f0f0f0f0"`.
 - `capture-with-scope`: Captures an event with a local scope.
 - `attach-to-scope`: Same as `attachment` but attaches the file to the local scope.
+- `clear-attachments`: Clears all attachments from the global scope.
+- `capture-user-feedback`: Captures a user feedback event.
+- `test-logger`: Sets up a test logger for integration tests that outputs in a format the integration tests can parse.
+- `disable-logger-when-crashed`: Disables logging during crash handling.
+- `enable-logger-when-crashed`: Explicitly enables logging during crash handling (default behavior).
+- `test-logger-before-crash`: Outputs marker directly using printf for test parsing before crash.
 
 Only on Linux using crashpad:
 - `crashpad-wait-for-upload`: Couples application shutdown to complete the upload in the `crashpad_handler`.
@@ -209,3 +219,24 @@ Creates a python virtualenv, and runs all the benchmarks through `pytest`.
 
 When all the python dependencies have been installed, the benchmarks can also be
 invoked directly.
+
+## Handling locks
+
+There are a couple of rules based on the current usage of mutexes in the Native SDK that should always be 
+applied in order not to have to fight boring concurrency bugs:
+
+* we use recursive mutexes throughout the code-base
+* these primarily allow us to call public interfaces from internal code instead of having a layer in-between
+* but they come at the risk of less clarity whether a lock release still leaves a live lock 
+* they should not be considered as convenience:
+  * reduce the amount of recursive locking to an absolute minimum
+  * instead of retrieval via global locks, pass shared state like `options` or `scope` around in internal helpers 
+  * or better yet: extract what you need into locals, then release the lock early
+* we provide lexical scope macros `SENTRY_WITH_OPTIONS` and `SENTRY_WITH_SCOPE` (and variants) as convenience wrappers
+* if you use them be aware of the following:
+  * as mentioned above, while the macros are convenience, their lexical scope should be as short as possible
+  * avoid nesting them unless strictly necessary
+  * if you nest them (directly or via callees), the `options` lock **must always be acquired before** the `scope` lock
+  * never early-return or jump (via `goto` or `return`) from within a `SENTRY_WITH_*` block: doing so skips the corresponding release or cleanup
+  * in particular, since `options` are readonly after `sentry_init()` the lock is only acquired to increment the refcount for the duration of `SENTRY_WITH_OPTIONS`
+  * however, `SENTRY_WITH_SCOPE` (and variants) always hold the lock for the entirety of their lexical scope

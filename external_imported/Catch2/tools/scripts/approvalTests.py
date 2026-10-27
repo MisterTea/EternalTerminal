@@ -56,7 +56,7 @@ filelocParser = re.compile(r'''
 ''', re.VERBOSE)
 lineNumberParser = re.compile(r' line="[0-9]*"')
 hexParser = re.compile(r'\b(0[xX][0-9a-fA-F]+)\b')
-# Note: junit must serialize time with 3 (or or less) decimal places
+# Note: junit must serialize time with 3 (or less) decimal places
 #       before generalizing this parser, make sure that this is checked
 #       in other places too.
 junitDurationsParser = re.compile(r' time="[0-9]+\.[0-9]{3}"')
@@ -121,7 +121,7 @@ def filterLine(line, isCompact):
     # strip source line numbers
     # Note that this parser assumes an already normalized filepath from above,
     # and might break terribly if it is moved around before the normalization.
-    line = filelocParser.sub('\g<filename>:<line number>', line)
+    line = filelocParser.sub(r'\g<filename>:<line number>', line)
 
     line = lineNumberParser.sub(" ", line)
 
@@ -130,7 +130,7 @@ def filterLine(line, isCompact):
         line = line.replace(': PASSED', ': passed')
 
     # strip out the test order number in TAP to avoid massive diffs for every change
-    line = tapTestNumParser.sub("\g<1> {test-number} -", line)
+    line = tapTestNumParser.sub(r"\g<1> {test-number} -", line)
 
     # strip Catch2 version number
     line = versionParser.sub("<version>", line)
@@ -148,7 +148,7 @@ def filterLine(line, isCompact):
     line = junitDurationsParser.sub(' time="{duration}"', line)
     line = durationParser.sub(' duration="{duration}"', line)
     line = timestampsParser.sub('{iso8601-timestamp}', line)
-    line = specialCaseParser.sub('file:\g<1>', line)
+    line = specialCaseParser.sub(r'file:\g<1>', line)
     line = sinceEpochParser.sub('{since-epoch-report}', line)
     return line
 

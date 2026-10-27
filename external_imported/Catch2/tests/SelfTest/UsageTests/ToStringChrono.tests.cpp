@@ -49,3 +49,9 @@ TEST_CASE("Stringifying std::chrono::time_point<Clock>", "[toString][chrono][!no
     auto later2 = now2 + std::chrono::minutes(2);
     REQUIRE(now2 != later2);
 }
+
+TEST_CASE( "system_clock timepoint with non-default duration", "[toString][chrono]" ) {
+    std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>
+        tp1, tp2;
+    CHECK( tp1 == tp2 );
+}

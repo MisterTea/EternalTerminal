@@ -28,7 +28,7 @@
 namespace Catch {
 
     std::size_t listTests( Config const& config ) {
-        TestSpec testSpec = config.testSpec();
+        TestSpec const& testSpec = config.testSpec();
         if( config.hasTestFilters() )
             Catch::cout() << "Matching test cases:\n";
         else {
@@ -62,7 +62,7 @@ namespace Catch {
     }
 
     std::size_t listTestsNamesOnly( Config const& config ) {
-        TestSpec testSpec = config.testSpec();
+        TestSpec const& testSpec = config.testSpec();
         std::size_t matchedTests = 0;
         std::vector<TestCase> matchedTestCases = filterTests( getAllTestCasesSorted( config ), testSpec, config );
         for( auto const& testCaseInfo : matchedTestCases ) {
@@ -84,14 +84,23 @@ namespace Catch {
     }
 
     std::string TagInfo::all() const {
-        std::string out;
-        for( auto const& spelling : spellings )
-            out += "[" + spelling + "]";
+        size_t size = 0;
+        for (auto const& spelling : spellings) {
+            // Add 2 for the brackes
+            size += spelling.size() + 2;
+        }
+
+        std::string out; out.reserve(size);
+        for (auto const& spelling : spellings) {
+            out += '[';
+            out += spelling;
+            out += ']';
+        }
         return out;
     }
 
     std::size_t listTags( Config const& config ) {
-        TestSpec testSpec = config.testSpec();
+        TestSpec const& testSpec = config.testSpec();
         if( config.hasTestFilters() )
             Catch::cout() << "Tags for matching test cases:\n";
         else {

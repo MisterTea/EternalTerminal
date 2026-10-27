@@ -15,11 +15,23 @@ namespace Catch {
     :   m_data( data ),
         m_stream( openStream() )
     {
+        // We need to trim filter specs to avoid trouble with superfluous
+        // whitespace (esp. important for bdd macros, as those are manually
+        // aligned with whitespace).
+
+        for (auto& elem : m_data.testsOrTags) {
+            elem = trim(elem);
+        }
+        for (auto& elem : m_data.sectionsToRun) {
+            elem = trim(elem);
+        }
+
         TestSpecParser parser(ITagAliasRegistry::get());
-        if (!data.testsOrTags.empty()) {
+        if (!m_data.testsOrTags.empty()) {
             m_hasTestFilters = true;
-            for( auto const& testOrTags : data.testsOrTags )
-                parser.parse( testOrTags );
+            for (auto const& testOrTags : m_data.testsOrTags) {
+                parser.parse(testOrTags);
+            }
         }
         m_testSpec = parser.testSpec();
     }
@@ -52,14 +64,20 @@ namespace Catch {
     bool Config::warnAboutMissingAssertions() const    { return !!(m_data.warnings & WarnAbout::NoAssertions); }
     bool Config::warnAboutNoTests() const              { return !!(m_data.warnings & WarnAbout::NoTests); }
     ShowDurations::OrNot Config::showDurations() const { return m_data.showDurations; }
+    double Config::minDuration() const                 { return m_data.minDuration; }
     RunTests::InWhatOrder Config::runOrder() const     { return m_data.runOrder; }
     unsigned int Config::rngSeed() const               { return m_data.rngSeed; }
-    int Config::benchmarkResolutionMultiple() const    { return m_data.benchmarkResolutionMultiple; }
     UseColour::YesOrNo Config::useColour() const       { return m_data.useColour; }
     bool Config::shouldDebugBreak() const              { return m_data.shouldDebugBreak; }
     int Config::abortAfter() const                     { return m_data.abortAfter; }
     bool Config::showInvisibles() const                { return m_data.showInvisibles; }
     Verbosity Config::verbosity() const                { return m_data.verbosity; }
+
+    bool Config::benchmarkNoAnalysis() const                      { return m_data.benchmarkNoAnalysis; }
+    int Config::benchmarkSamples() const                          { return m_data.benchmarkSamples; }
+    double Config::benchmarkConfidenceInterval() const            { return m_data.benchmarkConfidenceInterval; }
+    unsigned int Config::benchmarkResamples() const               { return m_data.benchmarkResamples; }
+    std::chrono::milliseconds Config::benchmarkWarmupTime() const { return std::chrono::milliseconds(m_data.benchmarkWarmupTime); }
 
     IStream const* Config::openStream() {
         return Catch::makeStream(m_data.outputFilename);

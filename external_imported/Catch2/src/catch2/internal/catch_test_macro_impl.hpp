@@ -11,9 +11,15 @@
 #include <catch2/catch_user_config.hpp>
 #include <catch2/internal/catch_assertion_handler.hpp>
 #include <catch2/internal/catch_preprocessor_internal_stringify.hpp>
-#include <catch2/interfaces/catch_interfaces_capture.hpp>
 #include <catch2/internal/catch_stringref.hpp>
 #include <catch2/internal/catch_source_line_info.hpp>
+
+namespace Catch {
+    namespace Detail {
+        // Defined in catch_run_context.cpp, where the thread-local data lives.
+        bool lastAssertionPassed();
+    }
+}
 
 // We need this suppression to leak, because it took until GCC 10
 // for the front end to handle local suppression via _Pragma properly
@@ -57,12 +63,12 @@
 ///////////////////////////////////////////////////////////////////////////////
 #define INTERNAL_CATCH_IF( macroName, resultDisposition, ... ) \
     INTERNAL_CATCH_TEST( macroName, resultDisposition, __VA_ARGS__ ); \
-    if( Catch::getResultCapture().lastAssertionPassed() )
+    if( Catch::Detail::lastAssertionPassed() )
 
 ///////////////////////////////////////////////////////////////////////////////
 #define INTERNAL_CATCH_ELSE( macroName, resultDisposition, ... ) \
     INTERNAL_CATCH_TEST( macroName, resultDisposition, __VA_ARGS__ ); \
-    if( !Catch::getResultCapture().lastAssertionPassed() )
+    if( !Catch::Detail::lastAssertionPassed() )
 
 ///////////////////////////////////////////////////////////////////////////////
 #define INTERNAL_CATCH_NO_THROW( macroName, resultDisposition, ... ) \

@@ -29,6 +29,11 @@ namespace Catch {
         void updatePreferences(IEventListener const& reporterish);
 
     public:
+        MultiReporter( IConfig const* config ):
+            IEventListener( config ) {
+            m_preferences.shouldReportAllAssertionStarts = false;
+        }
+
         using IEventListener::IEventListener;
 
         void addListener( IEventListenerPtr&& listener );

@@ -1,3 +1,4 @@
+#include "sentry_core.h"
 #include "sentry_testsupport.h"
 
 SENTRY_TEST(assert_sdk_version)
@@ -7,10 +8,16 @@ SENTRY_TEST(assert_sdk_version)
 
 SENTRY_TEST(assert_sdk_name)
 {
-    TEST_CHECK_STRING_EQUAL(sentry_sdk_name(), SENTRY_SDK_NAME);
+    SENTRY_WITH_OPTIONS (options) {
+        TEST_CHECK_STRING_EQUAL(
+            sentry_options_get_sdk_name(options), SENTRY_SDK_NAME);
+    }
 }
 
 SENTRY_TEST(assert_sdk_user_agent)
 {
-    TEST_CHECK_STRING_EQUAL(sentry_sdk_user_agent(), SENTRY_SDK_USER_AGENT);
+    SENTRY_WITH_OPTIONS (options) {
+        TEST_CHECK_STRING_EQUAL(
+            sentry_options_get_user_agent(options), SENTRY_SDK_USER_AGENT);
+    }
 }

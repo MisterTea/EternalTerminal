@@ -37,5 +37,10 @@ namespace Catch {
             m_current_number = m_pimpl->dist( m_pimpl->rng );
             return true;
         }
+
+        bool RandomFloatingGenerator<long double>::isFinite() const {
+            return false;
+        }
+
     } // namespace Generators
 } // namespace Catch

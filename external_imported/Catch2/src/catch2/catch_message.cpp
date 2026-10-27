@@ -5,9 +5,8 @@
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
+
 #include <catch2/catch_message.hpp>
-#include <catch2/interfaces/catch_interfaces_capture.hpp>
-#include <catch2/internal/catch_uncaught_exceptions.hpp>
 #include <catch2/internal/catch_enforce.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
 
@@ -20,28 +19,28 @@ namespace Catch {
 
 
     ScopedMessage::ScopedMessage( MessageBuilder&& builder ):
-        m_info( CATCH_MOVE(builder.m_info) ) {
-        m_info.message = builder.m_stream.str();
-        getResultCapture().pushScopedMessage( m_info );
+        m_messageId( builder.m_info.sequence ) {
+        MessageInfo info( CATCH_MOVE( builder.m_info ) );
+        info.message = builder.m_stream.str();
+        Detail::pushScopedMessage( CATCH_MOVE( info ) );
     }
 
     ScopedMessage::ScopedMessage( ScopedMessage&& old ) noexcept:
-        m_info( CATCH_MOVE( old.m_info ) ) {
+        m_messageId( old.m_messageId ) {
         old.m_moved = true;
     }
 
     ScopedMessage::~ScopedMessage() {
-        if ( !uncaught_exceptions() && !m_moved ){
-            getResultCapture().popScopedMessage(m_info);
-        }
+        if ( !m_moved ) { Detail::popScopedMessage( m_messageId ); }
     }
 
 
     Capturer::Capturer( StringRef macroName,
                         SourceLineInfo const& lineInfo,
                         ResultWas::OfType resultType,
-                        StringRef names ):
-        m_resultCapture( getResultCapture() ) {
+                        StringRef names,
+                        bool isScoped):
+        m_isScoped(isScoped) {
         auto trimmed = [&] (size_t start, size_t end) {
             while (names[start] == ',' || isspace(static_cast<unsigned char>(names[start]))) {
                 ++start;
@@ -87,8 +86,8 @@ namespace Catch {
             case ',':
                 if (start != pos && openings.empty()) {
                     m_messages.emplace_back(macroName, lineInfo, resultType);
-                    m_messages.back().message = static_cast<std::string>(trimmed(start, pos));
-                    m_messages.back().message += " := ";
+                    m_messages.back().message += trimmed(start, pos);
+                    m_messages.back().message += " := "_sr;
                     start = pos;
                 }
                 break;
@@ -97,21 +96,26 @@ namespace Catch {
         }
         assert(openings.empty() && "Mismatched openings");
         m_messages.emplace_back(macroName, lineInfo, resultType);
-        m_messages.back().message = static_cast<std::string>(trimmed(start, names.size() - 1));
-        m_messages.back().message += " := ";
+        m_messages.back().message += trimmed(start, names.size() - 1);
+        m_messages.back().message += " := "_sr;
     }
     Capturer::~Capturer() {
-        if ( !uncaught_exceptions() ){
-            assert( m_captured == m_messages.size() );
-            for( size_t i = 0; i < m_captured; ++i  )
-                m_resultCapture.popScopedMessage( m_messages[i] );
+        assert( m_captured == m_messages.size() );
+        if ( m_isScoped ) {
+            for ( auto const& message : m_messages ) {
+                Detail::popScopedMessage( message.sequence );
+            }
         }
     }
 
     void Capturer::captureValue( size_t index, std::string const& value ) {
         assert( index < m_messages.size() );
         m_messages[index].message += value;
-        m_resultCapture.pushScopedMessage( m_messages[index] );
+        if ( m_isScoped ) {
+            Detail::pushScopedMessage( CATCH_MOVE( m_messages[index] ) );
+        } else {
+            Detail::addUnscopedMessage( CATCH_MOVE( m_messages[index] ) );
+        }
         m_captured++;
     }
 

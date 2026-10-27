@@ -52,6 +52,20 @@ TEST_CASE("failing test") {
 }
 ```
 
+Same applies for a `SKIP` nested inside an assertion:
+
+```cpp
+static bool do_skip() {
+    SKIP();
+    return true;
+}
+
+TEST_CASE("Another failing test") {
+    CHECK(do_skip());
+}
+```
+
+
 ### Interaction with Sections and Generators
 
 Sections, nested sections as well as specific outputs from [generators](generators.md#top)
@@ -73,7 +87,7 @@ TEST_CASE("complex test case") {
 ```
 
 This test case will report 5 passing assertions; one for each of the three
-values in section `a1`, and then two in section `a2`, from values 2 and 4.
+values in section `a1`, and then two in section `a2`, from values 2 and 6.
 
 Note that as soon as one section is skipped, the entire test case will
 be reported as _skipped_ (unless there is a failing assertion, in which

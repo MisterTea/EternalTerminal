@@ -259,6 +259,7 @@ void ModuleSnapshotWin::GetCrashpadOptionsInternal(
     options->system_crash_reporter_forwarding = TriState::kUnset;
     options->gather_indirectly_referenced_memory = TriState::kUnset;
     options->indirectly_referenced_memory_cap = 0;
+    options->limit_stack_capture_to_sp = TriState::kUnset;
     return;
   }
 
@@ -270,6 +271,8 @@ void ModuleSnapshotWin::GetCrashpadOptionsInternal(
       crashpad_info_->GatherIndirectlyReferencedMemory();
   options->indirectly_referenced_memory_cap =
       crashpad_info_->IndirectlyReferencedMemoryCap();
+  options->limit_stack_capture_to_sp =
+      crashpad_info_->LimitStackCaptureToSp();
 }
 
 const VS_FIXEDFILEINFO* ModuleSnapshotWin::VSFixedFileInfo() const {

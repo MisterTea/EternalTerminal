@@ -24,6 +24,7 @@
 :test-result: PASS #2152 - ULP checks between differently signed values were wrong - double
 :test-result: PASS #2152 - ULP checks between differently signed values were wrong - float
 :test-result: XFAIL #2615 - Throwing in constructor generator fails test case but does not abort
+:test-result: PASS #3001: Enum-based bitfields can be captured
 :test-result: XFAIL #748 - captures with unexpected exceptions
 :test-result: PASS #809
 :test-result: PASS #833
@@ -93,6 +94,8 @@
 :test-result: PASS Approximate comparisons with mixed numeric types
 :test-result: PASS Arbitrary predicate matcher
 :test-result: PASS Assertion macros support bit operators and bool conversions
+:test-result: XFAIL Assertions can be nested - CHECK
+:test-result: XFAIL Assertions can be nested - REQUIRE
 :test-result: PASS Assertions then sections
 :test-result: PASS Basic use of the Contains range matcher
 :test-result: PASS Basic use of the Empty range matcher
@@ -100,6 +103,8 @@
 :test-result: PASS CAPTURE can deal with complex expressions involving commas
 :test-result: PASS CAPTURE parses string and character constants
 :test-result: PASS Capture and info messages
+:test-result: FAIL Captures do not leave block with an exception
+:test-result: FAIL Captures outlive section end
 :test-result: PASS CaseInsensitiveEqualsTo is case insensitive
 :test-result: PASS CaseInsensitiveLess is case insensitive
 :test-result: PASS Character pretty printing
@@ -115,6 +120,7 @@
 :test-result: PASS Combining templated and concrete matchers
 :test-result: PASS Combining templated matchers
 :test-result: PASS Commas in various macros are allowed
+:test-result: PASS Comparing (and stringifying) volatile pointers works
 :test-result: PASS Comparing function pointers
 :test-result: PASS Comparison ops
 :test-result: PASS Comparison with explicitly convertible types
@@ -123,6 +129,7 @@
 :test-result: PASS Comparisons with int literals don't warn when mixing signed/ unsigned
 :test-result: PASS Composed generic matchers shortcircuit
 :test-result: PASS Composed matchers shortcircuit
+:test-result: PASS ConcatGenerator
 :test-result: FAIL Contains string matcher
 :test-result: PASS Copy and then generate a range
 :test-result: PASS Cout stream properly declares it writes to stdout
@@ -130,10 +137,12 @@
 :test-result: FAIL Custom exceptions can be translated when testing for throwing as something else
 :test-result: FAIL Custom std-exceptions can be custom translated
 :test-result: PASS Default scale is invisible to comparison
+:test-result: XFAIL Delayed unscoped message clearing does not catch newly inserted messages
 :test-result: PASS Directly creating an EnumInfo
 :test-result: SKIP Empty generators can SKIP in constructor
 :test-result: PASS Empty stream name opens cout stream
 :test-result: FAIL EndsWith string matcher
+:test-result: PASS Enum backed by larger underlying type
 :test-result: PASS Enums can quickly have stringification enabled using CATCH_REGISTER_ENUM
 :test-result: PASS Enums in namespaces can quickly have stringification enabled using CATCH_REGISTER_ENUM
 :test-result: PASS Epsilon only applies to Approx's value
@@ -146,18 +155,23 @@
 :test-result: PASS Exception matchers that succeed
 :test-result: PASS Exception message can be matched
 :test-result: PASS Exception messages can be tested for
+:test-result: PASS Exception thrown inside stringify does not fail the test
 :test-result: PASS Exceptions matchers
 :test-result: FAIL Expected exceptions that don't throw or unexpected exceptions fail the test
 :test-result: FAIL FAIL aborts the test
+:test-result: XFAIL FAIL can be nested in assertion
 :test-result: FAIL FAIL does not require an argument
 :test-result: FAIL FAIL_CHECK does not abort the test
 :test-result: PASS Factorials are computed
 :test-result: PASS Filter generator throws exception for empty generator
+:test-result: PASS FixedValuesGenerator can be skipped forward
 :test-result: PASS Floating point matchers: double
 :test-result: PASS Floating point matchers: float
 :test-result: PASS GENERATE can combine literals and generators
+:test-result: PASS Generator adapters properly handle isFinite
 :test-result: PASS Generators -- adapters
 :test-result: PASS Generators -- simple
+:test-result: PASS Generators can be skipped forward
 :test-result: PASS Generators internals
 :test-result: PASS Greater-than inequalities with different epsilons
 :test-result: PASS Hashers with different seed produce different hash with same test case
@@ -173,10 +187,12 @@
 :test-result: XFAIL Inequality checks that should fail
 :test-result: PASS Inequality checks that should succeed
 :test-result: PASS JsonWriter
-:test-result: PASS JsonWriter escapes charaters in strings properly
+:test-result: PASS JsonWriter escapes characters in strings properly
 :test-result: PASS Lambdas in assertions
 :test-result: PASS Less-than inequalities with different epsilons
 :test-result: PASS ManuallyRegistered
+:test-result: PASS MapGenerator can be skipped forward efficiently
+:test-result: PASS MapGenerator can handle not default constructible types
 :test-result: PASS Matchers can be (AllOf) composed with the && operator
 :test-result: PASS Matchers can be (AnyOf) composed with the || operator
 :test-result: PASS Matchers can be composed with both && and ||
@@ -199,6 +215,7 @@
 :test-result: PASS Overloaded comma or address-of operators are not used
 :test-result: PASS Parse uints
 :test-result: PASS Parsed tags are matched case insensitive
+:test-result: PASS Parsing path filter specs
 :test-result: PASS Parsing sharding-related cli flags
 :test-result: PASS Parsing tags with non-alphabetical characters is pass-through
 :test-result: PASS Parsing warnings
@@ -211,11 +228,15 @@
 :test-result: PASS Product with differing arities - std::tuple<int>
 :test-result: PASS Random seed generation accepts known methods
 :test-result: PASS Random seed generation reports unknown methods
+:test-result: PASS RandomGenerator reports itself as infinite - float
+:test-result: PASS RandomGenerator reports itself as infinite - int
+:test-result: PASS RandomGenerator reports itself as infinite - long double
 :test-result: PASS Range type with sentinel
 :test-result: FAIL Reconstruction should be based on stringification: #914
 :test-result: FAIL Regex string matcher
 :test-result: PASS Registering reporter with '::' in name fails
 :test-result: PASS Regression test #1
+:test-result: PASS RepeatGenerator refuses infinite generators
 :test-result: PASS Reporter's write listings to provided stream
 :test-result: PASS Reproducer for #2309 - a very long description past 80 chars (default console width) with a late colon : blablabla
 :test-result: PASS SUCCEED counts as a test pass
@@ -224,6 +245,9 @@
 :test-result: PASS Scenario: Do that thing with the thing
 :test-result: PASS Scenario: This is a really long scenario name to see how the list command deals with wrapping
 :test-result: PASS Scenario: Vector resizing affects size and capacity
+:test-result: FAIL Scoped message applies to all assertions in scope
+:test-result: FAIL Scoped messages do not leave block with an exception
+:test-result: FAIL Scoped messages outlive section end
 :test-result: FAIL Sends stuff to stdout and stderr
 :test-result: PASS Some simple comparisons between doubles
 :test-result: FAIL Standard output from all sections is reported
@@ -241,6 +265,7 @@
 :test-result: FAIL Tabs and newlines show in output
 :test-result: PASS Tag alias can be registered against tag patterns
 :test-result: PASS Tags with spaces and non-alphanumerical characters are accepted
+:test-result: PASS TakeGenerator can be skipped forward
 :test-result: PASS Template test case method with test types specified inside std::tuple - MyTypes - 0
 :test-result: PASS Template test case method with test types specified inside std::tuple - MyTypes - 1
 :test-result: PASS Template test case method with test types specified inside std::tuple - MyTypes - 2
@@ -255,6 +280,10 @@
 :test-result: PASS TemplateTest: vectors can be sized and resized - int
 :test-result: PASS TemplateTest: vectors can be sized and resized - std::string
 :test-result: PASS TemplateTest: vectors can be sized and resized - std::tuple<int,float>
+:test-result: FAIL TemplateTestSig: compiles with a single int parameter - 1
+:test-result: FAIL TemplateTestSig: compiles with a single int parameter - 3
+:test-result: FAIL TemplateTestSig: compiles with a single int parameter - 6
+:test-result: FAIL TemplateTestSig: compiles with two type parameters - int,int
 :test-result: PASS TemplateTestSig: vectors can be sized and resized - (std::tuple<int, float>), 6
 :test-result: PASS TemplateTestSig: vectors can be sized and resized - float,4
 :test-result: PASS TemplateTestSig: vectors can be sized and resized - int,5
@@ -276,6 +305,7 @@
 :test-result: PASS Trim strings
 :test-result: PASS Type conversions of RangeEquals and similar
 :test-result: FAIL Unexpected exceptions can be translated
+:test-result: FAIL Unscoped capture outlives scope
 :test-result: PASS Upcasting special member functions
 :test-result: PASS Usage of AllMatch range matcher
 :test-result: PASS Usage of AllTrue range matcher
@@ -310,6 +340,7 @@
 :test-result: PASS array<int, N> -> toString
 :test-result: PASS benchmark function call
 :test-result: PASS boolean member
+:test-result: PASS cat generator
 :test-result: PASS checkedElse
 :test-result: FAIL checkedElse, failing
 :test-result: PASS checkedIf
@@ -388,6 +419,7 @@
 :test-result: PASS stringify( vectors<has_maker_and_operator> )
 :test-result: PASS stringify( vectors<has_operator> )
 :test-result: PASS strlen3
+:test-result: PASS system_clock timepoint with non-default duration
 :test-result: PASS tables
 :test-result: PASS tags with dots in later positions are not parsed as hidden
 :test-result: SKIP tests can be skipped dynamically at runtime

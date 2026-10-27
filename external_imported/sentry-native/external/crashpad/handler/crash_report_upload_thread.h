@@ -114,6 +114,15 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //! This method will run on the pool thread executing the OnCrashDumpEvent
   void ReportPendingSync(const UUID& report_uuid);
 
+  //! \brief Wakes the upload thread to immediately process pending reports.
+  //!
+  //! Unlike ReportPending(), no specific report UUID is enqueued; the next
+  //! pass relies on the thread's pending-report scan (requires
+  //! \a watch_pending_reports).
+  //!
+  //! This method may be called from any thread.
+  void RetryPending();
+
   // Stoppable:
 
   //! \brief Starts a dedicated upload thread, which executes ThreadMain().

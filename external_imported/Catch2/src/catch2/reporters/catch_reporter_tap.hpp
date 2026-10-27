@@ -18,6 +18,7 @@ namespace Catch {
         TAPReporter( ReporterConfig&& config ):
             StreamingReporterBase( CATCH_MOVE(config) ) {
             m_preferences.shouldReportAllAssertions = true;
+            m_preferences.shouldReportAllAssertionStarts = false;
         }
 
         static std::string getDescription() {

@@ -10,6 +10,40 @@ project( Catch2ExtraTests LANGUAGES CXX )
 
 message( STATUS "Extra tests included" )
 
+# The MinDuration reporting tests do not need separate compilation, but
+# they have non-trivial execution time, so they are categorized as
+# extra tests, so that they are run less.
+add_test(NAME MinDuration::SimpleThreshold COMMAND $<TARGET_FILE:SelfTest> --min-duration 0.22 [min_duration_test])
+set_tests_properties(
+    MinDuration::SimpleThreshold
+  PROPERTIES
+    PASS_REGULAR_EXPRESSION "s: sleep_for_250ms"
+    FAIL_REGULAR_EXPRESSION "sleep_for_100ms"
+    RUN_SERIAL ON  # The test is timing sensitive, so we want to run it
+    # serially to avoid false positives on oversubscribed machines
+)
+
+# -d yes overrides the threshold, so we should see the faster test even
+# with a ridiculous high min duration threshold
+add_test(NAME MinDuration::DurationOverrideYes COMMAND $<TARGET_FILE:SelfTest> --min-duration 1.0 -d yes [min_duration_test])
+set_tests_properties(
+    MinDuration::DurationOverrideYes
+  PROPERTIES
+    PASS_REGULAR_EXPRESSION "s: sleep_for_100ms"
+)
+
+# -d no overrides the threshold, so we should never see any tests even
+# with ridiculously low min duration threshold
+add_test(NAME MinDuration::DurationOverrideNo COMMAND $<TARGET_FILE:SelfTest> --min-duration 0.0001 -d no [min_duration_test])
+set_tests_properties(
+    MinDuration::DurationOverrideNo
+  PROPERTIES
+    FAIL_REGULAR_EXPRESSION "sleep_for_250ms"
+)
+
+
+# ------------ end of duration reporting tests
+
 # define folders used:
 
 set( TESTS_DIR   ${CATCH_DIR}/projects/ExtraTests )
@@ -116,6 +150,35 @@ set_tests_properties(
 )
 
 
+add_executable(BenchmarkingMacros ${TESTS_DIR}/X20-BenchmarkingMacros.cpp)
+target_compile_definitions( BenchmarkingMacros PRIVATE CATCH_CONFIG_ENABLE_BENCHMARKING )
+
+add_test(NAME BenchmarkingMacros COMMAND BenchmarkingMacros -r console -s)
+set_tests_properties(
+    BenchmarkingMacros
+  PROPERTIES
+    PASS_REGULAR_EXPRESSION "benchmark name[\\r\\n\\t ]+samples[\\r\\n\\t ]+iterations[\\r\\n\\t ]+estimated"
+)
+
+# This test touches windows.h, so it should only be compiled under msvc
+if (MSVC)
+    # This test fails if it does not compile and succeeds otherwise
+    add_executable(WindowsHeader ${TESTS_DIR}/X90-WindowsHeaderInclusion.cpp)
+    set_property( TARGET WindowsHeader PROPERTY CXX_STANDARD 11 )
+    set_property( TARGET WindowsHeader PROPERTY CXX_STANDARD_REQUIRED ON )
+    set_property( TARGET WindowsHeader PROPERTY CXX_EXTENSIONS OFF )
+    target_include_directories( WindowsHeader PRIVATE ${SINGLE_INCLUDE_PATH} )
+    add_test(NAME WindowsHeader COMMAND WindowsHeader -r compact)
+endif()
+
+add_executable(DebugBreakMacros ${TESTS_DIR}/X12-CustomDebugBreakMacro.cpp)
+add_test(NAME DebugBreakMacros COMMAND DebugBreakMacros --break)
+set_tests_properties(
+    DebugBreakMacros
+  PROPERTIES
+    PASS_REGULAR_EXPRESSION "Pretty please, break into debugger"
+)
+
 set( EXTRA_TEST_BINARIES
     PrefixedMacros
     DisabledMacros
@@ -123,6 +186,8 @@ set( EXTRA_TEST_BINARIES
     DisabledExceptions-CustomHandler
     FallbackStringifier
     DisableStringification
+    BenchmarkingMacros
+    DebugBreakMacros
 )
 
 # Shared config
@@ -132,4 +197,5 @@ foreach( test ${EXTRA_TEST_BINARIES} )
     set_property( TARGET ${test} PROPERTY CXX_EXTENSIONS OFF )
     target_include_directories( ${test} PRIVATE ${SINGLE_INCLUDE_PATH} )
 endforeach()
+
 

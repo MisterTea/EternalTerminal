@@ -45,6 +45,8 @@ namespace {
 
 constexpr const char kCRLFTerminator[] = "\r\n";
 
+class Stream;
+
 class HTTPTransportSocket final : public HTTPTransport {
  public:
   HTTPTransportSocket() = default;
@@ -55,6 +57,9 @@ class HTTPTransportSocket final : public HTTPTransport {
   ~HTTPTransportSocket() override = default;
 
   bool ExecuteSynchronously(std::string* response_body) override;
+
+ private:
+  bool ReadResponse(Stream* stream, std::string* response_body);
 };
 
 struct ScopedAddrinfoTraits {
@@ -463,7 +468,7 @@ bool StartsWith(const std::string& str, const char* with, size_t len) {
   return str.compare(0, len, with) == 0;
 }
 
-bool ReadResponseLine(Stream* stream) {
+bool ReadResponseLine(Stream* stream, unsigned int* status_code) {
   std::string response_line;
   if (!ReadLine(stream, &response_line)) {
     LOG(ERROR) << "ReadLine";
@@ -477,10 +482,11 @@ bool ReadResponseLine(Stream* stream) {
       response_line.at(strlen(kHttp10) + 3) != ' ') {
     return false;
   }
-  unsigned int http_status = 0;
-  return base::StringToUint(response_line.substr(strlen(kHttp10), 3),
-                            &http_status) &&
-         http_status >= 200 && http_status <= 203;
+  if (!base::StringToUint(response_line.substr(strlen(kHttp10), 3),
+                          status_code)) {
+    return false;
+  }
+  return true;
 }
 
 bool ReadResponseHeaders(Stream* stream, HTTPHeaders* headers) {
@@ -514,10 +520,13 @@ bool ReadContentChunked(Stream* stream, std::string* body) {
   return false;
 }
 
-bool ReadResponse(Stream* stream, std::string* response_body) {
+bool HTTPTransportSocket::ReadResponse(Stream* stream,
+                                       std::string* response_body) {
   response_body->clear();
 
-  if (!ReadResponseLine(stream)) {
+  unsigned int status_code = 0;
+  if (!ReadResponseLine(stream, &status_code) ||
+      !HandleHTTPStatus(status_code)) {
     return false;
   }
 

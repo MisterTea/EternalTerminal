@@ -44,8 +44,17 @@ class MachLogMessage : public logging::LogMessage {
 
   ~MachLogMessage();
 
+ protected:
+  void AppendError();
+
  private:
   mach_error_t mach_err_;
+};
+
+class MachLogMessageFatal final : public MachLogMessage {
+ public:
+  using MachLogMessage::MachLogMessage;
+  [[noreturn]] ~MachLogMessageFatal() override;
 };
 
 }  // namespace logging
@@ -108,8 +117,17 @@ class BootstrapLogMessage : public logging::LogMessage {
 
   ~BootstrapLogMessage();
 
+ protected:
+  void AppendError();
+
  private:
   kern_return_t bootstrap_err_;
+};
+
+class BootstrapLogMessageFatal final : public BootstrapLogMessage {
+ public:
+  using BootstrapLogMessage::BootstrapLogMessage;
+  [[noreturn]] ~BootstrapLogMessageFatal() override;
 };
 
 }  // namespace logging

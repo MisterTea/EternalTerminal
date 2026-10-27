@@ -36,6 +36,24 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
                               const ClientToServerMessage& message,
                               ServerToClientMessage* response);
 
+//! \brief Connect over the given \a pipe_name, passing a variable-length
+//!     attachment message to the server.
+//!
+//! This is used for kAddAttachmentV2 and kRemoveAttachmentV2 message types
+//! which support paths longer than MAX_PATH.
+//!
+//! \param[in] pipe_name The name of the pipe to connect to.
+//! \param[in] message_type Either kAddAttachmentV2 or kRemoveAttachmentV2.
+//! \param[in] path The attachment path to send.
+//! \param[out] response The server's response.
+//!
+//! \return `true` on success, `false` on failure with a message logged.
+bool SendAttachmentToCrashHandlerServer(
+    const std::wstring& pipe_name,
+    ClientToServerMessage::Type message_type,
+    const std::wstring& path,
+    ServerToClientMessage* response);
+
 //! \brief Wraps CreateNamedPipe() to create a single named pipe instance.
 //!
 //! \param[in] pipe_name The name to use for the pipe.

@@ -310,3 +310,72 @@ TEST_CASE( "INFO and UNSCOPED_INFO can stream multiple arguments",
                    << " parts." );
     FAIL( "Show infos!" );
 }
+
+TEST_CASE( "Scoped messages do not leave block with an exception", "[messages][info][.failing]" ) {
+    INFO( "Should be in scope at the end" );
+    { INFO( "This should go out of scope immediately" ); }
+
+    try {
+        INFO( "Should not be in scope at the end" );
+        throw std::runtime_error( "ex" );
+    } catch (std::exception const&) {}
+
+    REQUIRE( false );
+}
+
+TEST_CASE( "Captures do not leave block with an exception",
+           "[messages][capture][.failing]" ) {
+    int a = 1, b = 2, c = 3;
+
+    CAPTURE( a );
+    { CAPTURE( b ); }
+
+    try {
+        CAPTURE( c );
+        throw std::runtime_error( "ex" );
+    } catch ( std::exception const& ) {}
+
+    REQUIRE( false );
+}
+
+TEST_CASE( "Scoped messages outlive section end",
+           "[messages][info][.failing]" ) {
+    INFO( "Should survive a section end" );
+    SECTION( "Dummy section" ) { CHECK( true ); }
+
+    REQUIRE( false );
+}
+
+TEST_CASE( "Captures outlive section end", "[messages][info][.failing]" ) {
+    int a = 1;
+    CAPTURE( a );
+    SECTION( "Dummy section" ) { CHECK( true ); }
+
+    REQUIRE( false );
+}
+
+TEST_CASE( "Scoped message applies to all assertions in scope",
+           "[messages][info][.failing]" ) {
+    INFO( "This will be reported multiple times" );
+    CHECK( false );
+    CHECK( false );
+}
+
+TEST_CASE(
+    "Delayed unscoped message clearing does not catch newly inserted messages",
+    "[messages][unscoped][!shouldfail]" ) {
+    UNSCOPED_INFO( "a" );
+    REQUIRE( true );
+    UNSCOPED_INFO( "b" );
+    REQUIRE( false );
+}
+
+TEST_CASE( "Unscoped capture outlives scope",
+           "[messages][unscoped][capture][!shouldfail]" ) {
+    int i = 1;
+    SECTION( "A" ) {
+        int j = 2;
+        UNSCOPED_CAPTURE( i, j, i + j );
+    }
+    REQUIRE( false );
+}

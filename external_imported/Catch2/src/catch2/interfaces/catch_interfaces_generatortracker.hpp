@@ -35,6 +35,15 @@ namespace Catch {
             //! Customization point for `currentElementAsString`
             virtual std::string stringifyImpl() const = 0;
 
+            /**
+             * Customization point for skipping to the n-th element
+             *
+             * Defaults to successively calling `countedNext`. If there
+             * are not enough elements to reach the nth one, will throw
+             * an error.
+             */
+            virtual void skipToNthElementImpl( std::size_t n );
+
         public:
             GeneratorUntypedBase() = default;
             // Generation of copy ops is deprecated (and Clang will complain)
@@ -59,6 +68,13 @@ namespace Catch {
             std::size_t currentElementIndex() const { return m_currentElementIndex; }
 
             /**
+             * Moves the generator forward **to** the n-th element
+             *
+             * Cannot move backwards. Can stay in place.
+             */
+            void skipToNthElement( std::size_t n );
+
+            /**
              * Returns generator's current element as user-friendly string.
              *
              * By default returns string equivalent to calling
@@ -72,6 +88,15 @@ namespace Catch {
              * comes first.
              */
             StringRef currentElementAsString() const;
+
+            /**
+             * Returns true if calls to `next` will eventually return false
+             *
+             * Note that for backwards compatibility this is currently defaulted
+             * to return `true`, but in the future all generators will have to
+             * provide their own implementation.
+             */
+            virtual bool isFinite() const;
         };
         using GeneratorBasePtr = Catch::Detail::unique_ptr<GeneratorUntypedBase>;
 
@@ -80,9 +105,7 @@ namespace Catch {
     class IGeneratorTracker {
     public:
         virtual ~IGeneratorTracker(); // = default;
-        virtual auto hasGenerator() const -> bool = 0;
         virtual auto getGenerator() const -> Generators::GeneratorBasePtr const& = 0;
-        virtual void setGenerator( Generators::GeneratorBasePtr&& generator ) = 0;
     };
 
 } // namespace Catch

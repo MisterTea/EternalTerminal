@@ -59,8 +59,7 @@ namespace Catch {
         std::vector<std::string> tags;
         std::string desc, tag;
         bool inTag = false;
-        std::string _descOrTags = nameAndTags.tags;
-        for (char c : _descOrTags) {
+        for (char c : nameAndTags.tags) {
             if( !inTag ) {
                 if( c == '[' )
                     inTag = true;
@@ -90,10 +89,11 @@ namespace Catch {
             }
         }
         if( isHidden ) {
-            tags.push_back( "." );
+            // Add all "hidden" tags to make them behave identically
+            tags.insert( tags.end(), { ".", "!hide" } );
         }
 
-        TestCaseInfo info( nameAndTags.name, _className, desc, tags, _lineInfo );
+        TestCaseInfo info( static_cast<std::string>(nameAndTags.name), _className, desc, tags, _lineInfo );
         return TestCase( _testCase, std::move(info) );
     }
 

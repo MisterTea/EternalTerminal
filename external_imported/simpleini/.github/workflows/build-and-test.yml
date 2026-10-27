@@ -1,0 +1,96 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  release:
+    types: [published]
+
+jobs:
+  Windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Test with CMake
+        run: |
+          cmake -S . -B build
+          cmake --build build --config Release --target tests
+          ctest --verbose --test-dir build -C Release
+
+  Ubuntu:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install requirements
+        run: |
+          sudo apt install libgtest-dev cmake
+
+      - name: Format check
+        if: matrix.runner == 'ubuntu-latest'
+        run: |
+          sudo apt install clang-format
+          make format-check
+
+      - name: Test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=OFF)
+        run: |
+          cmake -S . -B build -DSIMPLEINI_USE_SYSTEM_GTEST=OFF
+          cmake --build build
+          ctest --verbose --test-dir build
+
+      - name: Test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=ON)
+        run: |
+          cmake -S . -B build-system-gtest -DSIMPLEINI_USE_SYSTEM_GTEST=ON
+          cmake --build build-system-gtest
+          ctest --verbose --test-dir build-system-gtest
+
+  MacOS:
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install requirements
+        run: |
+          brew list googletest &>/dev/null || brew install googletest
+          brew list cmake &>/dev/null || brew install cmake
+
+      - name: Test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=OFF)
+        run: |
+          cmake -S . -B build -DSIMPLEINI_USE_SYSTEM_GTEST=OFF
+          cmake --build build
+          ctest --verbose --test-dir build
+
+      - name: Test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=ON)
+        run: |
+          cmake -S . -B build-system-gtest -DSIMPLEINI_USE_SYSTEM_GTEST=ON
+          cmake --build build-system-gtest
+          ctest --verbose --test-dir build-system-gtest
+
+  Doxygen:
+    needs: [Ubuntu, Windows, MacOS]
+    if: ${{ always() && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+
+      - name: Generate Documentation
+        run: doxygen Doxyfile
+
+      - name: Deploy Documentation to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/html

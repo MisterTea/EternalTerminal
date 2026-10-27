@@ -28,6 +28,10 @@ declare_args() {
   # default is only there for compatibility reasons and will be removed (see
   # crbug.com/1138425 for more details).
   target_environment = ""
+
+  # The iOS-based platform being targeted. Possible values: "iphoneos", "tvos".
+  # The default is "iphoneos".
+  target_platform = "iphoneos"
 }
 
 if (target_environment == "") {
@@ -42,12 +46,22 @@ use_ios_simulator = target_environment == "simulator"
 
 if (ios_sdk_path == "") {
   # Compute default target.
-  if (use_ios_simulator) {
-    ios_sdk_name = "iphonesimulator"
-    ios_sdk_platform = "iPhoneSimulator"
-  } else {
-    ios_sdk_name = "iphoneos"
-    ios_sdk_platform = "iPhoneOS"
+  if (target_platform == "iphoneos") {
+    if (use_ios_simulator) {
+      ios_sdk_name = "iphonesimulator"
+      ios_sdk_platform = "iPhoneSimulator"
+    } else {
+      ios_sdk_name = "iphoneos"
+      ios_sdk_platform = "iPhoneOS"
+    }
+  } else if (target_platform == "tvos") {
+    if (use_ios_simulator) {
+      ios_sdk_name = "appletvsimulator"
+      ios_sdk_platform = "AppleTVSimulator"
+    } else {
+      ios_sdk_name = "appletvos"
+      ios_sdk_platform = "AppleTVOS"
+    }
   }
 
   ios_sdk_info_args = [ "--get_sdk_info" ]

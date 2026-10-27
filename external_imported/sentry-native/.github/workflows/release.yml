@@ -17,18 +17,18 @@ jobs:
     steps:
       - name: Get auth token
         id: token
-        uses: actions/create-github-app-token@5d869da34e18e7287c1daad50e0b8ea0f506ce69 # v1.11.0
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           app-id: ${{ vars.SENTRY_RELEASE_BOT_CLIENT_ID }}
           private-key: ${{ secrets.SENTRY_RELEASE_BOT_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           token: ${{ steps.token.outputs.token }}
           fetch-depth: 0
 
       - name: Prepare release
-        uses: getsentry/action-prepare-release@v1
+        uses: getsentry/action-prepare-release@c8e1c2009ab08259029170132c384f03c1064c0e # v1
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
         with:

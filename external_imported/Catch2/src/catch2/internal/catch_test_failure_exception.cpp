@@ -14,7 +14,7 @@ namespace Catch {
 
     void throw_test_failure_exception() {
 #if !defined( CATCH_CONFIG_DISABLE_EXCEPTIONS )
-        throw TestFailureException{};
+        throw TestFailureException{}; //NOLINT(bugprone-std-exception-baseclass)
 #else
         CATCH_ERROR( "Test failure requires aborting test!" );
 #endif
@@ -22,7 +22,7 @@ namespace Catch {
 
     void throw_test_skip_exception() {
 #if !defined( CATCH_CONFIG_DISABLE_EXCEPTIONS )
-        throw Catch::TestSkipException();
+        throw Catch::TestSkipException(); //NOLINT(bugprone-std-exception-baseclass)
 #else
         CATCH_ERROR( "Explicitly skipping tests during runtime requires exceptions" );
 #endif

@@ -307,7 +307,7 @@ void print( std::ostream& os, int const level, std::string const& title, Catch::
 // 2. My listener and registration:
 //
 
-char const * dashed_line =
+char const * const dashed_line =
     "--------------------------------------------------------------------------";
 
 

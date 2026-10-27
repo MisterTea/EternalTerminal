@@ -1,7 +1,7 @@
 //
 //  client.cc
 //
-//  Copyright (c) 2019 Yuji Hirose. All rights reserved.
+//  Copyright (c) 2026 Yuji Hirose. All rights reserved.
 //  MIT License
 //
 
@@ -30,10 +30,7 @@ int main(void) {
   } else {
     cout << "error code: " << res.error() << std::endl;
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
-    auto result = cli.get_openssl_verify_result();
-    if (result) {
-      cout << "verify error: " << X509_verify_cert_error_string(result) << endl;
-    }
+    cout << "ssl backend error: " << res.ssl_backend_error() << endl;
 #endif
   }
 

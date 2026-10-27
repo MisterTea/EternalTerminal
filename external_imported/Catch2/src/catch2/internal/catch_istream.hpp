@@ -12,8 +12,6 @@
 #include <catch2/internal/catch_unique_ptr.hpp>
 
 #include <iosfwd>
-#include <cstddef>
-#include <ostream>
 #include <string>
 
 namespace Catch {

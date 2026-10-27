@@ -33,7 +33,7 @@ namespace Catch {
     namespace {
         //! A no-op implementation, used if no reporter wants output
         //! redirection.
-        class NoopRedirect : public OutputRedirect {
+        class NoopRedirect final : public OutputRedirect {
             void activateImpl() override {}
             void deactivateImpl() override {}
             std::string getStdout() override { return {}; }
@@ -70,7 +70,7 @@ namespace Catch {
          * Redirects the `std::cout`, `std::cerr`, `std::clog` streams,
          * but does not touch the actual `stdout`/`stderr` file descriptors.
          */
-        class StreamRedirect : public OutputRedirect {
+        class StreamRedirect final : public OutputRedirect {
             ReusableStringStream m_redirectedOut, m_redirectedErr;
             RedirectedStreamNew m_cout, m_cerr, m_clog;
 
@@ -181,7 +181,7 @@ namespace Catch {
          * Works by replacing the file descriptors numbered 1 and 2
          * with an open temporary file.
          */
-        class FileRedirect : public OutputRedirect {
+        class FileRedirect final : public OutputRedirect {
             TempFile m_outFile, m_errFile;
             int m_originalOut = -1;
             int m_originalErr = -1;

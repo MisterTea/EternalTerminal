@@ -24,17 +24,25 @@ namespace crashpad {
 
 // static
 bool Paths::Executable(base::FilePath* path) {
-  wchar_t executable_path[_MAX_PATH];
-  unsigned int len = GetModuleFileName(
-      nullptr, executable_path, static_cast<DWORD>(std::size(executable_path)));
+  // follow the maximum path length documented here:
+  // https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
+  constexpr DWORD kMaxPathChars = 32768;
+  std::wstring executable_path(kMaxPathChars, L'\0');
+
+  const DWORD len =
+      GetModuleFileName(nullptr, &executable_path[0], kMaxPathChars);
+
   if (len == 0) {
     PLOG(ERROR) << "GetModuleFileName";
     return false;
-  } else if (len >= std::size(executable_path)) {
-    LOG(ERROR) << "GetModuleFileName";
+  }
+
+  if (len >= kMaxPathChars) {
+    LOG(ERROR) << "GetModuleFileName: path exceeds maximum length";
     return false;
   }
 
+  executable_path.resize(len);
   *path = base::FilePath(executable_path);
   return true;
 }

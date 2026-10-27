@@ -5,14 +5,14 @@ on: [push, pull_request]
 jobs:
   build:
     # Set the type of machine to run on
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
 
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Dependencies
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v6
         with:
             python-version: '3.7'
       - name: Install checkguard

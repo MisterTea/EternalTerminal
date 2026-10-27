@@ -102,11 +102,11 @@ android {
 dependencies {
     compileOnly("org.jetbrains:annotations:23.0.0")
 
-    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.test.ext:junit:1.3.0")
 
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:rules:1.7.0")
 }
 
 /*

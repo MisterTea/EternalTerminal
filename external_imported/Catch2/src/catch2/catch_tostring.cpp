@@ -8,10 +8,10 @@
 
 #include <catch2/catch_tostring.hpp>
 #include <catch2/interfaces/catch_interfaces_config.hpp>
+#include <catch2/interfaces/catch_interfaces_registry_hub.hpp>
 #include <catch2/internal/catch_context.hpp>
 #include <catch2/internal/catch_polyfills.hpp>
 
-#include <cmath>
 #include <iomanip>
 
 namespace Catch {
@@ -57,39 +57,69 @@ namespace Detail {
         }
     } // end unnamed namespace
 
+    std::size_t catch_strnlen( const char* str, std::size_t n ) {
+        auto ret = std::char_traits<char>::find( str, n, '\0' );
+        if ( ret != nullptr ) { return static_cast<std::size_t>( ret - str ); }
+        return n;
+    }
+
+    std::string formatTimeT(std::time_t time) {
+#ifdef _MSC_VER
+        std::tm timeInfo = {};
+        const auto err = gmtime_s( &timeInfo, &time );
+        if ( err ) {
+            return "gmtime from provided timepoint has failed. This "
+                   "happens e.g. with pre-1970 dates using Microsoft libc";
+        }
+#else
+        std::tm* timeInfo = std::gmtime( &time );
+#endif
+
+        auto const timeStampSize = sizeof( "2017-01-16T17:06:45Z" );
+        char timeStamp[timeStampSize];
+        const char* const fmt = "%Y-%m-%dT%H:%M:%SZ";
+
+#ifdef _MSC_VER
+        std::strftime( timeStamp, timeStampSize, fmt, &timeInfo );
+#else
+        std::strftime( timeStamp, timeStampSize, fmt, timeInfo );
+#endif
+        return std::string( timeStamp, timeStampSize - 1 );
+    }
+
     std::string convertIntoString(StringRef string, bool escapeInvisibles) {
         std::string ret;
         // This is enough for the "don't escape invisibles" case, and a good
         // lower bound on the "escape invisibles" case.
-        ret.reserve(string.size() + 2);
+        ret.reserve( string.size() + 2 );
 
-        if (!escapeInvisibles) {
+        if ( !escapeInvisibles ) {
             ret += '"';
             ret += string;
             ret += '"';
             return ret;
         }
 
+        size_t last_start = 0;
+        auto write_to = [&]( size_t idx ) {
+            if ( last_start < idx ) {
+                ret += string.substr( last_start, idx - last_start );
+            }
+            last_start = idx + 1;
+        };
+
         ret += '"';
-        for (char c : string) {
-            switch (c) {
-            case '\r':
-                ret.append("\\r");
-                break;
-            case '\n':
-                ret.append("\\n");
-                break;
-            case '\t':
-                ret.append("\\t");
-                break;
-            case '\f':
-                ret.append("\\f");
-                break;
-            default:
-                ret.push_back(c);
-                break;
+        for ( size_t i = 0; i < string.size(); ++i ) {
+            const char c = string[i];
+            if ( c == '\r' || c == '\n' || c == '\t' || c == '\f' ) {
+                write_to( i );
+                if ( c == '\r' ) { ret.append( "\\r" ); }
+                if ( c == '\n' ) { ret.append( "\\n" ); }
+                if ( c == '\t' ) { ret.append( "\\t" ); }
+                if ( c == '\f' ) { ret.append( "\\f" ); }
             }
         }
+        write_to( string.size() );
         ret += '"';
 
         return ret;
@@ -114,6 +144,13 @@ namespace Detail {
              rss << std::setw(2) << static_cast<unsigned>(bytes[i]);
        return rss.str();
     }
+
+    std::string makeExceptionHappenedString() {
+        return "{ stringification failed with an exception: \"" +
+               translateActiveException() + "\" }";
+
+    }
+
 } // end Detail namespace
 
 

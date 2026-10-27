@@ -87,9 +87,6 @@ Atomic32 NoBarrier_AtomicExchange(volatile Atomic32* ptr, Atomic32 new_value);
 // *ptr with the increment applied.  This routine implies no memory barriers.
 Atomic32 NoBarrier_AtomicIncrement(volatile Atomic32* ptr, Atomic32 increment);
 
-Atomic32 Barrier_AtomicIncrement(volatile Atomic32* ptr,
-                                 Atomic32 increment);
-
 // These following lower-level operations are typically useful only to people
 // implementing higher-level synchronization operations like spinlocks,
 // mutexes, and condition-variables.  They combine CompareAndSwap(), a load, or
@@ -122,7 +119,6 @@ Atomic64 NoBarrier_CompareAndSwap(volatile Atomic64* ptr,
                                   Atomic64 new_value);
 Atomic64 NoBarrier_AtomicExchange(volatile Atomic64* ptr, Atomic64 new_value);
 Atomic64 NoBarrier_AtomicIncrement(volatile Atomic64* ptr, Atomic64 increment);
-Atomic64 Barrier_AtomicIncrement(volatile Atomic64* ptr, Atomic64 increment);
 
 Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr,
                                 Atomic64 old_value,

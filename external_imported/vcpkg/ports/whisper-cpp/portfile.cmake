@@ -1,54 +1,39 @@
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO ggml-org/whisper.cpp
-    REF v${VERSION}
-    SHA512 35efd976f60261e108972e3af7b322d723e36be30f5265db3be63752caaed0b52b9da3ece02975da2b83ff30f1eb32663e77fbaaf15f3037e35a525939071c0b
+    REF "v${VERSION}"
+    SHA512 f686f7e4cb7a0c8d5734c21bbe7ba5225c559007a8ab91a14a140e22f9fbe2353ae19df6a4306fb85737ff2dc698804e4c626085bf951cde60123cfd2d0ae8a1
     HEAD_REF master
+    PATCHES
+        cmake-config.diff
+        pkgconfig.diff
 )
 file(REMOVE_RECURSE "${SOURCE_PATH}/ggml")
+vcpkg_find_acquire_program(PKGCONFIG)
 
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     DISABLE_PARALLEL_CONFIGURE # updating bindings/javascript/package.json
     OPTIONS
-      -DWHISPER_USE_SYSTEM_GGML=ON
-      -DWHISPER_CCACHE=OFF
-      -DWHISPER_BUILD_TESTS=OFF
-      -DWHISPER_BUILD_EXAMPLES=OFF
-      -DWHISPER_ALL_WARNINGS=OFF
-      ${FEATURE_OPTIONS}
+        -DWHISPER_ALL_WARNINGS=OFF
+        -DWHISPER_BUILD_EXAMPLES=OFF
+        -DWHISPER_BUILD_SERVER=OFF
+        -DWHISPER_BUILD_TESTS=OFF
+        -DWHISPER_CCACHE=OFF
+        -DWHISPER_USE_SYSTEM_GGML=ON
+        -DPKG_CONFIG_EXECUTABLE=${PKGCONFIG}
+    MAYBE_UNUSED_VARIABLES
+        PKG_CONFIG_EXECUTABLE
 )
 
 vcpkg_cmake_install()
-vcpkg_cmake_config_fixup(PACKAGE_NAME whisper CONFIG_PATH "lib/cmake/whisper")
 vcpkg_copy_pdbs()
+vcpkg_cmake_config_fixup(CONFIG_PATH "lib/cmake/whisper")
 vcpkg_fixup_pkgconfig()
 
-if (VCPKG_LIBRARY_LINKAGE MATCHES "static")
-    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/share/whisper/whisper-config.cmake"
-        "set_and_check(WHISPER_BIN_DIR     \"\${PACKAGE_PREFIX_DIR}/bin\")"
-        ""
-        IGNORE_UNCHANGED
-    )
-endif()
-
-vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/share/whisper/whisper-config.cmake"
-    "add_library(whisper UNKNOWN IMPORTED)"
-    "if (NOT TARGET whisper)
-    add_library(whisper UNKNOWN IMPORTED)
-endif()
-"
-)
-
-file(MAKE_DIRECTORY "${CURRENT_PACKAGES_DIR}/tools/${PORT}")
 file(INSTALL "${SOURCE_PATH}/models/convert-pt-to-ggml.py" DESTINATION "${CURRENT_PACKAGES_DIR}/tools/${PORT}")
 
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")
-
-if (VCPKG_LIBRARY_LINKAGE MATCHES "static")
-    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/bin")
-    file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/bin")
-endif()
 
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

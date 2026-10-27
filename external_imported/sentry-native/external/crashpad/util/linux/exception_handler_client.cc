@@ -244,4 +244,11 @@ void ExceptionHandlerClient::RemoveAttachment(
   UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
 }
 
+void ExceptionHandlerClient::RequestRetry() {
+  ExceptionHandlerProtocol::ClientToServerMessage message;
+  message.type =
+      ExceptionHandlerProtocol::ClientToServerMessage::kTypeRequestRetry;
+  UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
+}
+
 }  // namespace crashpad

@@ -1,0 +1,5 @@
+# Suppress race on g_logger. The concurrent_init test is a stress test that should reveal
+# synchronization issues in the initialization. Yes, the logger initialization is racy wrt
+# the logging itself, but real usage calls sentry_init once per process and does not justify
+# a mutex acquisition on every log
+race:g_logger

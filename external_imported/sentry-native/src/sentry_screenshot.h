@@ -9,9 +9,13 @@
 /**
  * Captures a screenshot and saves it to the specified path.
  *
+ * @param path The path where the screenshot should be saved.
+ * @param pid The process ID whose windows should be captured (0 = current
+ * process).
+ *
  * Returns true if the screenshot was successfully captured and saved.
  */
-bool sentry__screenshot_capture(const sentry_path_t *path);
+bool sentry__screenshot_capture(const sentry_path_t *path, uint32_t pid);
 
 /**
  * Returns the path where a screenshot should be saved.

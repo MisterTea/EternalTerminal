@@ -4,4 +4,12 @@
 
 import("platform.gni")
 
-mini_chromium_is_clang = mini_chromium_is_posix || mini_chromium_is_fuchsia
+if (mini_chromium_is_win) {
+  declare_args() {
+    mini_chromium_is_clang = mini_chromium_is_posix ||
+                             mini_chromium_is_fuchsia || mini_chromium_is_win
+  }
+} else {
+  mini_chromium_is_clang =
+      mini_chromium_is_posix || mini_chromium_is_fuchsia || mini_chromium_is_win
+}

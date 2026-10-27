@@ -48,10 +48,13 @@ TEST_CASE( "Disabled Macros" ) {
 
     CAPTURE( 1 );
     CAPTURE( 1, "captured" );
+    UNSCOPED_CAPTURE( 3 );
 
     REQUIRE_THAT( 1,
                   Catch::Matchers::Predicate( []( int ) { return false; } ) );
     BENCHMARK( "Disabled benchmark" ) { REQUIRE( 1 == 2 ); };
+
+    STATIC_REQUIRE_THAT( 1, Catch::Matchers::Predicate( []( int ) { return false; } ) );
 }
 
 struct DisabledFixture {};
@@ -68,6 +71,7 @@ TEST_CASE_PERSISTENT_FIXTURE( DisabledFixture, "Disabled Persistent Fixture" ) {
 
     CAPTURE( 1 );
     CAPTURE( 1, "captured" );
+    UNSCOPED_CAPTURE( 3 );
 
     REQUIRE_THAT( 1,
                   Catch::Matchers::Predicate( []( int ) { return false; } ) );

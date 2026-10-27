@@ -144,6 +144,23 @@ TEST_CASE("#1027: Bitfields can be captured") {
     REQUIRE(0 == y.v);
 }
 
+TEST_CASE( "#3001: Enum-based bitfields can be captured" ) {
+    enum E {
+        ZERO = 0,
+        ONE = 1,
+        TWO = 2,
+    };
+
+    struct BF {
+        E e : 2;
+    };
+
+    BF bf{};
+    bf.e = ONE;
+    REQUIRE( bf.e == 1 );
+    REQUIRE( 1 == bf.e );
+}
+
 // Comparison operators can return non-booleans.
 // This is unusual, but should be supported.
 TEST_CASE("#1147") {

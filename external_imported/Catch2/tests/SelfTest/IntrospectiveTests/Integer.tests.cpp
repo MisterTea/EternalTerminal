@@ -22,7 +22,7 @@ namespace {
                ExtendedMultResult<Int>{ upper_result, lower_result } );
     }
 
-    // Simple (and slow) implmentation of extended multiplication for tests
+    // Simple (and slow) implementation of extended multiplication for tests
     constexpr Catch::Detail::ExtendedMultResult<std::uint64_t>
     extendedMultNaive( std::uint64_t lhs, std::uint64_t rhs ) {
         // This is a simple long multiplication, where we split lhs and rhs
@@ -39,8 +39,8 @@ namespace {
         //           -------------------------
         //           |  a  |  b  |  c  |  d  |
 
-#define CarryBits( x ) ( x >> 32 )
-#define Digits( x ) ( x & 0xFF'FF'FF'FF )
+#define CarryBits( x ) ( (x) >> 32 )
+#define Digits( x ) ( (x) & 0xFF'FF'FF'FF )
 
         auto r2l2 = Digits( rhs ) * Digits( lhs );
         auto r2l1 = Digits( rhs ) * CarryBits( lhs );

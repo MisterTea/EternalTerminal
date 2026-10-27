@@ -16,6 +16,8 @@
 
 #include <utility>
 
+#include "base/logging.h"
+#include "base/strings/stringprintf.h"
 #include "util/net/http_body.h"
 
 namespace crashpad {
@@ -29,6 +31,24 @@ HTTPTransport::HTTPTransport()
 }
 
 HTTPTransport::~HTTPTransport() {
+}
+
+// static
+bool HTTPTransport::HandleHTTPStatus(unsigned long status_code) {
+  if (status_code >= 200 && status_code <= 203) {
+    return true;
+  }
+
+  switch (status_code) {
+    case 413:
+      LOG(ERROR) << "Crash report was discarded due to size limits "
+                    "(HTTP 413 Content Too Large).";
+      break;
+    default:
+      LOG(ERROR) << base::StringPrintf("HTTP status %lu", status_code);
+      break;
+  }
+  return false;
 }
 
 void HTTPTransport::SetURL(const std::string& url) {

@@ -95,9 +95,10 @@ sentry__slice_consume_uint64(sentry_slice_t *a, uint64_t *num_out)
     memcpy(buf, a->ptr, a->len);
     buf[a->len] = 0;
     char *end;
-    *num_out = (uint64_t)strtoll(buf, &end, 10);
-    if (end != buf) {
-        size_t diff = (uintptr_t)end - (uintptr_t)buf;
+    unsigned long long val = strtoull(buf, &end, 10);
+    size_t diff = (uintptr_t)end - (uintptr_t)buf;
+    if (end != buf && !memchr(buf, '-', diff)) {
+        *num_out = (uint64_t)val;
         a->len -= diff;
         a->ptr += diff;
         rv = true;

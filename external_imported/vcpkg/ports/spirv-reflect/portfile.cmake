@@ -4,7 +4,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO KhronosGroup/SPIRV-Reflect
     REF "vulkan-sdk-${VERSION}"
-    SHA512 d87ab91fd9b2ca6c86aaf72fd19332fb2d9eb7d5056480868ed79312fe111a3832099806d7a297fc82024683c8fe7ab96d7bec260f2828c111e535a85e288efb
+    SHA512 d48fd41e3d431bb22742ed507e465424f606957d7decd791ca240e8129ecdf817fc41954586953de1ff3a0a76c89a6166a74f689b98bb71d32f0277da0cd4cc9
     HEAD_REF main
     PATCHES
         export-targets.patch

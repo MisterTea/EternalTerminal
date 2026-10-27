@@ -35,8 +35,6 @@ namespace Catch {
 
         void sectionStarting(SectionInfo const& sectionInfo) override;
 
-        void assertionStarting(AssertionInfo const&) override;
-
         void assertionEnded(AssertionStats const& assertionStats) override;
 
         void sectionEnded(SectionStats const& sectionStats) override;

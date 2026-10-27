@@ -1,0 +1,41 @@
+# Force all text files to use LF in the repo and on checkout
+* text=auto eol=lf
+
+# Definite Text 
+*.py           text eol=lf
+*.ts           text eol=lf
+*.js           text eol=lf
+*.rs           text eol=lf
+*.json         text eol=lf
+*.yaml         text eol=lf
+*.yml          text eol=lf
+*.md           text eol=lf
+*.toml         text eol=lf
+*.lock         text eol=lf
+.gitignore     text eol=lf
+.editorconfig  text eol=lf
+
+# Common Image formats
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.webp binary
+
+# Documents & PDFs
+*.pdf  binary
+*.docx binary
+*.xlsx binary
+
+# Archives & Executables
+*.zip  binary
+*.gz   binary
+*.tar  binary
+*.exe  binary
+*.dll  binary
+
+# Database & Lockfiles (if not text-based)
+*.sqlite  binary
+*.db      binary
+

@@ -301,6 +301,23 @@ TEST_CASE( "Process can be configured on command line", "[config][command-line]"
 
             REQUIRE(config.benchmarkSamples == 200);
         }
+        SECTION("samples must be greater than zero"){
+            auto result = cli.parse({"test", "--benchmark-samples=0"});
+
+            CHECK_FALSE(result);
+            REQUIRE_THAT(
+                result.errorMessage(),
+                ContainsSubstring("Benchmark samples must be greater than 0"));
+        }
+
+        SECTION("samples must be parseable") {
+            auto result = cli.parse({"test", "--benchmark-samples=abc"});
+
+            CHECK_FALSE(result);
+            REQUIRE_THAT(
+                result.errorMessage(),
+                ContainsSubstring("Could not parse 'abc' as benchmark samples"));
+        }
 
         SECTION("resamples") {
             CHECK(cli.parse({ "test", "--benchmark-resamples=20000" }));
@@ -396,9 +413,10 @@ TEST_CASE( "Parsing warnings", "[cli][warnings]" ) {
     SECTION( "Combining multiple warnings" ) {
         REQUIRE( cli.parse( { "test",
                               "--warn", "NoAssertions",
-                              "--warn", "UnmatchedTestSpec" } ) );
+                              "--warn", "UnmatchedTestSpec",
+                              "--warn", "InfiniteGenerators" } ) );
 
-        REQUIRE( config.warnings == ( WarnAbout::NoAssertions | WarnAbout::UnmatchedTestSpec ) );
+        REQUIRE( config.warnings == ( WarnAbout::NoAssertions | WarnAbout::UnmatchedTestSpec | WarnAbout::InfiniteGenerator ) );
     }
 }
 
@@ -463,5 +481,82 @@ TEST_CASE( "Parse rng seed in different formats", "[approvals][cli][rng-seed]" )
             GENERATE( "0xSEED", "999999999999", "08888", "BEEF", "123 456" );
         CAPTURE( seed_string );
         REQUIRE_FALSE( cli.parse( { "tests", "--rng-seed", seed_string } ) );
+    }
+}
+
+TEST_CASE( "Parsing path filter specs",
+           "[cli][section-spec]" ) {
+    using Catch::PathFilter;
+
+    Catch::ConfigData config;
+    auto cli = Catch::makeCommandLineParser( config );
+    SECTION( "Only section specs leads to old filter behaviour" ) {
+        auto result = cli.parse( { "tests", "-c", "1", "--section", "a section" } );
+        REQUIRE( result );
+        REQUIRE_FALSE( config.useNewPathFilteringBehaviour );
+    }
+    SECTION( "Generator specs enable new filter behaviour" ) {
+        auto result =
+            cli.parse( { "tests", "-g", "1", "--generator-index", "2" } );
+        REQUIRE( result );
+        REQUIRE( config.useNewPathFilteringBehaviour );
+    }
+    SECTION("Generator specs do not accept stringish arguments") {
+        auto result = cli.parse( { "tests", "--generator-index", "foo-baz" } );
+        REQUIRE_FALSE( result );
+    }
+    SECTION( "Generator specs accept star as argument" ) {
+        auto result = cli.parse( { "tests", "--generator-index", "*" } );
+        REQUIRE( result );
+
+        REQUIRE( config.pathFilters[0] ==
+                 PathFilter( PathFilter::For::Generator, "*" ) );
+    }
+    SECTION( "Generator specs do not accept negative numbers" ) {
+        auto result = cli.parse( { "tests", "--generator-index", "-2" } );
+        REQUIRE_FALSE( result );
+    }
+    SECTION( "Generic path spec enables new filter behaviour" ) {
+        auto result =
+            cli.parse( { "tests", "-p", "g:1", "--path-filter", "c:foobar" } );
+        REQUIRE( result );
+        REQUIRE( config.useNewPathFilteringBehaviour );
+
+        REQUIRE( config.pathFilters[0] ==
+                 PathFilter( PathFilter::For::Generator, "1" ) );
+        REQUIRE( config.pathFilters[1] ==
+                 PathFilter( PathFilter::For::Section, "foobar" ) );
+    }
+    SECTION( "Generic path spec for generator is validated" ) {
+        auto result = cli.parse( { "tests", "-p", "g:foo-bar" } );
+        REQUIRE_FALSE( result );
+    }
+    SECTION( "Generic path spec without colon is rejected" ) {
+        auto result1 = cli.parse( { "tests", "-p", "g123" } );
+        REQUIRE_FALSE( result1 );
+        auto result2 = cli.parse( { "tests", "-p", "carp" } );
+        REQUIRE_FALSE( result2 );
+    }
+    SECTION( "Using both section and generator filters creates filter stack" ) {
+        auto result = cli.parse( { "tests",
+                                   "--section", "foo-bar",
+                                   "--generator-index", "3",
+                                   "-g", "123",
+                                   "-c", "baz"
+        });
+        REQUIRE( result );
+        REQUIRE( config.pathFilters[0] == PathFilter( PathFilter::For::Section, "foo-bar" ) );
+        REQUIRE( config.pathFilters[1] == PathFilter( PathFilter::For::Generator, "3" ) );
+        REQUIRE( config.pathFilters[2] == PathFilter( PathFilter::For::Generator, "123" ) );
+        REQUIRE( config.pathFilters[3] == PathFilter( PathFilter::For::Section, "baz" ) );
+    }
+    SECTION( "Section/generator filters are whitespace trimmed" ) {
+        auto result = cli.parse( { "tests",
+                                   "--section", "  untrimmed  ",
+                                   "--generator-index", "  42  "
+        });
+        REQUIRE( result );
+        REQUIRE( config.pathFilters[0] == PathFilter(PathFilter::For::Section, "untrimmed" ) );
+        REQUIRE( config.pathFilters[1] == PathFilter(PathFilter::For::Generator, "42" ) );
     }
 }

@@ -2,5 +2,5 @@ Making a release:
 * update version number in SimpleIni.h
 * update version number in CMakeLists.txt
 * check-in all files
-* make a release "v4.22" etc creating a matching tag
+* make a release "v4.26" etc creating a matching tag
 

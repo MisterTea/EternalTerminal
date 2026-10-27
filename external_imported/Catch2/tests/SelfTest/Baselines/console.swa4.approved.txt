@@ -768,8 +768,25 @@ Generators.tests.cpp:<line number>
 ...............................................................................
 
 Generators.tests.cpp:<line number>: FAILED:
+  {Unknown expression after the reported line}
 due to unexpected exception with message:
   failure to init
+
+-------------------------------------------------------------------------------
+#3001: Enum-based bitfields can be captured
+-------------------------------------------------------------------------------
+Compilation.tests.cpp:<line number>
+...............................................................................
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( bf.e == 1 )
+with expansion:
+  1 == 1
+
+Compilation.tests.cpp:<line number>: PASSED:
+  REQUIRE( 1 == bf.e )
+with expansion:
+  1 == 1
 
 -------------------------------------------------------------------------------
 #748 - captures with unexpected exceptions
@@ -779,8 +796,8 @@ Exception.tests.cpp:<line number>
 ...............................................................................
 
 Exception.tests.cpp:<line number>: FAILED:
-due to unexpected exception with messages:
-  answer := 42
+  {Unknown expression after the reported line}
+due to unexpected exception with message:
   expected exception
 
 -------------------------------------------------------------------------------
@@ -951,6 +968,6 @@ Condition.tests.cpp:<line number>: FAILED:
   CHECK( true != true )
 
 ===============================================================================
-test cases:  33 | 27 passed | 3 failed | 3 failed as expected
-assertions: 102 | 94 passed | 4 failed | 4 failed as expected
+test cases:  34 | 28 passed | 3 failed | 3 failed as expected
+assertions: 104 | 96 passed | 4 failed | 4 failed as expected
 

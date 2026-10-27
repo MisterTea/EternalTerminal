@@ -8,8 +8,8 @@
 #ifndef CATCH_IS_PERMUTATION_HPP_INCLUDED
 #define CATCH_IS_PERMUTATION_HPP_INCLUDED
 
-#include <algorithm>
 #include <iterator>
+#include <type_traits>
 
 namespace Catch {
     namespace Detail {

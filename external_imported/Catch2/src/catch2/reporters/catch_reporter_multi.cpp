@@ -19,6 +19,8 @@ namespace Catch {
             reporterish.getPreferences().shouldRedirectStdOut;
         m_preferences.shouldReportAllAssertions |=
             reporterish.getPreferences().shouldReportAllAssertions;
+        m_preferences.shouldReportAllAssertionStarts |=
+            reporterish.getPreferences().shouldReportAllAssertionStarts;
     }
 
     void MultiReporter::addListener( IEventListenerPtr&& listener ) {

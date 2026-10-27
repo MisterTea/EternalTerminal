@@ -16,10 +16,11 @@ namespace Catch {
 
     TagAlias const* TagAliasRegistry::find( std::string const& alias ) const {
         auto it = m_registry.find( alias );
-        if( it != m_registry.end() )
-            return &(it->second);
-        else
+        if ( it != m_registry.end() ) {
+            return &it->second;
+        } else {
             return nullptr;
+        }
     }
 
     std::string TagAliasRegistry::expandAliases( std::string const& unexpandedTestSpec ) const {

@@ -14,11 +14,12 @@ coverage:
     - "**/catch_reporter_tap.hpp"
     - "**/catch_reporter_automake.hpp"
     - "**/catch_reporter_teamcity.hpp"
+    - "**/catch_reporter_sonarqube.hpp"
     - "**/external/clara.hpp"
 
 
 codecov:
-  branch: master
+  branch: v2.x
 
 comment:
   layout: "diff"

@@ -196,7 +196,8 @@ namespace Catch {
         if ( m_config->testSpec().hasFilters() ) {
             m_stream << "# filters: " << m_config->testSpec() << '\n';
         }
-        m_stream << "# rng-seed: " << m_config->rngSeed() << '\n';
+        m_stream << "# rng-seed: " << m_config->rngSeed() << '\n'
+                 << std::flush;
     }
 
     void TAPReporter::noMatchingTestCases( StringRef unmatchedSpec ) {

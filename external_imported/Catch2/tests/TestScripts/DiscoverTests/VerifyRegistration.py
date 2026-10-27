@@ -12,12 +12,13 @@ import subprocess
 import sys
 import re
 import json
+import tempfile
 from collections import namedtuple
 from typing import List
 
 TestInfo = namedtuple('TestInfo', ['name', 'tags'])
 
-cmake_version_regex = re.compile('cmake version (\d+)\.(\d+)\.(\d+)')
+cmake_version_regex = re.compile(r'cmake version (\d+)\.(\d+)\.(\d+)')
 
 def get_cmake_version():
     result = subprocess.run(['cmake', '--version'],
@@ -72,14 +73,19 @@ def get_test_names(build_path: str) -> List[TestInfo]:
     config_path = "Debug" if os.name == 'nt' else ""
     full_path = os.path.join(build_path, config_path, 'tests')
 
-
-    cmd = [full_path, '--reporter', 'json', '--list-tests']
-    result = subprocess.run(cmd,
-                            capture_output = True,
-                            check = True,
-                            text = True)
-
-    test_listing = json.loads(result.stdout)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fname = f'{tmpdir}/listing-output.json'
+        cmd = [full_path,
+          '--list-tests',
+          '--reporter', 'json',
+          '--out', fname
+        ]
+        result = subprocess.run(cmd,
+                                capture_output = False,
+                                check = True,
+                                text = True)
+        with open(fname, mode='r', encoding='utf-8') as file:
+            test_listing = json.load(file)
 
     assert test_listing['version'] == 1
 
@@ -96,10 +102,18 @@ def get_ctest_listing(build_path):
     os.chdir(build_path)
 
     cmd = ['ctest', '-C', 'debug', '--show-only=json-v1']
-    result = subprocess.run(cmd,
-                            capture_output = True,
-                            check = True,
-                            text = True)
+    try:
+        result = subprocess.run(cmd,
+                                capture_output = True,
+                                check = True,
+                                text = True)
+    except subprocess.CalledProcessError as err:
+        print('Error when getting output from CTest')
+        print(f'cmd: {err.cmd}')
+        print(f'stderr: {err.stderr}')
+        print(f'stdout: {err.stdout}')
+        exit(4)
+
     os.chdir(old_path)
     return result.stdout
 

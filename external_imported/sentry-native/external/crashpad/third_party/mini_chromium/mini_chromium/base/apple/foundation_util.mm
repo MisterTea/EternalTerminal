@@ -6,13 +6,6 @@
 
 #include "base/check.h"
 
-#if !BUILDFLAG(IS_IOS)
-extern "C" {
-CFTypeID SecACLGetTypeID();
-CFTypeID SecTrustedApplicationGetTypeID();
-}  // extern "C"
-#endif
-
 namespace base {
 namespace apple {
 
@@ -52,11 +45,6 @@ CF_CAST_DEFN(CGColor)
 
 CF_CAST_DEFN(CTFont)
 CF_CAST_DEFN(CTRun)
-
-#if !BUILDFLAG(IS_IOS)
-CF_CAST_DEFN(SecACL)
-CF_CAST_DEFN(SecTrustedApplication)
-#endif
 
 #undef CF_CAST_DEFN
 

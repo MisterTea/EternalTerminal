@@ -103,22 +103,24 @@ namespace Catch {
 
 #if !defined(CATCH_CONFIG_DISABLE)
 
-#    define CATCH_REGISTER_REPORTER( name, reporterType )                      \
-        CATCH_INTERNAL_START_WARNINGS_SUPPRESSION                              \
-        CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS                               \
-        namespace {                                                            \
-            Catch::ReporterRegistrar<reporterType> INTERNAL_CATCH_UNIQUE_NAME( \
-                catch_internal_RegistrarFor )( name );                         \
-        }                                                                      \
+#    define CATCH_REGISTER_REPORTER( name, reporterType )                  \
+        CATCH_INTERNAL_START_WARNINGS_SUPPRESSION                          \
+        CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS                           \
+        namespace {                                                        \
+            const Catch::ReporterRegistrar<reporterType>                   \
+                INTERNAL_CATCH_UNIQUE_NAME( catch_internal_RegistrarFor )( \
+                    name );                                                \
+        }                                                                  \
         CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION
 
-#    define CATCH_REGISTER_LISTENER( listenerType )                            \
-        CATCH_INTERNAL_START_WARNINGS_SUPPRESSION                              \
-        CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS                               \
-        namespace {                                                            \
-            Catch::ListenerRegistrar<listenerType> INTERNAL_CATCH_UNIQUE_NAME( \
-                catch_internal_RegistrarFor )( #listenerType##_catch_sr );     \
-        }                                                                      \
+#    define CATCH_REGISTER_LISTENER( listenerType )                        \
+        CATCH_INTERNAL_START_WARNINGS_SUPPRESSION                          \
+        CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS                           \
+        namespace {                                                        \
+            const Catch::ListenerRegistrar<listenerType>                   \
+                INTERNAL_CATCH_UNIQUE_NAME( catch_internal_RegistrarFor )( \
+                    #listenerType##_catch_sr );                            \
+        }                                                                  \
         CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION
 
 #else // CATCH_CONFIG_DISABLE

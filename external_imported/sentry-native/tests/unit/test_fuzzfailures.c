@@ -8,7 +8,6 @@
 static void
 parse_json_roundtrip(const sentry_path_t *path)
 {
-    // printf("Running %" SENTRY_PATH_PRI "\n", path->path);
     size_t buf_len = 0;
     char *buf = sentry__path_read_to_buffer(path, &buf_len);
     if (!buf) {
@@ -43,7 +42,7 @@ SENTRY_TEST(fuzz_json)
 {
     // skipping on platforms that don't have access to fixtures on the local FS
 #if defined(SENTRY_PLATFORM_ANDROID) || defined(SENTRY_PLATFORM_NX)            \
-    || defined(SENTRY_PLATFORM_PS)
+    || defined(SENTRY_PLATFORM_PS) || defined(SENTRY_PLATFORM_XBOX)
     SKIP_TEST();
 #else
     sentry_path_t *path = sentry__path_from_str(__FILE__);

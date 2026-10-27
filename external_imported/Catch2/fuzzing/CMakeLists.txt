@@ -15,6 +15,6 @@ target_compile_features(fuzzhelper PUBLIC cxx_std_17)
 target_link_options(fuzzhelper PUBLIC "-fsanitize=fuzzer")
 
 foreach(fuzzer TestSpecParser XmlWriter textflow)
-add_executable(fuzz_${fuzzer} fuzz_${fuzzer}.cpp)
-target_link_libraries(fuzz_${fuzzer} PRIVATE fuzzhelper)
+  add_executable(fuzz_${fuzzer} fuzz_${fuzzer}.cpp)
+  target_link_libraries(fuzz_${fuzzer} PRIVATE fuzzhelper)
 endforeach()

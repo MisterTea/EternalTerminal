@@ -6,13 +6,20 @@
 
 // SPDX-License-Identifier: BSL-1.0
 #include <catch2/internal/catch_assertion_handler.hpp>
+#include <catch2/interfaces/catch_interfaces_capture.hpp>
 #include <catch2/interfaces/catch_interfaces_config.hpp>
+#include <catch2/interfaces/catch_interfaces_registry_hub.hpp>
 #include <catch2/internal/catch_context.hpp>
 #include <catch2/internal/catch_debugger.hpp>
+#include <catch2/internal/catch_run_context.hpp>
 #include <catch2/internal/catch_test_failure_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 namespace Catch {
+
+    void AssertionHandler::finishIncomplete() {
+        m_resultCapture.handleIncomplete( m_assertionInfo );
+    }
 
     AssertionHandler::AssertionHandler
         (   StringRef macroName,
@@ -20,7 +27,7 @@ namespace Catch {
             StringRef capturedExpression,
             ResultDisposition::Flags resultDisposition )
     :   m_assertionInfo{ macroName, lineInfo, capturedExpression, resultDisposition },
-        m_resultCapture( getResultCapture() )
+        m_resultCapture( static_cast<RunContext&>(getResultCapture()) )
     {
         m_resultCapture.notifyAssertionStarted( m_assertionInfo );
     }

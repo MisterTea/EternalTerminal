@@ -1,4 +1,20 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_license//rules:license.bzl", "license")
+
+package(
+    default_applicable_licenses = [":license"],
+)
+
+exports_files([
+    "LICENSE.MIT",
+])
+
+license(
+    name = "license",
+    license_kinds = ["@rules_license//licenses/spdx:BSL-1.0"],
+    license_text = "LICENSE.MIT",
+)
 
 expand_template(
     name = "catch_user_config",
@@ -16,6 +32,7 @@ expand_template(
         "#cmakedefine CATCH_CONFIG_CPP17_STRING_VIEW": "",
         "#cmakedefine CATCH_CONFIG_CPP17_UNCAUGHT_EXCEPTIONS": "",
         "#cmakedefine CATCH_CONFIG_CPP17_VARIANT": "",
+        "#cmakedefine CATCH_CONFIG_DEPRECATION_ANNOTATIONS": "",
         "#cmakedefine CATCH_CONFIG_DISABLE_EXCEPTIONS_CUSTOM_HANDLER": "",
         "#cmakedefine CATCH_CONFIG_DISABLE_EXCEPTIONS": "",
         "#cmakedefine CATCH_CONFIG_DISABLE_STRINGIFICATION": "",
@@ -39,6 +56,7 @@ expand_template(
         "#cmakedefine CATCH_CONFIG_NO_CPP17_STRING_VIEW": "",
         "#cmakedefine CATCH_CONFIG_NO_CPP17_UNCAUGHT_EXCEPTIONS": "",
         "#cmakedefine CATCH_CONFIG_NO_CPP17_VARIANT": "",
+        "#cmakedefine CATCH_CONFIG_NO_DEPRECATION_ANNOTATIONS": "",
         "#cmakedefine CATCH_CONFIG_NO_GETENV": "",
         "#cmakedefine CATCH_CONFIG_NO_GLOBAL_NEXTAFTER": "",
         "#cmakedefine CATCH_CONFIG_NO_POSIX_SIGNALS": "",
@@ -58,6 +76,8 @@ expand_template(
         "#cmakedefine CATCH_CONFIG_WINDOWS_SEH": "",
         "#cmakedefine CATCH_CONFIG_USE_BUILTIN_CONSTANT_P": "",
         "#cmakedefine CATCH_CONFIG_NO_USE_BUILTIN_CONSTANT_P": "",
+        "#cmakedefine CATCH_CONFIG_THREAD_SAFE_ASSERTIONS": "",
+        "#cmakedefine CATCH_CONFIG_NO_THREAD_SAFE_ASSERTIONS": "",
     },
     template = "src/catch2/catch_user_config.hpp.in",
 )
@@ -68,7 +88,7 @@ expand_template(
 cc_library(
     name = "catch2_generated",
     hdrs = ["catch2/catch_user_config.hpp"],
-    include_prefix = ".",  # to manipulate -I of dependenices
+    include_prefix = ".",  # to manipulate -I of dependencies
     visibility = ["//visibility:public"],
 )
 

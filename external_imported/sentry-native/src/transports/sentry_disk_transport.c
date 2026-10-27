@@ -26,3 +26,24 @@ sentry_new_disk_transport(const sentry_run_t *run)
     sentry_transport_set_state(transport, (void *)run);
     return transport;
 }
+
+static void
+send_external_disk_transport(sentry_envelope_t *envelope, void *state)
+{
+    const sentry_run_t *run = state;
+
+    sentry__run_write_external(run, envelope);
+    sentry_envelope_free(envelope);
+}
+
+sentry_transport_t *
+sentry_new_external_disk_transport(const sentry_run_t *run)
+{
+    sentry_transport_t *transport
+        = sentry_transport_new(send_external_disk_transport);
+    if (!transport) {
+        return NULL;
+    }
+    sentry_transport_set_state(transport, (void *)run);
+    return transport;
+}

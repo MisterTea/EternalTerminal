@@ -52,16 +52,27 @@ namespace { namespace MatchersTests {
         int i;
     };
 
+    struct DerivedException : std::exception {
+        char const* what() const noexcept override {
+            return "DerivedException::what";
+        }
+    };
+
     void doesNotThrow() {}
 
     [[noreturn]]
-    void throws(int i) {
+    void throwsSpecialException(int i) {
         throw SpecialException{i};
     }
 
     [[noreturn]]
     void throwsAsInt(int i) {
         throw i;
+    }
+
+    [[noreturn]]
+    void throwsDerivedException() {
+        throw DerivedException{};
     }
 
     class ExceptionMatcher : public Catch::MatcherBase<SpecialException> {
@@ -203,6 +214,44 @@ namespace { namespace MatchersTests {
             CHECK_THAT(testStringForMatching(), !Contains("substring"));
         }
 
+        template<typename T>
+        struct CustomAllocator : private std::allocator<T>
+        {
+            using size_type = size_t;
+            using difference_type = ptrdiff_t;
+            using pointer = T*;
+            using const_pointer = const T*;
+            using reference = T&;
+            using const_reference = const T&;
+            using value_type = T;
+
+            template<typename U>
+            struct rebind
+            { using other = CustomAllocator<U>; };
+
+            using propagate_on_container_move_assignment = std::true_type;
+            using is_always_equal = std::true_type;
+
+            CustomAllocator() = default;
+
+            CustomAllocator(const CustomAllocator& other)
+                    : std::allocator<T>(other) { }
+
+            template<typename U>
+            CustomAllocator(const CustomAllocator<U>&) { }
+
+            ~CustomAllocator() = default;
+
+#if defined(_MSC_VER) && _MSVC_LANG < 201703L
+            using std::allocator<T>::address;
+            using std::allocator<T>::construct;
+            using std::allocator<T>::max_size;
+            using std::allocator<T>::destroy;
+#endif
+            using std::allocator<T>::allocate;
+            using std::allocator<T>::deallocate;
+        };
+
         TEST_CASE("Vector matchers", "[matchers][vector]") {
             std::vector<int> v;
             v.push_back(1);
@@ -223,19 +272,35 @@ namespace { namespace MatchersTests {
             v4.push_back(2 + 1e-8);
             v4.push_back(3 + 1e-8);
 
+            std::vector<int, CustomAllocator<int>> v5;
+            v5.push_back(1);
+            v5.push_back(2);
+            v5.push_back(3);
+
+            std::vector<int, CustomAllocator<int>> v6;
+            v6.push_back(1);
+            v6.push_back(2);
+
             std::vector<int> empty;
 
             SECTION("Contains (element)") {
                 CHECK_THAT(v, VectorContains(1));
                 CHECK_THAT(v, VectorContains(2));
+                CHECK_THAT(v5, (VectorContains<int, CustomAllocator<int>>(2)));
             }
             SECTION("Contains (vector)") {
                 CHECK_THAT(v, Contains(v2));
+                CHECK_THAT(v, Contains<int>({ 1, 2 }));
+                CHECK_THAT(v5, (Contains<int, std::allocator<int>, CustomAllocator<int>>(v2)));
+
                 v2.push_back(3); // now exactly matches
                 CHECK_THAT(v, Contains(v2));
 
                 CHECK_THAT(v, Contains(empty));
                 CHECK_THAT(empty, Contains(empty));
+
+                CHECK_THAT(v5, (Contains<int, std::allocator<int>, CustomAllocator<int>>(v2)));
+                CHECK_THAT(v5, Contains(v6));
             }
             SECTION("Contains (element), composed") {
                 CHECK_THAT(v, VectorContains(1) && VectorContains(2));
@@ -245,15 +310,21 @@ namespace { namespace MatchersTests {
 
                 // Same vector
                 CHECK_THAT(v, Equals(v));
-
                 CHECK_THAT(empty, Equals(empty));
 
                 // Different vector with same elements
+                CHECK_THAT(v, Equals<int>({ 1, 2, 3 }));
                 v2.push_back(3);
                 CHECK_THAT(v, Equals(v2));
+
+                CHECK_THAT(v5, (Equals<int, std::allocator<int>, CustomAllocator<int>>(v2)));
+
+                v6.push_back(3);
+                CHECK_THAT(v5, Equals(v6));
             }
             SECTION("UnorderedEquals") {
                 CHECK_THAT(v, UnorderedEquals(v));
+                CHECK_THAT(v, UnorderedEquals<int>({ 3, 2, 1 }));
                 CHECK_THAT(empty, UnorderedEquals(empty));
 
                 auto permuted = v;
@@ -262,6 +333,12 @@ namespace { namespace MatchersTests {
 
                 std::reverse(begin(permuted), end(permuted));
                 REQUIRE_THAT(permuted, UnorderedEquals(v));
+
+                CHECK_THAT(v5, (UnorderedEquals<int, std::allocator<int>, CustomAllocator<int>>(permuted)));
+
+                auto v5_permuted = v5;
+                std::next_permutation(begin(v5_permuted), end(v5_permuted));
+                CHECK_THAT(v5_permuted, UnorderedEquals(v5));
             }
         }
 
@@ -319,8 +396,8 @@ namespace { namespace MatchersTests {
         }
 
         TEST_CASE("Exception matchers that succeed", "[matchers][exceptions][!throws]") {
-            CHECK_THROWS_MATCHES(throws(1), SpecialException, ExceptionMatcher{1});
-            REQUIRE_THROWS_MATCHES(throws(2), SpecialException, ExceptionMatcher{2});
+            CHECK_THROWS_MATCHES(throwsSpecialException(1), SpecialException, ExceptionMatcher{1});
+            REQUIRE_THROWS_MATCHES(throwsSpecialException(2), SpecialException, ExceptionMatcher{2});
         }
 
         TEST_CASE("Exception matchers that fail", "[matchers][exceptions][!throws][.failing]") {
@@ -333,12 +410,26 @@ namespace { namespace MatchersTests {
                 REQUIRE_THROWS_MATCHES(throwsAsInt(1), SpecialException, ExceptionMatcher{1});
             }
             SECTION("Contents are wrong") {
-                CHECK_THROWS_MATCHES(throws(3), SpecialException, ExceptionMatcher{1});
-                REQUIRE_THROWS_MATCHES(throws(4), SpecialException, ExceptionMatcher{1});
+                CHECK_THROWS_MATCHES(throwsSpecialException(3), SpecialException, ExceptionMatcher{1});
+                REQUIRE_THROWS_MATCHES(throwsSpecialException(4), SpecialException, ExceptionMatcher{1});
             }
         }
 
         TEST_CASE("Floating point matchers: float", "[matchers][floating-point]") {
+            SECTION("Relative") {
+                REQUIRE_THAT(10.f,  WithinRel(11.1f, 0.1f));
+                REQUIRE_THAT(10.f, !WithinRel(11.2f, 0.1f));
+                REQUIRE_THAT( 1.f, !WithinRel(0.f, 0.99f));
+                REQUIRE_THAT(-0.f,  WithinRel(0.f));
+                SECTION("Some subnormal values") {
+                    auto v1 = std::numeric_limits<float>::min();
+                    auto v2 = v1;
+                    for (int i = 0; i < 5; ++i) {
+                        v2 = std::nextafter(v1, 0.f);
+                    }
+                    REQUIRE_THAT(v1, WithinRel(v2));
+                }
+            }
             SECTION("Margin") {
                 REQUIRE_THAT(1.f, WithinAbs(1.f, 0));
                 REQUIRE_THAT(0.f, WithinAbs(1.f, 1));
@@ -347,7 +438,6 @@ namespace { namespace MatchersTests {
                 REQUIRE_THAT(0.f, !WithinAbs(1.f, 0.99f));
 
                 REQUIRE_THAT(0.f, WithinAbs(-0.f, 0));
-                REQUIRE_THAT(NAN, !WithinAbs(NAN, 0));
 
                 REQUIRE_THAT(11.f, !WithinAbs(10.f, 0.5f));
                 REQUIRE_THAT(10.f, !WithinAbs(11.f, 0.5f));
@@ -358,38 +448,52 @@ namespace { namespace MatchersTests {
                 REQUIRE_THAT(1.f, WithinULP(1.f, 0));
 
                 REQUIRE_THAT(nextafter(1.f, 2.f), WithinULP(1.f, 1));
-                REQUIRE_THAT(nextafter(1.f, 0.f), WithinULP(1.f, 1));
-                REQUIRE_THAT(nextafter(1.f, 2.f), !WithinULP(1.f, 0));
+                REQUIRE_THAT(0.f, WithinULP(nextafter(0.f, 1.f), 1));
+                REQUIRE_THAT(1.f, WithinULP(nextafter(1.f, 0.f), 1));
+                REQUIRE_THAT(1.f, !WithinULP(nextafter(1.f, 2.f), 0));
 
                 REQUIRE_THAT(1.f, WithinULP(1.f, 0));
                 REQUIRE_THAT(-0.f, WithinULP(0.f, 0));
-
-                REQUIRE_THAT(NAN, !WithinULP(NAN, 123));
             }
             SECTION("Composed") {
                 REQUIRE_THAT(1.f, WithinAbs(1.f, 0.5) || WithinULP(1.f, 1));
                 REQUIRE_THAT(1.f, WithinAbs(2.f, 0.5) || WithinULP(1.f, 0));
-
-                REQUIRE_THAT(NAN, !(WithinAbs(NAN, 100) || WithinULP(NAN, 123)));
+                REQUIRE_THAT(0.0001f, WithinAbs(0.f, 0.001f) || WithinRel(0.f, 0.1f));
             }
             SECTION("Constructor validation") {
                 REQUIRE_NOTHROW(WithinAbs(1.f, 0.f));
                 REQUIRE_THROWS_AS(WithinAbs(1.f, -1.f), std::domain_error);
 
                 REQUIRE_NOTHROW(WithinULP(1.f, 0));
-                REQUIRE_THROWS_AS(WithinULP(1.f, -1), std::domain_error);
+                REQUIRE_THROWS_AS(WithinULP(1.f, static_cast<uint64_t>(-1)), std::domain_error);
+
+                REQUIRE_NOTHROW(WithinRel(1.f, 0.f));
+                REQUIRE_THROWS_AS(WithinRel(1.f, -0.2f), std::domain_error);
+                REQUIRE_THROWS_AS(WithinRel(1.f, 1.f), std::domain_error);
             }
         }
 
         TEST_CASE("Floating point matchers: double", "[matchers][floating-point]") {
+            SECTION("Relative") {
+                REQUIRE_THAT(10., WithinRel(11.1, 0.1));
+                REQUIRE_THAT(10., !WithinRel(11.2, 0.1));
+                REQUIRE_THAT(1., !WithinRel(0., 0.99));
+                REQUIRE_THAT(-0., WithinRel(0.));
+                SECTION("Some subnormal values") {
+                    auto v1 = std::numeric_limits<double>::min();
+                    auto v2 = v1;
+                    for (int i = 0; i < 5; ++i) {
+                        v2 = std::nextafter(v1, 0);
+                    }
+                    REQUIRE_THAT(v1, WithinRel(v2));
+                }
+            }
             SECTION("Margin") {
                 REQUIRE_THAT(1., WithinAbs(1., 0));
                 REQUIRE_THAT(0., WithinAbs(1., 1));
 
                 REQUIRE_THAT(0., !WithinAbs(1., 0.99));
                 REQUIRE_THAT(0., !WithinAbs(1., 0.99));
-
-                REQUIRE_THAT(NAN, !WithinAbs(NAN, 0));
 
                 REQUIRE_THAT(11., !WithinAbs(10., 0.5));
                 REQUIRE_THAT(10., !WithinAbs(11., 0.5));
@@ -400,27 +504,41 @@ namespace { namespace MatchersTests {
                 REQUIRE_THAT(1., WithinULP(1., 0));
 
                 REQUIRE_THAT(nextafter(1., 2.), WithinULP(1., 1));
-                REQUIRE_THAT(nextafter(1., 0.), WithinULP(1., 1));
-                REQUIRE_THAT(nextafter(1., 2.), !WithinULP(1., 0));
+                REQUIRE_THAT(0.,  WithinULP(nextafter(0., 1.), 1));
+                REQUIRE_THAT(1.,  WithinULP(nextafter(1., 0.), 1));
+                REQUIRE_THAT(1., !WithinULP(nextafter(1., 2.), 0));
 
                 REQUIRE_THAT(1., WithinULP(1., 0));
                 REQUIRE_THAT(-0., WithinULP(0., 0));
-
-                REQUIRE_THAT(NAN, !WithinULP(NAN, 123));
             }
             SECTION("Composed") {
                 REQUIRE_THAT(1., WithinAbs(1., 0.5) || WithinULP(2., 1));
                 REQUIRE_THAT(1., WithinAbs(2., 0.5) || WithinULP(1., 0));
-
-                REQUIRE_THAT(NAN, !(WithinAbs(NAN, 100) || WithinULP(NAN, 123)));
+                REQUIRE_THAT(0.0001, WithinAbs(0., 0.001) || WithinRel(0., 0.1));
             }
             SECTION("Constructor validation") {
                 REQUIRE_NOTHROW(WithinAbs(1., 0.));
                 REQUIRE_THROWS_AS(WithinAbs(1., -1.), std::domain_error);
 
                 REQUIRE_NOTHROW(WithinULP(1., 0));
-                REQUIRE_THROWS_AS(WithinULP(1., -1), std::domain_error);
+
+                REQUIRE_NOTHROW(WithinRel(1., 0.));
+                REQUIRE_THROWS_AS(WithinRel(1., -0.2), std::domain_error);
+                REQUIRE_THROWS_AS(WithinRel(1., 1.), std::domain_error);
             }
+        }
+
+        TEST_CASE("Floating point matchers that are problematic in approvals", "[approvals][matchers][floating-point]") {
+            REQUIRE_THAT(NAN, !WithinAbs(NAN, 0));
+            REQUIRE_THAT(NAN, !(WithinAbs(NAN, 100) || WithinULP(NAN, 123)));
+            REQUIRE_THAT(NAN, !WithinULP(NAN, 123));
+            REQUIRE_THAT(INFINITY, WithinRel(INFINITY));
+            REQUIRE_THAT(-INFINITY, !WithinRel(INFINITY));
+            REQUIRE_THAT(1., !WithinRel(INFINITY));
+            REQUIRE_THAT(INFINITY, !WithinRel(1.));
+            REQUIRE_THAT(NAN, !WithinRel(NAN));
+            REQUIRE_THAT(1., !WithinRel(NAN));
+            REQUIRE_THAT(NAN, !WithinRel(1.));
         }
 
         TEST_CASE("Arbitrary predicate matcher", "[matchers][generic]") {
@@ -466,6 +584,7 @@ namespace { namespace MatchersTests {
                 std::vector<double> v1({1., 2., 3.});
                 SECTION("A vector is approx equal to itself") {
                     REQUIRE_THAT(v1, Approx(v1));
+                    REQUIRE_THAT(v1, Approx<double>({ 1., 2., 3. }));
                 }
                 std::vector<double> v2({1.5, 2.5, 3.5});
                 SECTION("Different length") {
@@ -491,6 +610,62 @@ namespace { namespace MatchersTests {
             SECTION("Just different vectors") {
                 std::vector<double> v1({2., 4., 6.}), v2({1., 3., 5.});
                 CHECK_THAT(v1, Approx(v2));
+            }
+        }
+
+        TEST_CASE("Exceptions matchers", "[matchers][exceptions][!throws]") {
+            REQUIRE_THROWS_MATCHES(throwsDerivedException(),  DerivedException,  Message("DerivedException::what"));
+            REQUIRE_THROWS_MATCHES(throwsDerivedException(),  DerivedException, !Message("derivedexception::what"));
+            REQUIRE_THROWS_MATCHES(throwsSpecialException(2), SpecialException, !Message("DerivedException::what"));
+            REQUIRE_THROWS_MATCHES(throwsSpecialException(2), SpecialException,  Message("SpecialException::what"));
+        }
+
+        TEST_CASE("Composed matchers are distinct", "[matchers][composed]") {
+            auto m1 = Contains("string");
+            auto m2 = Contains("random");
+            auto composed1 = m1 || m2;
+            auto m3 = Contains("different");
+            auto composed2 = composed1 || m3;
+            REQUIRE_THAT(testStringForMatching2(), !composed1);
+            REQUIRE_THAT(testStringForMatching2(), composed2);
+        }
+
+        struct CheckedTestingMatcher : Catch::MatcherBase<int> {
+            mutable bool matchCalled = false;
+            bool matchSucceeds = false;
+
+            bool match(int const&) const override {
+                matchCalled = true;
+                return matchSucceeds;
+            }
+            std::string describe() const override {
+                return "CheckedTestingMatcher set to " + (matchSucceeds ? std::string("succeed") : std::string("fail"));
+            }
+        };
+
+        TEST_CASE("Composed matchers shortcircuit", "[matchers][composed]") {
+            // Check that if first returns false, second is not touched
+            CheckedTestingMatcher first, second;
+            SECTION("&&") {
+                first.matchSucceeds = false;
+                // This assertion doesn't actually test anything, we just
+                // want the composed matcher's `match` being called.
+                CHECK_THAT(1, !(first && second));
+
+                // These two assertions are the important ones
+                REQUIRE(first.matchCalled);
+                REQUIRE(!second.matchCalled);
+            }
+            // Check that if first returns true, second is not touched
+            SECTION("||") {
+                first.matchSucceeds = true;
+                // This assertion doesn't actually test anything, we just
+                // want the composed matcher's `match` being called.
+                CHECK_THAT(1, first || second);
+
+                // These two assertions are the important ones
+                REQUIRE(first.matchCalled);
+                REQUIRE(!second.matchCalled);
             }
         }
 

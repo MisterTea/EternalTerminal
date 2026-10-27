@@ -16,7 +16,10 @@ namespace Catch {
 
     class CompactReporter final : public StreamingReporterBase {
     public:
-        using StreamingReporterBase::StreamingReporterBase;
+        CompactReporter( ReporterConfig&& _config ):
+            StreamingReporterBase( CATCH_MOVE( _config ) ) {
+            m_preferences.shouldReportAllAssertionStarts = false;
+        }
 
         ~CompactReporter() override;
 

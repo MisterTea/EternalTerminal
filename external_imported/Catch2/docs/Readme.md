@@ -24,7 +24,8 @@ Once you're up and running consider the following reference material.
 * [String Conversions](tostring.md#top)
 
 **Running:**
-* [Command line](command-line.md#top)
+* [Command line reference](command-line.md#top)
+* [Running specific section/generator](filtering-execution-path.md#top)
 
 **Odds and ends:**
 * [Frequently Asked Questions (FAQ)](faq.md#top)
@@ -32,6 +33,7 @@ Once you're up and running consider the following reference material.
 * [CMake integration](cmake-integration.md#top)
 * [Tooling integration (CI, test runners, other)](ci-and-misc.md#top)
 * [Known limitations](limitations.md#top)
+* [Thread safety in Catch2](thread-safety.md#top)
 
 **Other:**
 * [Why Catch2?](why-catch.md#top)

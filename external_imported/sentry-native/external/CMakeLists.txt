@@ -144,6 +144,17 @@ if(LINUX OR ANDROID)
 	if(HAVE_GETCONTEXT)
 		target_compile_definitions(breakpad_client PRIVATE HAVE_GETCONTEXT)
 	else()
+		# Enable ASM for getcontext - must be called in this directory scope
+		# even if ASM is already globally enabled (e.g. by vendored libunwind),
+		# because CMake rule variables like CMAKE_ASM_COMPILE_OBJECT are
+		# directory-scoped.
+		include(CheckLanguage)
+		check_language(ASM)
+		if(NOT CMAKE_ASM_COMPILER)
+			message(FATAL_ERROR "ASM required for breakpad's Linux context code, but no assembler found.")
+		endif()
+		enable_language(ASM)
+
 		target_sources(breakpad_client PRIVATE ${BREAKPAD_SOURCES_COMMON_LINUX_GETCONTEXT})
 	endif()
 

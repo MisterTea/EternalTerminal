@@ -1,14 +1,9 @@
 # Generates a version resource file from the `sentry.rc.in` template for the `TGT` argument and adds it as a source.
 function(sentry_add_version_resource TGT FILE_DESCRIPTION)
-	# generate a resource output-path from the target name
-	set(RESOURCE_PATH "${CMAKE_CURRENT_BINARY_DIR}/${TGT}.rc")
-	set(RESOURCE_PATH_TMP "${RESOURCE_PATH}.in")
-
-	# Extract major, minor and patch version from SENTRY_VERSION
-	string(REPLACE "." ";" _SENTRY_VERSION_LIST "${SENTRY_VERSION}")
-	list(GET _SENTRY_VERSION_LIST 0 SENTRY_VERSION_MAJOR)
-	list(GET _SENTRY_VERSION_LIST 1 SENTRY_VERSION_MINOR)
-	list(GET _SENTRY_VERSION_LIST 2 SENTRY_VERSION_PATCH)
+	# generate a multi-config aware resource output-path from the target name
+	set(RESOURCE_BASENAME "${TGT}.rc")
+	set(RESOURCE_PATH_TMP "${CMAKE_CURRENT_BINARY_DIR}/${RESOURCE_BASENAME}.in")
+	set(RESOURCE_PATH "${CMAKE_CURRENT_BINARY_DIR}/$<IF:$<BOOL:$<CONFIG>>,$<CONFIG>/,>${RESOURCE_BASENAME}")
 
 	# Produce the resource file with configure-time replacements
 	configure_file("${SENTRY_SOURCE_DIR}/sentry.rc.in" "${RESOURCE_PATH_TMP}" @ONLY)

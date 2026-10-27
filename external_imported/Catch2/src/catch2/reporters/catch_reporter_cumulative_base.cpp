@@ -20,9 +20,8 @@ namespace Catch {
             bool operator()(
                 Detail::unique_ptr<CumulativeReporterBase::SectionNode> const&
                     node ) const {
-                return (
-                    ( node->stats.sectionInfo.name == m_other.name ) &&
-                    ( node->stats.sectionInfo.lineInfo == m_other.lineInfo ) );
+                return node->stats.sectionInfo.name == m_other.name
+                    && node->stats.sectionInfo.lineInfo == m_other.lineInfo;
             }
             void operator=( BySectionInfo const& ) = delete;
 

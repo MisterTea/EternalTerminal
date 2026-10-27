@@ -46,6 +46,12 @@ sentry_value_t sentry__value_new_internal_uuid(const sentry_uuid_t *uuid);
 sentry_value_t sentry__value_new_uuid(const sentry_uuid_t *uuid);
 
 /**
+ * Creates a new Event with the given `event_id`.
+ * Used by Crashpad to allow associating feedback with the crash event.
+ */
+sentry_value_t sentry__value_new_event_with_id(const sentry_uuid_t *event_id);
+
+/**
  * Creates a new String Value from the given `level`.
  * This can be `debug`, `warning`, `error`, `fatal`, or `info`.
  */
@@ -60,6 +66,14 @@ sentry_value_t sentry__value_new_list_with_size(size_t size);
  * Creates a new Object Value with a capacity of `size`.
  */
 sentry_value_t sentry__value_new_object_with_size(size_t size);
+
+/**
+ * Iterates over the key/value pairs of an object value. The callback receives a
+ * borrowed reference for each value. Does nothing if `value` is not an object.
+ */
+void sentry__value_foreach_key_value(sentry_value_t value,
+    void (*callback)(const char *key, sentry_value_t value, void *userdata),
+    void *userdata);
 
 /**
  * This will parse the Value into a UUID, or return a `nil` UUID on error.
@@ -78,25 +92,6 @@ char *sentry__value_stringify(sentry_value_t value);
  * On a frozen value this produces an unfrozen one.
  */
 sentry_value_t sentry__value_clone(sentry_value_t value);
-
-/**
- * This appends `v` to the List `value`.
- *
- * On non-full lists, exponentially reallocate space to accommodate new values
- * (until we reach `max`). After reaching max, the oldest value is removed to
- * make space for the new one.
- *
- * `max` should stay fixed over multiple invocations.
- *
- * Returns 0 on success.
- */
-int sentry__value_append_ringbuffer(
-    sentry_value_t value, sentry_value_t v, size_t max);
-
-/**
- * Converts ring buffer to linear list
- */
-sentry_value_t sentry__value_ring_buffer_to_list(sentry_value_t rb);
 
 /**
  * Deep-merges object src into dst.
@@ -119,5 +114,35 @@ int sentry__value_merge_objects(sentry_value_t dst, sentry_value_t src);
  */
 void sentry__jsonwriter_write_value(
     sentry_jsonwriter_t *jw, sentry_value_t value);
+
+/**
+ * Serializes `value` into JSON and optionally returns the byte length.
+ */
+char *sentry__value_to_json(sentry_value_t value, size_t *len_out);
+
+/**
+ * Adds a typed attribute to the attributes object.
+ * No-op if the attribute already exists (preserves user precedence).
+ * Takes ownership of `value`.
+ */
+void sentry__value_add_attribute(sentry_value_t attributes,
+    sentry_value_t value, const char *type, const char *name);
+
+/**
+ * Deserialize a sentry value from msgpack.
+ *
+ * If the buffer contains multiple sequential msgpack values (as in flat buffers
+ * like breadcrumb files), they are automatically wrapped in a list.
+ *
+ * The returned value must be released with `sentry_value_decref`.
+ */
+sentry_value_t sentry__value_from_msgpack(const char *buf, size_t buf_len);
+
+/**
+ * Merges two breadcrumb lists in timestamp order, keeping at most `max` items.
+ * Returns a new list with the merged breadcrumbs.
+ */
+sentry_value_t sentry__value_merge_breadcrumbs(
+    sentry_value_t list_a, sentry_value_t list_b, size_t max);
 
 #endif

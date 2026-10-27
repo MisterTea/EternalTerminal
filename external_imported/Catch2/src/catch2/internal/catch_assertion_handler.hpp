@@ -10,11 +10,12 @@
 
 #include <catch2/catch_assertion_info.hpp>
 #include <catch2/internal/catch_decomposer.hpp>
-#include <catch2/interfaces/catch_interfaces_capture.hpp>
 
 #include <string>
 
 namespace Catch {
+
+    class RunContext;
 
     struct AssertionReaction {
         bool shouldDebugBreak = false;
@@ -26,7 +27,12 @@ namespace Catch {
         AssertionInfo m_assertionInfo;
         AssertionReaction m_reaction;
         bool m_completed = false;
-        IResultCapture& m_resultCapture;
+        // Since all uses are hidden in the .cpp file, we can directly use
+        // the final type and avoid going through virtual dispatch, without
+        // massive compilation time overhead.
+        RunContext& m_resultCapture;
+
+        void finishIncomplete();
 
     public:
         AssertionHandler
@@ -35,9 +41,9 @@ namespace Catch {
                 StringRef capturedExpression,
                 ResultDisposition::Flags resultDisposition );
         ~AssertionHandler() {
-            if ( !m_completed ) {
-                m_resultCapture.handleIncomplete( m_assertionInfo );
-            }
+            // We want the common fast path inlinable, and the virtual
+            // dispatch in a function in single TU.
+            if ( !m_completed ) { finishIncomplete(); }
         }
 
 

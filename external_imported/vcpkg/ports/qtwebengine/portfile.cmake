@@ -5,17 +5,17 @@ set(${PORT}_PATCHES
       "clang-cl.patch"
       "cross-build.diff"
       "disable-host-pkgconfig.diff"
-      "fix-error2275-2672.patch"
-      "blink-include-fixes.patch"
-      "nested-name-fix.patch"
-      "osx-sdk-info.diff"
+      #"osx-sdk-info.diff"
       "pdf-system-libjpeg.diff"
       "pdf-system-libpng.diff"
-      "pkg-config.diff"
+      "pdf-system-abseil.diff"
+      "pkg-config-sorted-libs.diff"
+      #"pkg-config.diff"
       "rpath.diff"
+      "include-dir-order.diff"
+      "node-wrapper-diagnostics.diff"
 )
 
-list(REMOVE_ITEM FEATURES "private-dependencies")
 set(qtwebengine_target "${VCPKG_TARGET_TRIPLET}-${VCPKG_CMAKE_SYSTEM_NAME}")
 if(VCPKG_CROSSCOMPILING)
     if(NOT qtwebengine_host STREQUAL qtwebengine_target)
@@ -71,6 +71,10 @@ endif()
 if(VCPKG_TARGET_IS_WINDOWS)
     string(COMPARE EQUAL "${VCPKG_CRT_LINKAGE}" "static" static_runtime)
     list(APPEND FEATURE_OPTIONS "-DQT_FEATURE_static_runtime=${static_runtime}")
+endif()
+
+if(VCPKG_TARGET_IS_LINUX AND "pdf" IN_LIST FEATURES)
+    list(APPEND FEATURE_OPTIONS "-DFEATURE_webengine_system_abseil=ON")
 endif()
 
 # webengine-extensions
@@ -207,8 +211,21 @@ if(QT_UPDATE_VERSION)
     return()
 endif()
 
+if(VCPKG_TARGET_IS_LINUX AND "pdf" IN_LIST FEATURES)
+    # Devendor bundled abseil: replace the bundled absl/ directory with a
+    # symlink to the vcpkg-installed headers.  This guarantees that every
+    # #include path — both explicit "third_party/abseil-cpp/absl/..."
+    # (via -I <chromium_root>) and internal "absl/..." (via -isystem
+    # <prefix>/include) — resolves to the same installed files, preventing
+    # API mismatches between the old bundled and new vcpkg-installed version.
+    set(_chromium_absl "${SOURCE_PATH}/src/3rdparty/chromium/third_party/abseil-cpp")
+    file(REMOVE_RECURSE "${_chromium_absl}/absl")
+    file(CREATE_LINK "${CURRENT_INSTALLED_DIR}/include/absl" "${_chromium_absl}/absl" SYMBOLIC)
+    unset(_chromium_absl)
+endif()
+
 qt_cmake_configure(
-    DISABLE_PARALLEL_CONFIGURE # due to in source changes.
+    DISABLE_PARALLEL_CONFIGURE # due to in-source changes.
     OPTIONS
         ${FEATURE_OPTIONS}
         "-DGPerf_EXECUTABLE=${GPERF}"
@@ -227,7 +244,7 @@ qt_cmake_configure(
 )
 
 vcpkg_backup_env_variables(VARS PKG_CONFIG_PATH)
-file(GLOB target_args_gn RELATIVE "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/src/core/Release" "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/src/core/Release/*/args.gn")
+file(GLOB target_args_gn RELATIVE "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/src/core/Release" "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/src/core/Release/*/args.gn")
 if(NOT VCPKG_BUILD_TYPE)
     block(SCOPE_FOR VARIABLES)
     set(VCPKG_BUILD_TYPE debug)

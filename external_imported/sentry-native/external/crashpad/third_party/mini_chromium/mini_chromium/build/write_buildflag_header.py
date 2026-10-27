@@ -7,9 +7,9 @@
 # This writes headers for build flags. See buildflag_header.gni for usage of
 # this system as a whole.
 #
-# The parameters are passed in a response file so we don't have to worry
-# about command line lengths. The name of the response file is passed on the
-# command line.
+# The parameters are passed in a response file so we don't have to worry about
+# command line lengths. The name of the response file is passed on the command
+# line.
 #
 # The format of the response file is:
 #    [--flags <list of one or more flag values>]
@@ -50,8 +50,8 @@ def GetOptions():
     # The actual output file is inside the gen dir.
     output = os.path.join(cmdline_options.gen_dir, cmdline_options.output)
 
-    # Definition file in GYP is newline separated, in GN they are shell formatted.
-    # shlex can parse both of these.
+    # Definition file in GYP is newline separated, in GN they are shell
+    # formatted. shlex can parse both of these.
     with open(cmdline_options.definitions, 'r') as def_file:
         defs = shlex.split(def_file.read())
     flags_index = defs.index('--flags')

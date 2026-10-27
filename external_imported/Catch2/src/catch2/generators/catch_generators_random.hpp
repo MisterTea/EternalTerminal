@@ -42,6 +42,7 @@ public:
         m_current_number = m_dist(m_rng);
         return true;
     }
+    bool isFinite() const override { return false; }
 };
 
 template <>
@@ -59,6 +60,7 @@ public:
     bool next() override;
 
     ~RandomFloatingGenerator() override; // = default
+    bool isFinite() const override;
 };
 
 template <typename Integer>
@@ -80,6 +82,7 @@ public:
         m_current_number = m_dist(m_rng);
         return true;
     }
+    bool isFinite() const override { return false; }
 };
 
 template <typename T>

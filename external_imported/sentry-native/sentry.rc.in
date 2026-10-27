@@ -7,12 +7,12 @@ BEGIN
     BLOCK "040904E4"
     BEGIN
         VALUE "FileDescription", "@FILE_DESCRIPTION@"
-        VALUE "FileVersion", "@SENTRY_VERSION@"
+        VALUE "FileVersion", "@SENTRY_VERSION_FULL@"
         VALUE "InternalName", "sentry-native"
         VALUE "LegalCopyright", "https://sentry.io"
         VALUE "OriginalFilename", "$<TARGET_FILE_NAME:@TGT@>"
         VALUE "ProductName", "Sentry Native SDK"
-        VALUE "ProductVersion", "@SENTRY_VERSION@"
+        VALUE "ProductVersion", "@SENTRY_VERSION_FULL@"
     END
 END
 BLOCK "VarFileInfo"

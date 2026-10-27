@@ -16,13 +16,13 @@
 // Chromium only builds and runs on Little Endian machines.
 static_assert(ARCH_CPU_LITTLE_ENDIAN);
 
-namespace base::numerics {
+namespace base {
 
 // Returns a value with all bytes in |x| swapped, i.e. reverses the endianness.
 // TODO(pkasting): Once C++23 is available, replace with std::byteswap.
 template <class T, std::enable_if_t<std::is_integral_v<T>, int> = 0>
 inline constexpr T ByteSwap(T value) {
-  return numerics::internal::SwapBytes(value);
+  return internal::SwapBytes(value);
 }
 
 // Returns a uint8_t with the value in `bytes` interpreted as the native endian
@@ -451,6 +451,6 @@ inline constexpr std::array<uint8_t, 8u> DoubleToBigEndian(double val) {
   return internal::ToLittleEndian(ByteSwap(BitCast<uint64_t>(val)));
 }
 
-}  // namespace base::numerics
+}  // namespace base
 
 #endif  //  MINI_CHROMIUM_BASE_NUMERICS_BYTE_CONVERSIONS_H_

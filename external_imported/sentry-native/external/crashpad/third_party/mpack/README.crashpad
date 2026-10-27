@@ -1,0 +1,15 @@
+Name: mpack
+Short Name: mpack
+URL: https://github.com/ludocode/mpack
+Revision: v1.1.1 (79d3fcd)
+License: MIT
+License File: LICENSE
+Security Critical: no
+Shipped: yes
+
+Description:
+A C encoder/decoder for the MessagePack serialization format
+
+Local Modifications:
+- Renamed mpack.c to mpack.cc.
+- Wrapped in crashpad namespace.

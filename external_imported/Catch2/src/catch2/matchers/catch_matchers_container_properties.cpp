@@ -22,13 +22,5 @@ namespace Matchers {
         return sstr.str();
     }
 
-    IsEmptyMatcher IsEmpty() {
-        return {};
-    }
-
-    HasSizeMatcher SizeIs(std::size_t sz) {
-        return HasSizeMatcher{ sz };
-    }
-
 } // end namespace Matchers
 } // end namespace Catch

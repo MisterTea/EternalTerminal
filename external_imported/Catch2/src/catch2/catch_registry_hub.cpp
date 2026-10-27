@@ -15,7 +15,6 @@
 #include <catch2/internal/catch_tag_alias_registry.hpp>
 #include <catch2/internal/catch_startup_exception_registry.hpp>
 #include <catch2/internal/catch_singletons.hpp>
-#include <catch2/internal/catch_enum_values_registry.hpp>
 #include <catch2/catch_test_case_info.hpp>
 #include <catch2/internal/catch_noncopyable.hpp>
 #include <catch2/interfaces/catch_interfaces_reporter_factory.hpp>
@@ -72,9 +71,6 @@ namespace Catch {
                 CATCH_INTERNAL_ERROR("Attempted to register active exception under CATCH_CONFIG_DISABLE_EXCEPTIONS!");
 #endif
             }
-            IMutableEnumValuesRegistry& getMutableEnumValuesRegistry() override {
-                return m_enumValuesRegistry;
-            }
 
         private:
             TestRegistry m_testCaseRegistry;
@@ -82,7 +78,6 @@ namespace Catch {
             ExceptionTranslatorRegistry m_exceptionTranslatorRegistry;
             TagAliasRegistry m_tagAliasRegistry;
             StartupExceptionRegistry m_exceptionRegistry;
-            Detail::EnumValuesRegistry m_enumValuesRegistry;
         };
     }
 
@@ -96,7 +91,6 @@ namespace Catch {
     }
     void cleanUp() {
         cleanupSingletons();
-        cleanUpContext();
     }
     std::string translateActiveException() {
         return getRegistryHub().getExceptionTranslatorRegistry().translateActiveException();

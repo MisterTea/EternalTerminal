@@ -487,7 +487,7 @@ test_print_in_color__(int color, const char* fmt, ...)
         printf("\033[0m");
         return n;
     }
-#elif defined ACUTEST_WIN__ && !defined _GAMING_XBOX_SCARLETT
+#elif defined ACUTEST_WIN__ && !defined _GAMING_XBOX
     {
         HANDLE h;
         CONSOLE_SCREEN_BUFFER_INFO info;
@@ -1059,7 +1059,7 @@ test_run__(const struct test__* test, int index, int master_index)
                     case SIGSEGV: signame = "SIGSEGV"; break;
                     case SIGILL:  signame = "SIGILL"; break;
                     case SIGTERM: signame = "SIGTERM"; break;
-                    default:      sprintf(tmp, "signal %d", WTERMSIG(exit_code)); signame = tmp; break;
+                    default:      snprintf(tmp, sizeof(tmp), "signal %d", WTERMSIG(exit_code)); signame = tmp; break;
                 }
                 test_error__("Test interrupted by %s.", signame);
             } else {
@@ -1234,7 +1234,7 @@ test_cmdline_read__(const TEST_CMDLINE_OPTION__* options, int argc, char** argv,
                             if(opt->flags & (TEST_CMDLINE_OPTFLAG_OPTIONALARG__ | TEST_CMDLINE_OPTFLAG_REQUIREDARG__)) {
                                 ret = callback(opt->id, argv[i]+2+len+1);
                             } else {
-                                sprintf(auxbuf, "--%s", opt->longname);
+                                snprintf(auxbuf, sizeof(auxbuf), "--%s", opt->longname);
                                 ret = callback(TEST_CMDLINE_OPTID_BOGUSARG__, auxbuf);
                             }
                             break;

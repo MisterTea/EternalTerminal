@@ -1,0 +1,58 @@
+name: E2E Integration Tests
+
+on:
+  push:
+    branches:
+      - master
+      - "release/**"
+  pull_request:
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-test:
+    name: E2E Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: recursive
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y cmake libcurl4-openssl-dev
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install -r tests/requirements.txt
+
+      - name: Add hosts entry (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: sudo sh -c 'echo "127.0.0.1 sentry.native.test" >> /etc/hosts'
+
+      - name: Add hosts entry (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content C:\Windows\System32\drivers\etc\hosts "127.0.0.1 sentry.native.test"
+
+      - name: Run E2E tests
+        env:
+          SENTRY_E2E_DSN: ${{ secrets.SENTRY_E2E_DSN }}
+          SENTRY_E2E_AUTH_TOKEN: ${{ secrets.SENTRY_E2E_AUTH_TOKEN }}
+          SENTRY_E2E_ORG: ${{ secrets.SENTRY_E2E_ORG }}
+          SENTRY_E2E_PROJECT: ${{ secrets.SENTRY_E2E_PROJECT }}
+        run: pytest --capture=no --verbose tests/test_e2e_sentry.py

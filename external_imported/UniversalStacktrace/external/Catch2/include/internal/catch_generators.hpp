@@ -10,6 +10,7 @@
 #include "catch_interfaces_generatortracker.h"
 #include "catch_common.h"
 #include "catch_enforce.h"
+#include "catch_stringref.h"
 
 #include <memory>
 #include <vector>
@@ -57,7 +58,6 @@ namespace Generators {
     class SingleValueGenerator final : public IGenerator<T> {
         T m_value;
     public:
-        SingleValueGenerator(T const& value) : m_value( value ) {}
         SingleValueGenerator(T&& value) : m_value(std::move(value)) {}
 
         T const& get() const override {
@@ -70,6 +70,9 @@ namespace Generators {
 
     template<typename T>
     class FixedValuesGenerator final : public IGenerator<T> {
+        static_assert(!std::is_same<T, bool>::value,
+            "FixedValuesGenerator does not support bools because of std::vector<bool>"
+            "specialization, use SingleValue Generator instead.");
         std::vector<T> m_values;
         size_t m_idx = 0;
     public:
@@ -117,21 +120,21 @@ namespace Generators {
             m_generators.emplace_back(std::move(generator));
         }
         void populate(T&& val) {
-            m_generators.emplace_back(value(std::move(val)));
+            m_generators.emplace_back(value(std::forward<T>(val)));
         }
         template<typename U>
         void populate(U&& val) {
-            populate(T(std::move(val)));
+            populate(T(std::forward<U>(val)));
         }
         template<typename U, typename... Gs>
-        void populate(U&& valueOrGenerator, Gs... moreGenerators) {
+        void populate(U&& valueOrGenerator, Gs &&... moreGenerators) {
             populate(std::forward<U>(valueOrGenerator));
             populate(std::forward<Gs>(moreGenerators)...);
         }
 
     public:
         template <typename... Gs>
-        Generators(Gs... moreGenerators) {
+        Generators(Gs &&... moreGenerators) {
             m_generators.reserve(sizeof...(Gs));
             populate(std::forward<Gs>(moreGenerators)...);
         }
@@ -163,7 +166,7 @@ namespace Generators {
     struct as {};
 
     template<typename T, typename... Gs>
-    auto makeGenerators( GeneratorWrapper<T>&& generator, Gs... moreGenerators ) -> Generators<T> {
+    auto makeGenerators( GeneratorWrapper<T>&& generator, Gs &&... moreGenerators ) -> Generators<T> {
         return Generators<T>(std::move(generator), std::forward<Gs>(moreGenerators)...);
     }
     template<typename T>
@@ -171,24 +174,24 @@ namespace Generators {
         return Generators<T>(std::move(generator));
     }
     template<typename T, typename... Gs>
-    auto makeGenerators( T&& val, Gs... moreGenerators ) -> Generators<T> {
+    auto makeGenerators( T&& val, Gs &&... moreGenerators ) -> Generators<T> {
         return makeGenerators( value( std::forward<T>( val ) ), std::forward<Gs>( moreGenerators )... );
     }
     template<typename T, typename U, typename... Gs>
-    auto makeGenerators( as<T>, U&& val, Gs... moreGenerators ) -> Generators<T> {
+    auto makeGenerators( as<T>, U&& val, Gs &&... moreGenerators ) -> Generators<T> {
         return makeGenerators( value( T( std::forward<U>( val ) ) ), std::forward<Gs>( moreGenerators )... );
     }
 
-    auto acquireGeneratorTracker( SourceLineInfo const& lineInfo ) -> IGeneratorTracker&;
+    auto acquireGeneratorTracker( StringRef generatorName, SourceLineInfo const& lineInfo ) -> IGeneratorTracker&;
 
     template<typename L>
     // Note: The type after -> is weird, because VS2015 cannot parse
     //       the expression used in the typedef inside, when it is in
     //       return type. Yeah.
-    auto generate( SourceLineInfo const& lineInfo, L const& generatorExpression ) -> decltype(std::declval<decltype(generatorExpression())>().get()) {
+    auto generate( StringRef generatorName, SourceLineInfo const& lineInfo, L const& generatorExpression ) -> decltype(std::declval<decltype(generatorExpression())>().get()) {
         using UnderlyingType = typename decltype(generatorExpression())::type;
 
-        IGeneratorTracker& tracker = acquireGeneratorTracker( lineInfo );
+        IGeneratorTracker& tracker = acquireGeneratorTracker( generatorName, lineInfo );
         if (!tracker.hasGenerator()) {
             tracker.setGenerator(pf::make_unique<Generators<UnderlyingType>>(generatorExpression()));
         }
@@ -201,10 +204,16 @@ namespace Generators {
 } // namespace Catch
 
 #define GENERATE( ... ) \
-    Catch::Generators::generate( CATCH_INTERNAL_LINEINFO, [ ]{ using namespace Catch::Generators; return makeGenerators( __VA_ARGS__ ); } )
+    Catch::Generators::generate( INTERNAL_CATCH_STRINGIZE(INTERNAL_CATCH_UNIQUE_NAME(generator)), \
+                                 CATCH_INTERNAL_LINEINFO, \
+                                 [ ]{ using namespace Catch::Generators; return makeGenerators( __VA_ARGS__ ); } ) //NOLINT(google-build-using-namespace)
 #define GENERATE_COPY( ... ) \
-    Catch::Generators::generate( CATCH_INTERNAL_LINEINFO, [=]{ using namespace Catch::Generators; return makeGenerators( __VA_ARGS__ ); } )
+    Catch::Generators::generate( INTERNAL_CATCH_STRINGIZE(INTERNAL_CATCH_UNIQUE_NAME(generator)), \
+                                 CATCH_INTERNAL_LINEINFO, \
+                                 [=]{ using namespace Catch::Generators; return makeGenerators( __VA_ARGS__ ); } ) //NOLINT(google-build-using-namespace)
 #define GENERATE_REF( ... ) \
-    Catch::Generators::generate( CATCH_INTERNAL_LINEINFO, [&]{ using namespace Catch::Generators; return makeGenerators( __VA_ARGS__ ); } )
+    Catch::Generators::generate( INTERNAL_CATCH_STRINGIZE(INTERNAL_CATCH_UNIQUE_NAME(generator)), \
+                                 CATCH_INTERNAL_LINEINFO, \
+                                 [&]{ using namespace Catch::Generators; return makeGenerators( __VA_ARGS__ ); } ) //NOLINT(google-build-using-namespace)
 
 #endif // TWOBLUECUBES_CATCH_GENERATORS_HPP_INCLUDED

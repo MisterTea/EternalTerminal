@@ -93,6 +93,9 @@ class ExceptionHandlerProtocol {
 
       //! \brief Request that the server remove an attachment.
       kTypeRemoveAttachment,
+
+      //! \brief Request that the server retry pending report uploads.
+      kTypeRequestRetry,
     };
 
     Type type;

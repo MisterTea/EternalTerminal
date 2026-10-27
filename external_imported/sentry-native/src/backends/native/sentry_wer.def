@@ -1,0 +1,6 @@
+LIBRARY "sentry-wer.dll"
+
+EXPORTS
+  OutOfProcessExceptionEventCallback
+  OutOfProcessExceptionEventSignatureCallback
+  OutOfProcessExceptionEventDebuggerLaunchCallback

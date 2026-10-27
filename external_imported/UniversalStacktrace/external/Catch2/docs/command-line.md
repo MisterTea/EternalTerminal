@@ -20,7 +20,11 @@
 [Specify a seed for the Random Number Generator](#specify-a-seed-for-the-random-number-generator)<br>
 [Identify framework and version according to the libIdentify standard](#identify-framework-and-version-according-to-the-libidentify-standard)<br>
 [Wait for key before continuing](#wait-for-key-before-continuing)<br>
-[Specify multiples of clock resolution to run benchmarks for](#specify-multiples-of-clock-resolution-to-run-benchmarks-for)<br>
+[Specify the number of benchmark samples to collect](#specify-the-number-of-benchmark-samples-to-collect)<br>
+[Specify the number of resamples for bootstrapping](#specify-the-number-of-resamples-for-bootstrapping)<br>
+[Specify the confidence-interval for bootstrapping](#specify-the-confidence-interval-for-bootstrapping)<br>
+[Disable statistical analysis of collected benchmark samples](#disable-statistical-analysis-of-collected-benchmark-samples)<br>
+[Specify the amount of time in milliseconds spent on warming up each test](#specify-the-amount-of-time-in-milliseconds-spent-on-warming-up-each-test)<br>
 [Usage](#usage)<br>
 [Specify the section to run](#specify-the-section-to-run)<br>
 [Filenames as tags](#filenames-as-tags)<br>
@@ -57,7 +61,11 @@ Click one of the following links to take you straight to that option - or scroll
 <a href="#rng-seed">                                    `    --rng-seed`</a><br />
 <a href="#libidentify">                                 `    --libidentify`</a><br />
 <a href="#wait-for-keypress">                           `    --wait-for-keypress`</a><br />
-<a href="#benchmark-resolution-multiple">               `    --benchmark-resolution-multiple`</a><br />
+<a href="#benchmark-samples">                           `    --benchmark-samples`</a><br />
+<a href="#benchmark-resamples">                         `    --benchmark-resamples`</a><br />
+<a href="#benchmark-confidence-interval">               `    --benchmark-confidence-interval`</a><br />
+<a href="#benchmark-no-analysis">                       `    --benchmark-no-analysis`</a><br />
+<a href="#benchmark-warmup-time">                       `    --benchmark-warmup-time`</a><br />
 <a href="#use-colour">                                  `    --use-colour`</a><br />
 
 </br>
@@ -93,6 +101,7 @@ exclude:notThis         Matches all tests except, 'notThis'
 ~*private*              Matches all tests except those that contain 'private'
 a* ~ab* abc             Matches all tests that start with 'a', except those that
                         start with 'ab', except 'abc', which is included
+-# [#somefile]          Matches all tests from the file 'somefile.cpp'
 </pre>
 
 Names within square brackets are interpreted as tags.
@@ -213,6 +222,16 @@ available warnings
 
 When set to ```yes``` Catch will report the duration of each test case, in milliseconds. Note that it does this regardless of whether a test case passes or fails. Note, also, the certain reporters (e.g. Junit) always report test case durations regardless of this option being set or not.
 
+<pre>-D, --min-duration &lt;value></pre>
+
+> `--min-duration` was [introduced](https://github.com/catchorg/Catch2/pull/1910) in Catch 2.13.0
+
+When set, Catch will report the duration of each test case that took more
+than &lt;value> seconds, in milliseconds. This option is overriden by both
+`-d yes` and `-d no`, so that either all durations are reported, or none
+are.
+
+
 <a id="input-file"></a>
 ## Load test names to run from a file
 <pre>-f, --input-file &lt;filename></pre>
@@ -234,15 +253,25 @@ This option lists all available tests in a non-indented form, one on each line. 
 
 Test cases are ordered one of three ways:
 
-
 ### decl
-Declaration order. The order the tests were originally declared in. Note that ordering between files is not guaranteed and is implementation dependent.
+Declaration order (this is the default order if no --order argument is provided).
+Tests in the same TU are sorted using their declaration orders, different
+TUs are in an implementation (linking) dependent order.
+
 
 ### lex
-Lexicographically sorted. Tests are sorted, alpha-numerically, by name.
+Lexicographic order. Tests are sorted by their name, their tags are ignored.
+
 
 ### rand
-Randomly sorted. Test names are sorted using ```std::random_shuffle()```. By default the random number generator is seeded with 0 - and so the order is repeatable. To control the random seed see <a href="#rng-seed">rng-seed</a>.
+
+Randomly sorted. The order is dependent on Catch2's random seed (see
+[`--rng-seed`](#rng-seed)), and is subset invariant. What this means
+is that as long as the random seed is fixed, running only some tests
+(e.g. via tag) does not change their relative order.
+
+> The subset stability was introduced in Catch2 v2.12.0
+
 
 <a id="rng-seed"></a>
 ## Specify a seed for the Random Number Generator
@@ -250,7 +279,7 @@ Randomly sorted. Test names are sorted using ```std::random_shuffle()```. By def
 
 Sets a seed for the random number generator using ```std::srand()```. 
 If a number is provided this is used directly as the seed so the random pattern is repeatable.
-Alternatively if the keyword ```time``` is provided then the result of calling ```std::time(0)``` is used and so the pattern becomes unpredictable.
+Alternatively if the keyword ```time``` is provided then the result of calling ```std::time(0)``` is used and so the pattern becomes unpredictable. In some cases, you might need to pass the keyword ```time``` in double quotes instead of single quotes.
 
 In either case the actual value for the seed is printed as part of Catch's output so if an issue is discovered that is sensitive to test ordering the ordering can be reproduced - even if it was originally seeded from ```std::time(0)```.
 
@@ -262,18 +291,61 @@ See [The LibIdentify repo for more information and examples](https://github.com/
 
 <a id="wait-for-keypress"></a>
 ## Wait for key before continuing
-<pre>--wait-for-keypress &lt;start|exit|both&gt;</pre>
+<pre>--wait-for-keypress &lt;never|start|exit|both&gt;</pre>
 
 Will cause the executable to print a message and wait until the return/ enter key is pressed before continuing -
 either before running any tests, after running all tests - or both, depending on the argument.
 
-<a id="benchmark-resolution-multiple"></a>
-## Specify multiples of clock resolution to run benchmarks for
-<pre>--benchmark-resolution-multiple &lt;multiplier&gt;</pre>
+<a id="benchmark-samples"></a>
+## Specify the number of benchmark samples to collect
+<pre>--benchmark-samples &lt;# of samples&gt;</pre>
 
-When running benchmarks the clock resolution is estimated. Benchmarks are then run for exponentially increasing
-numbers of iterations until some multiple of the estimated resolution is exceed. By default that multiple is 100, but 
-it can be overridden here.
+> [Introduced](https://github.com/catchorg/Catch2/issues/1616) in Catch 2.9.0.
+
+When running benchmarks a number of "samples" is collected. This is the base data for later statistical analysis.
+Per sample a clock resolution dependent number of iterations of the user code is run, which is independent of the number of samples. Defaults to 100.
+
+<a id="benchmark-resamples"></a>
+## Specify the number of resamples for bootstrapping
+<pre>--benchmark-resamples &lt;# of resamples&gt;</pre>
+
+> [Introduced](https://github.com/catchorg/Catch2/issues/1616) in Catch 2.9.0.
+
+After the measurements are performed, statistical [bootstrapping] is performed
+on the samples. The number of resamples for that bootstrapping is configurable
+but defaults to 100000. Due to the bootstrapping it is possible to give
+estimates for the mean and standard deviation. The estimates come with a lower
+bound and an upper bound, and the confidence interval (which is configurable but
+defaults to 95%).
+
+ [bootstrapping]: http://en.wikipedia.org/wiki/Bootstrapping_%28statistics%29
+
+<a id="benchmark-confidence-interval"></a>
+## Specify the confidence-interval for bootstrapping
+<pre>--benchmark-confidence-interval &lt;confidence-interval&gt;</pre>
+
+> [Introduced](https://github.com/catchorg/Catch2/issues/1616) in Catch 2.9.0.
+
+The confidence-interval is used for statistical bootstrapping on the samples to
+calculate the upper and lower bounds of mean and standard deviation.
+Must be between 0 and 1 and defaults to 0.95.
+
+<a id="benchmark-no-analysis"></a>
+## Disable statistical analysis of collected benchmark samples
+<pre>--benchmark-no-analysis</pre>
+
+> [Introduced](https://github.com/catchorg/Catch2/issues/1616) in Catch 2.9.0.
+
+When this flag is specified no bootstrapping or any other statistical analysis is performed.
+Instead the user code is only measured and the plain mean from the samples is reported.
+
+<a id="benchmark-warmup-time"></a>
+## Specify the amount of time in milliseconds spent on warming up each test
+<pre>--benchmark-warmup-time</pre>
+
+> [Introduced](https://github.com/catchorg/Catch2/pull/1844) in Catch 2.11.2.
+
+Configure the amount of time spent warming up each test.
 
 <a id="usage"></a>
 ## Usage

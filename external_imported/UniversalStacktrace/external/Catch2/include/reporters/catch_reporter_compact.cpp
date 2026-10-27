@@ -8,7 +8,7 @@
 #include "catch_reporter_compact.h"
 
 #include "../internal/catch_reporter_registrars.hpp"
-#include "internal/catch_console_colour.h"
+#include "../internal/catch_console_colour.h"
 
 namespace {
 
@@ -209,24 +209,25 @@ private:
         if (itMessage == messages.end())
             return;
 
-        // using messages.end() directly yields (or auto) compilation error:
-        std::vector<MessageInfo>::const_iterator itEnd = messages.end();
-        const std::size_t N = static_cast<std::size_t>(std::distance(itMessage, itEnd));
+        const auto itEnd = messages.cend();
+        const auto N = static_cast<std::size_t>(std::distance(itMessage, itEnd));
 
         {
             Colour colourGuard(colour);
             stream << " with " << pluralise(N, "message") << ':';
         }
 
-        for (; itMessage != itEnd; ) {
+        while (itMessage != itEnd) {
             // If this assertion is a warning ignore any INFO messages
             if (printInfoMessages || itMessage->type != ResultWas::Info) {
-                stream << " '" << itMessage->message << '\'';
-                if (++itMessage != itEnd) {
+                printMessage();
+                if (itMessage != itEnd) {
                     Colour colourGuard(dimColour());
                     stream << " and";
                 }
+                continue;
             }
+            ++itMessage;
         }
     }
 
@@ -242,10 +243,6 @@ private:
 
         std::string CompactReporter::getDescription() {
             return "Reports test results on a single line, suitable for IDEs";
-        }
-
-        ReporterPreferences CompactReporter::getPreferences() const {
-            return m_reporterPrefs;
         }
 
         void CompactReporter::noMatchingTestCases( std::string const& spec ) {
@@ -274,8 +271,9 @@ private:
         }
 
         void CompactReporter::sectionEnded(SectionStats const& _sectionStats) {
-            if (m_config->showDurations() == ShowDurations::Always) {
-                stream << getFormattedDuration(_sectionStats.durationInSeconds) << " s: " << _sectionStats.sectionInfo.name << std::endl;
+            double dur = _sectionStats.durationInSeconds;
+            if ( shouldShowDuration( *m_config, dur ) ) {
+                stream << getFormattedDuration( dur ) << " s: " << _sectionStats.sectionInfo.name << std::endl;
             }
         }
 

@@ -66,3 +66,4 @@ CRASHPAD_NOTE_REFERENCE:
   // linking Crashpad. The subtraction from |name| is a convenience to allow the
   // value to be computed statically.
   .quad name - CRASHPAD_NOTE
+  .section .note.GNU-stack,"",%progbits

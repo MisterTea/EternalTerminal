@@ -4,6 +4,7 @@
 #include "sentry_boot.h"
 
 #include "sentry_attachment.h"
+#include "sentry_ringbuffer.h"
 #include "sentry_session.h"
 #include "sentry_value.h"
 
@@ -11,14 +12,18 @@
  * This represents the current scope.
  */
 struct sentry_scope_s {
+    char *release;
+    char *environment;
     char *transaction;
     sentry_value_t fingerprint;
     sentry_value_t user;
     sentry_value_t tags;
     sentry_value_t extra;
+    sentry_value_t attributes;
     sentry_value_t contexts;
     sentry_value_t propagation_context;
-    sentry_value_t breadcrumbs;
+    sentry_ringbuffer_t *breadcrumbs;
+    sentry_value_t dynamic_sampling_context;
     sentry_level_t level;
     sentry_value_t client_sdk;
     sentry_attachment_t *attachments;
@@ -33,6 +38,7 @@ struct sentry_scope_s {
     // `name` property nested in transaction_object or span.
     sentry_transaction_t *transaction_object;
     sentry_span_t *span;
+    bool trace_managed;
 };
 
 /**
@@ -94,6 +100,21 @@ void sentry__scope_set_fingerprint_nva(sentry_scope_t *scope,
     const char *fingerprint, size_t fingerprint_len, va_list va);
 
 /**
+ * Internal scope-based attribute functions.
+ * For now, these are only used by the non-scope API functions that operate
+ * on the global scope.
+ * Once we have attributes for events or scope-based logs/metrics/spans APIs
+ * these can become part of the public API too.
+ */
+void sentry__scope_set_attribute(
+    sentry_scope_t *scope, const char *key, sentry_value_t attribute);
+void sentry__scope_set_attribute_n(sentry_scope_t *scope, const char *key,
+    size_t key_len, sentry_value_t attribute);
+void sentry__scope_remove_attribute(sentry_scope_t *scope, const char *key);
+void sentry__scope_remove_attribute_n(
+    sentry_scope_t *scope, const char *key, size_t key_len);
+
+/**
  * These are convenience macros to automatically lock/unlock the global scope
  * inside a code block.
  */
@@ -106,6 +127,27 @@ void sentry__scope_set_fingerprint_nva(sentry_scope_t *scope,
 #define SENTRY_WITH_SCOPE_MUT_NO_FLUSH(Scope)                                  \
     for (sentry_scope_t *Scope = sentry__scope_lock(); Scope;                  \
         sentry__scope_unlock(), Scope = NULL)
+
+/**
+ * Rebuilds the scope's dynamic sampling context (DSC) from the SDK options
+ * and the current propagation context. The previous DSC is discarded.
+ */
+void sentry__scope_update_dsc(
+    sentry_scope_t *scope, const sentry_options_t *options);
+
+/**
+ * Replaces the scope's dynamic sampling context (DSC) with a verbatim copy
+ * of the incoming object. Used when continuing an upstream trace: per the
+ * trace-propagation spec, the receiving SDK MUST treat the incoming DSC as
+ * frozen and propagate its values "as is".
+ */
+void sentry__scope_freeze_dsc(sentry_scope_t *scope, sentry_value_t incoming);
+
+/**
+ * Adds scoped attributes to the telemetry attributes object.
+ */
+void sentry__scope_apply_attributes(const sentry_scope_t *scope,
+    sentry_value_t telemetry, sentry_value_t attributes);
 
 #endif
 

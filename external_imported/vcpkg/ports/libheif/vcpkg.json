@@ -1,7 +1,6 @@
 {
   "name": "libheif",
-  "version": "1.20.1",
-  "port-version": 1,
+  "version": "1.23.1",
   "description": "libheif is an HEIF and AVIF file format decoder and encoder.",
   "homepage": "http://www.libheif.org/",
   "license": "LGPL-3.0-only",
@@ -35,6 +34,13 @@
         "gdk-pixbuf"
       ]
     },
+    "h264-decoder": {
+      "description": "OpenH264 decoder",
+      "license": "BSD-2-Clause",
+      "dependencies": [
+        "openh264"
+      ]
+    },
     "hevc": {
       "description": "HEVC encoding via x265",
       "license": "GPL-2.0-or-later",
@@ -61,6 +67,13 @@
       "license": "BSD-2-Clause",
       "dependencies": [
         "openjpeg"
+      ]
+    },
+    "x264": {
+      "description": "x264 AVC encoder",
+      "license": "GPL-2.0-or-later",
+      "dependencies": [
+        "x264"
       ]
     }
   }

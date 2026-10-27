@@ -46,6 +46,9 @@ namespace Catch {
             {}
 
             std::string translate( ExceptionTranslators::const_iterator it, ExceptionTranslators::const_iterator itEnd ) const override {
+#if defined(CATCH_CONFIG_DISABLE_EXCEPTIONS)
+                return "";
+#else
                 try {
                     if( it == itEnd )
                         std::rethrow_exception(std::current_exception());
@@ -55,6 +58,7 @@ namespace Catch {
                 catch( T& ex ) {
                     return m_translateFunction( ex );
                 }
+#endif
             }
 
         protected:
@@ -73,9 +77,10 @@ namespace Catch {
 ///////////////////////////////////////////////////////////////////////////////
 #define INTERNAL_CATCH_TRANSLATE_EXCEPTION2( translatorName, signature ) \
     static std::string translatorName( signature ); \
+    CATCH_INTERNAL_START_WARNINGS_SUPPRESSION \
     CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS \
     namespace{ Catch::ExceptionTranslatorRegistrar INTERNAL_CATCH_UNIQUE_NAME( catch_internal_ExceptionRegistrar )( &translatorName ); } \
-    CATCH_INTERNAL_UNSUPPRESS_GLOBALS_WARNINGS \
+    CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION \
     static std::string translatorName( signature )
 
 #define INTERNAL_CATCH_TRANSLATE_EXCEPTION( signature ) INTERNAL_CATCH_TRANSLATE_EXCEPTION2( INTERNAL_CATCH_UNIQUE_NAME( catch_internal_ExceptionTranslator ), signature )

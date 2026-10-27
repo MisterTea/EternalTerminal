@@ -32,6 +32,7 @@
 [Test Sharding](#test-sharding)<br>
 [Allow running the binary without tests](#allow-running-the-binary-without-tests)<br>
 [Output verbosity](#output-verbosity)<br>
+[Create file to guard against silent early termination](#create-file-to-guard-against-silent-early-termination)<br>
 
 Catch works quite nicely without any command line options at all - but for those times when you want greater control the following options are available.
 Click one of the following links to take you straight to that option - or scroll on to browse the available options.
@@ -51,6 +52,8 @@ Click one of the following links to take you straight to that option - or scroll
 <a href="#reporting-timings">                           `    -d, --durations`</a><br />
 <a href="#input-file">                                  `    -f, --input-file`</a><br />
 <a href="#run-section">                                 `    -c, --section`</a><br />
+<a href="#path-filtering">                              `    -g, --generator-index`</a><br />
+<a href="#path-filtering">                              `    -p, --path-filter`</a><br />
 <a href="#filenames-as-tags">                           `    -#, --filenames-as-tags`</a><br />
 
 
@@ -123,7 +126,7 @@ specs. You can:
     This allows test cases that are tagged with **either** "[some-tag]" **or**
     "[other-tag]". A test case with both will obviously also pass the filter.
 
-    Note that commas take precendence over simple concatenation. This means
+    Note that commas take precedence over simple concatenation. This means
     that `[a][b],[c]` accepts tests that are tagged with either both "[a]" and
     "[b]", or tests that are tagged with just "[c]".
 
@@ -286,9 +289,10 @@ as follows:
 | Option             | `normal` (default)              | `quiet`             | `high`                                  |
 |--------------------|---------------------------------|---------------------|-----------------------------------------|
 | `--list-tests`     | Test names and tags             | Test names only     | Same as `normal`, plus source code line |
-| `--list-tags`      | Tags and counts                 | Same as `normal`    | Same as `normal`                        |
+| `--list-tags`      | Tags and counts                 | Tags only           | Same as `normal`                        |
 | `--list-reporters` | Reporter names and descriptions | Reporter names only | Same as `normal`                        |
-| `--list-listeners` | Listener names and descriptions | Same as `normal`    | Same as `normal`                        |
+| `--list-listeners` | Listener names and descriptions | Listener names only | Same as `normal`                        |
+
 
 <a id="sending-output-to-a-file"></a>
 ## Sending output to a file
@@ -357,9 +361,12 @@ There are currently two warnings implemented:
                         // (e.g. `REQUIRE`) is encountered.
     UnmatchedTestSpec   // Fail test run if any of the CLI test specs did
                         // not match any tests.
+    InfiniteGenerators  // Fail if GENERATE would run infinitely
 ```
 
 > `UnmatchedTestSpec` was introduced in Catch2 3.0.1.
+
+> `InfiniteGenerators` was introduced in Catch2 3.13.0
 
 
 <a id="reporting-timings"></a>
@@ -398,18 +405,24 @@ use test specs to filter this list down to what you want first.
 Test cases are ordered one of three ways:
 
 ### decl
-Declaration order (this is the default order if no --order argument is provided).
+Declaration order.
+
 Tests in the same translation unit are sorted using their declaration orders,
 different TUs are sorted in an implementation (linking) dependent order.
 
 
 ### lex
-Lexicographic order. Tests are sorted by their name, their tags are ignored.
+Lexicographic order.
+
+Tests are sorted by their name, their tags are ignored.
 
 
 ### rand
+Randomized order. The default order.
 
-Randomly ordered. The order is dependent on Catch2's random seed (see
+> Randomized order has been made default in Catch2 3.9.0
+
+The order is dependent on Catch2's random seed (see
 [`--rng-seed`](#rng-seed)), and is subset invariant. What this means
 is that as long as the random seed is fixed, running only some tests
 (e.g. via tag) does not change their relative order.
@@ -522,45 +535,19 @@ Prints the command line arguments to stdout
 
 
 <a id="run-section"></a>
-## Specify the section to run
+<a id="path-filtering"></a>
+## Specify the section/generator element to run
 <pre>-c, --section &lt;section name&gt;</pre>
+<pre>-g, --generator-index &lt;index in generator&gt;</pre>
+<pre>-p, --path-filter &lt;path filter spec&gt;</pre>
 
-To limit execution to a specific section within a test case, use this option one or more times.
-To narrow to sub-sections use multiple instances, where each subsequent instance specifies a deeper nesting level.
+> The generator and generic path filtering was added in Catch2 3.13.0
 
-E.g. if you have:
+These arguments allow you to run specific section(s) in a test case, or
+only get specific element from a generator. All the variants form a shared
+stack of filters.
 
-<pre>
-TEST_CASE( "Test" ) {
-  SECTION( "sa" ) {
-    SECTION( "sb" ) {
-      /*...*/
-    }
-    SECTION( "sc" ) {
-      /*...*/
-    }
-  }
-  SECTION( "sd" ) {
-    /*...*/
-  }
-}
-</pre>
-
-Then you can run `sb` with:
-<pre>./MyExe Test -c sa -c sb</pre>
-
-Or run just `sd` with:
-<pre>./MyExe Test -c sd</pre>
-
-To run all of `sa`, including `sb` and `sc` use:
-<pre>./MyExe Test -c sa</pre>
-
-There are some limitations of this feature to be aware of:
-- Code outside of sections being skipped will still be executed - e.g. any set-up code in the TEST_CASE before the
-start of the first section.</br>
-- At time of writing, wildcards are not supported in section names.
-- If you specify a section without narrowing to a test case first then all test cases will be executed
-(but only matching sections within them).
+[See the full documentation of path filtering for more details](filtering-execution-path.md#top)
 
 
 <a id="filenames-as-tags"></a>
@@ -641,6 +628,21 @@ format cannot meaningfully change. In that case, the verbosity level is
 ignored.
 
 Verbosity defaults to _normal_.
+
+
+## Create file to guard against silent early termination
+<pre>--premature-exit-guard-file &lt;path&gt;</pre>
+
+> Introduced in Catch2 3.11.0
+
+Tells Catch2 to create an empty file at specified path before the tests
+start, and delete it after the tests finish. If the file is present after
+the process stops, it can be assumed that the testing binary exited
+prematurely, e.g. due to the OOM killer.
+
+All directories in the path must already exist. If this option is used
+and Catch2 cannot create the file (e.g. the location is not writable),
+the test run will fail.
 
 
 ---

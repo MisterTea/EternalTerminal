@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 project(sentry_screenshot LANGUAGES C)
 
-if(WIN32 AND NOT SCARLETT)
+if(WIN32 AND NOT XBOX)
 	add_executable(sentry_screenshot screenshot_win32.c)
 	set_target_properties(sentry_screenshot PROPERTIES WIN32_EXECUTABLE TRUE)
 	target_compile_definitions(sentry_screenshot PRIVATE _UNICODE UNICODE)

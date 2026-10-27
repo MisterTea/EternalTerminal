@@ -40,6 +40,8 @@ public:
     bool next() override {
         return !!std::getline(m_stream, m_line);
     }
+
+    bool isFinite() const override { return true; }
 };
 
 std::string const& LineGenerator::get() const {

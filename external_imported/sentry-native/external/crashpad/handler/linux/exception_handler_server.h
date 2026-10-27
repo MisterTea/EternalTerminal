@@ -117,6 +117,10 @@ class ExceptionHandlerServer {
     //! \brief Called to remove an attachment from the crash report.
     virtual void RemoveAttachment(const base::FilePath& attachment) = 0;
 
+    //! \brief Called when the server has received a request to retry pending
+    //!     report uploads.
+    virtual void RequestRetry() = 0;
+
     virtual ~Delegate() {}
   };
 

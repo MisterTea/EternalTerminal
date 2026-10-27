@@ -33,20 +33,26 @@ static sentry_spinlock_t g_lock = SENTRY__SPINLOCK_INIT;
 bool
 sentry__page_allocator_enabled(void)
 {
-    return !!g_alloc;
+    return __atomic_load_n(&g_alloc, __ATOMIC_ACQUIRE) != NULL;
 }
 
 void
 sentry__page_allocator_enable(void)
 {
+    if (sentry__page_allocator_enabled()) {
+        return;
+    }
     sentry__spinlock_lock(&g_lock);
-    if (!g_alloc) {
-        g_alloc = &g_page_allocator_backing;
-        g_alloc->page_size = getpagesize();
-        g_alloc->last_page = NULL;
-        g_alloc->current_page = NULL;
-        g_alloc->page_offset = 0;
-        g_alloc->pages_allocated = 0;
+    if (__atomic_load_n(&g_alloc, __ATOMIC_RELAXED) == NULL) {
+        struct page_allocator_s *p = &g_page_allocator_backing;
+
+        p->page_size = getpagesize();
+        p->last_page = NULL;
+        p->current_page = NULL;
+        p->page_offset = 0;
+        p->pages_allocated = 0;
+
+        __atomic_store_n(&g_alloc, p, __ATOMIC_RELEASE);
     }
     sentry__spinlock_unlock(&g_lock);
 }

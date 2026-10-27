@@ -10,6 +10,7 @@
 
 #include <string>
 
+#include <catch2/internal/catch_context.hpp>
 #include <catch2/internal/catch_stringref.hpp>
 #include <catch2/internal/catch_result_type.hpp>
 #include <catch2/internal/catch_unique_ptr.hpp>
@@ -21,8 +22,6 @@ namespace Catch {
     struct AssertionInfo;
     struct SectionInfo;
     struct SectionEndInfo;
-    struct MessageInfo;
-    struct MessageBuilder;
     struct Counts;
     struct AssertionReaction;
     struct SourceLineInfo;
@@ -62,11 +61,6 @@ namespace Catch {
         virtual void benchmarkEnded( BenchmarkStats<> const& stats ) = 0;
         virtual void benchmarkFailed( StringRef error ) = 0;
 
-        virtual void pushScopedMessage( MessageInfo const& message ) = 0;
-        virtual void popScopedMessage( MessageInfo const& message ) = 0;
-
-        virtual void emplaceUnscopedMessage( MessageBuilder&& builder ) = 0;
-
         virtual void handleFatalErrorCondition( StringRef message ) = 0;
 
         virtual void handleExpr
@@ -92,18 +86,24 @@ namespace Catch {
                     ResultWas::OfType resultType,
                     AssertionReaction &reaction ) = 0;
 
-
-
-        virtual bool lastAssertionPassed() = 0;
-        virtual void assertionPassed() = 0;
-
         // Deprecated, do not use:
         virtual std::string getCurrentTestName() const = 0;
         virtual const AssertionResult* getLastResult() const = 0;
         virtual void exceptionEarlyReported() = 0;
     };
 
-    IResultCapture& getResultCapture();
+    namespace Detail {
+        [[noreturn]]
+        void missingCaptureInstance();
+    }
+    inline IResultCapture& getResultCapture() {
+        if (auto* capture = getCurrentContext().getResultCapture()) {
+            return *capture;
+        } else {
+            Detail::missingCaptureInstance();
+        }
+    }
+
 }
 
 #endif // CATCH_INTERFACES_CAPTURE_HPP_INCLUDED

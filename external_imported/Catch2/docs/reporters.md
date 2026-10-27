@@ -154,7 +154,7 @@ and calls itself "partial" reporter, so it can be invoked with
 
 Each reporter instance contains instance of `ReporterPreferences`, a type
 that holds flags for the behaviour of Catch2 when this reporter run.
-Currently there are two customization options:
+Currently there are three customization options:
 
 * `shouldRedirectStdOut` - whether the reporter wants to handle
    writes to stdout/stderr from user code, or not. This is useful for
@@ -165,6 +165,11 @@ Currently there are two customization options:
    assertions. Usually reporters do not report successful assertions
    and don't need them for their output, but sometimes the desired output
    format includes passing assertions even without the `-s` flag.
+* `shouldReportAllAssertionStarts` - whether the reporter wants to handle
+  `assertionStarting` events. Most reporters do not, and opting out
+   explicitly enables a fast-path in Catch2's handling of assertions.
+
+> `shouldReportAllAssertionStarts` was introduced in Catch2 3.9.0
 
 
 ### Per-reporter configuration

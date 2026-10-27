@@ -10,14 +10,14 @@ transport_startup_fail(
 }
 
 static void
-noop_send(const sentry_envelope_t *UNUSED(envelope), void *UNUSED(data))
+noop_send(sentry_envelope_t *envelope, void *UNUSED(data))
 {
+    sentry_envelope_free(envelope);
 }
 
 SENTRY_TEST(init_failure)
 {
-    sentry_transport_t *transport
-        = sentry_new_function_transport(noop_send, NULL);
+    sentry_transport_t *transport = sentry_transport_new(noop_send);
     TEST_ASSERT(!!transport);
     sentry_transport_set_startup_func(transport, transport_startup_fail);
 

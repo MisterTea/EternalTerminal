@@ -61,8 +61,6 @@ TEST_CASE( "Some simple comparisons between doubles", "[Approx]" ) {
     REQUIRE( Approx( d ) == 1.23 );
     REQUIRE( Approx( d ) != 1.22 );
     REQUIRE( Approx( d ) != 1.24 );
-
-    REQUIRE(INFINITY == Approx(INFINITY));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -183,8 +181,11 @@ TEST_CASE("Epsilon only applies to Approx's value", "[Approx]") {
     REQUIRE(101.01 != Approx(100).epsilon(0.01));
 }
 
-TEST_CASE("Assorted miscellaneous tests", "[Approx]") {
+TEST_CASE("Assorted miscellaneous tests", "[Approx][approvals]") {
     REQUIRE(INFINITY == Approx(INFINITY));
+    REQUIRE(-INFINITY != Approx(INFINITY));
+    REQUIRE(1 != Approx(INFINITY));
+    REQUIRE(INFINITY != Approx(1));
     REQUIRE(NAN != Approx(NAN));
     REQUIRE_FALSE(NAN == Approx(NAN));
 }
@@ -209,6 +210,13 @@ TEST_CASE( "Comparison with explicitly convertible types", "[Approx]" )
   REQUIRE(Approx(td) >= td);
   REQUIRE(Approx(11.0) >= td);
 
+}
+
+TEST_CASE("Approx::operator() is const correct", "[Approx][.approvals]") {
+  const Approx ap = Approx(0.0).margin(0.01);
+
+  // As long as this compiles, the test should be considered passing
+  REQUIRE(1.0 == ap(1.0));
 }
 
 }} // namespace ApproxTests

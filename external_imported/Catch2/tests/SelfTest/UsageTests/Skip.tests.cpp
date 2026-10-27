@@ -83,6 +83,8 @@ namespace {
         }
 
         auto next() -> bool override { return false; }
+
+        auto isFinite() const -> bool override { return true; }
     };
 
     static auto make_test_skip_generator()

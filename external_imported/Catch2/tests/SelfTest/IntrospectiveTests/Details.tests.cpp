@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/internal/catch_enforce.hpp>
 #include <catch2/internal/catch_case_insensitive_comparisons.hpp>
 #include <catch2/internal/catch_optional.hpp>
@@ -170,3 +171,94 @@ TEST_CASE( "Decomposer checks that the argument is 0 when handling "
 
     CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION
 }
+
+
+TEST_CASE( "foo", "[approvals][path-filters]" ) {
+    SECTION( "A" ) {
+        SECTION( "B1" ) { REQUIRE( true ); }
+        SECTION( "B2" ) { REQUIRE( true ); }
+        SECTION( "B3" ) { REQUIRE( true ); }
+    }
+}
+
+TEST_CASE( "bar", "[approvals][path-filters]" ) {
+    REQUIRE( true );
+    SECTION( "A" ) {
+        SECTION( "B1" ) { REQUIRE( true ); }
+        SECTION( "B2" ) { REQUIRE( true ); }
+        SECTION( "B3" ) { REQUIRE( true ); }
+    }
+    REQUIRE( true );
+}
+
+TEST_CASE( "baz", "[approvals][path-filters]" ) {
+    SECTION( "A" ) { REQUIRE( true ); }
+    auto _ = GENERATE( 1, 2, 3 );
+    (void)_;
+    SECTION( "B" ) { REQUIRE( true ); }
+}
+
+TEST_CASE( "qux", "[approvals][path-filters]" ) {
+    REQUIRE( true );
+    SECTION( "A" ) { REQUIRE( true ); }
+    auto _ = GENERATE( 1, 2, 3 );
+    (void)_;
+    SECTION( "B" ) { REQUIRE( true ); }
+    REQUIRE( true );
+}
+
+TEST_CASE( "corge", "[approvals][path-filters]" ) {
+    REQUIRE( true );
+    SECTION( "A" ) {
+        REQUIRE( true );
+    }
+    auto i = GENERATE( 1, 2, 3 );
+    DYNAMIC_SECTION( "i=" << i ) {
+        REQUIRE( true );
+    }
+    REQUIRE( true );
+}
+
+TEST_CASE( "grault", "[approvals][path-filters]" ) {
+    REQUIRE( true );
+    SECTION( "A" ) {
+        REQUIRE( true );
+    }
+    SECTION("B") {
+        auto i = GENERATE( 1, 2, 3 );
+        DYNAMIC_SECTION( "i=" << i ) {
+            REQUIRE( true );
+        }
+    }
+    REQUIRE( true );
+}
+
+TEST_CASE( "garply", "[approvals][path-filters]" ) {
+    auto i = GENERATE( 1, 10, 100 );
+    CAPTURE( i );
+    REQUIRE( true );
+}
+
+TEST_CASE( "waldo", "[approvals][path-filters]" ) {
+    auto i = GENERATE( 1, 10, 100 );
+    auto j = GENERATE( 2, 20, 200 );
+    CAPTURE( i, j );
+    REQUIRE( true );
+}
+
+TEST_CASE( "fred", "[approvals][path-filters]" ) {
+    REQUIRE( true );
+    SECTION( "A" ) {
+        auto _ = GENERATE( 0, 1, 2 );
+        (void)_;
+        SECTION( "A1" ) { REQUIRE( true ); }
+        SECTION( "A2" ) { REQUIRE( true ); }
+    }
+    SECTION( "B" ) {
+        auto _ = GENERATE( 0, 1, 2 );
+        (void)_;
+        SECTION( "B1" ) { REQUIRE( true ); }
+        SECTION( "B2" ) { REQUIRE( true ); }
+    }
+}
+// More metasyntactic names if needed: plugh, xyzzy, thud

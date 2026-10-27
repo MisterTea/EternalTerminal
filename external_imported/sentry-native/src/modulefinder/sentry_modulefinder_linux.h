@@ -35,12 +35,25 @@ typedef struct {
     size_t len;
 } sentry_mmap_t;
 
+/**
+ * Parse a single line from /proc/[pid]/maps into a parsed module struct.
+ * Returns the number of characters consumed, or 0 on parse failure.
+ */
+int sentry__procmaps_parse_module_line(
+    const char *line, sentry_parsed_module_t *module);
+
+/**
+ * Push a parsed mapping onto a module, merging contiguous regions.
+ * Consecutive mappings of the same inode with adjacent addresses and offsets
+ * are coalesced into a single region. This handles ELF files that are mapped
+ * as multiple LOAD segments in /proc/pid/maps.
+ */
+void sentry__module_mapping_push(
+    sentry_module_t *module, const sentry_parsed_module_t *parsed);
+
 #ifdef SENTRY_UNITTEST
 bool sentry__procmaps_read_ids_from_elf(
     sentry_value_t value, const sentry_module_t *module);
-
-int sentry__procmaps_parse_module_line(
-    const char *line, sentry_parsed_module_t *module);
 
 /**
  * Checks that `start_offset` + `size` is a valid contiguous mapping in the

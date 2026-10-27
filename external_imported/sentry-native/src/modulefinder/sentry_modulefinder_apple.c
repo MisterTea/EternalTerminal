@@ -106,7 +106,8 @@ remove_image(const struct mach_header *mh, intptr_t UNUSED(vmaddr_slide))
     }
 
     char ref_addr[32];
-    snprintf(ref_addr, sizeof(ref_addr), "0x%llx", (long long)info.dli_fbase);
+    sentry__addr_to_string(
+        ref_addr, sizeof(ref_addr), (uint64_t)info.dli_fbase);
     sentry_value_t new_modules = sentry_value_new_list();
 
     for (size_t i = 0; i < sentry_value_get_length(g_modules); i++) {

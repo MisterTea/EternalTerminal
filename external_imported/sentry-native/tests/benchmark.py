@@ -27,7 +27,6 @@ def run_benchmark(target, backend, cmake, httpserver, gbenchmark, label):
             tmp_path,
             "sentry_benchmark",
             [f"--benchmark_filter={target}", f"--benchmark_out={benchmark_out}"],
-            check=True,
             env=env,
         )
 

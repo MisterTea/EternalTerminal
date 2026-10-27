@@ -1,0 +1,43 @@
+name: Mac Sanitizer Builds
+
+on: [push, pull_request]
+
+env:
+  CTEST_OUTPUT_ON_FAILURE: 1
+  CTEST_NO_TESTS_ACTION: error
+
+jobs:
+  build:
+    runs-on: ${{matrix.image}}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [macos-15, macos-15-intel]
+        build_type: [Debug]
+        std: [17]
+        sanitizer: [thread, address]
+        include:
+          - sanitizer: thread
+            preset: basic-tests
+            filter: -R ThreadSafetyTests
+          - sanitizer: address
+            preset: most-tests
+            filter:
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Configure
+
+      run: |
+        CFXXFLAGS=-fsanitize=${{matrix.sanitizer}},undefined
+        cmake --preset ${{matrix.preset}} -GNinja \
+              -DCMAKE_BUILD_TYPE=${{matrix.build_type}} \
+              -DCMAKE_CXX_STANDARD=${{matrix.std}} \
+              -DCATCH_BUILD_EXTRA_TESTS=ON
+
+    - name: Build
+      run: cmake --build build
+
+    - name: Test
+      run: ctest --test-dir build ${{matrix.filter}}

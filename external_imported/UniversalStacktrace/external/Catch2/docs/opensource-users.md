@@ -20,14 +20,20 @@ Listing a project here does not imply endorsement and the plan is to keep these 
 ### [ApprovalTests.cpp](https://github.com/approvals/ApprovalTests.cpp)
 C++11 implementation of Approval Tests, for quick, convenient testing of legacy code.
 
+### [args](https://github.com/Taywee/args)
+A simple header-only C++ argument parser library.
+
 ### [Azmq](https://github.com/zeromq/azmq)
 Boost Asio style bindings for ZeroMQ.
 
-### [ChakraCore](https://github.com/Microsoft/ChakraCore)
-The core part of the Chakra JavaScript engine that powers Microsoft Edge.
+### [Cataclysm: Dark Days Ahead](https://github.com/CleverRaven/Cataclysm-DDA)
+Post-apocalyptic survival RPG.
 
 ### [ChaiScript](https://github.com/ChaiScript/ChaiScript)
 A, header-only, embedded scripting language designed from the ground up to directly target C++ and take advantage of modern C++ development techniques.
+
+### [ChakraCore](https://github.com/Microsoft/ChakraCore)
+The core part of the Chakra JavaScript engine that powers Microsoft Edge.
 
 ### [Clara](https://github.com/philsquared/Clara)
 A, single-header-only, type-safe, command line parser - which also prints formatted usage strings.
@@ -50,9 +56,6 @@ Open source Oracle Tuxedo-like XATMI middleware for C and C++.
 ### [Inja](https://github.com/pantor/inja)
 A header-only template engine for modern C++.
 
-### [JSON for Modern C++](https://github.com/nlohmann/json)
-A, single-header, JSON parsing library that takes advantage of what C++ has to offer.
-
 ### [libcluon](https://github.com/chrberger/libcluon)
 A single-header-only library written in C++14 to glue distributed software components (UDP, TCP, shared memory) supporting natively Protobuf, LCM/ZCM, MsgPack, and JSON for dynamic message transformations in-between. 
 
@@ -65,9 +68,6 @@ A small C++ library wrapper for the native C ODBC API.
 ### [Nonius](https://github.com/libnonius/nonius)
 A header-only framework for benchmarking small snippets of C++ code.
 
-### [SOCI](https://github.com/SOCI/soci)
-The C++ Database Access Library.
-
 ### [polymorphic_value](https://github.com/jbcoe/polymorphic_value)
 A polymorphic value-type for C++.
 
@@ -77,19 +77,25 @@ A C++ client library for Consul. Consul is a distributed tool for discovering an
 ### [Reactive-Extensions/ RxCpp](https://github.com/Reactive-Extensions/RxCpp)
 A library of algorithms for values-distributed-in-time.
 
-### [thor](https://github.com/xorz57/thor)
-Wrapper Library for CUDA.
+### [SOCI](https://github.com/SOCI/soci)
+The C++ Database Access Library.
 
 ### [TextFlowCpp](https://github.com/philsquared/textflowcpp)
 A small, single-header-only, library for wrapping and composing columns of text.
 
+### [thor](https://github.com/xorz57/thor)
+Wrapper Library for CUDA.
+
+### [toml++](https://github.com/marzer/tomlplusplus)
+A header-only TOML parser and serializer for modern C++.
+
 ### [Trompeloeil](https://github.com/rollbear/trompeloeil)
 A thread-safe header-only mocking framework for C++14.
 
-### [args](https://github.com/Taywee/args)
-A simple header-only C++ argument parser library.
-
 ## Applications & Tools
+
+### [App Mesh](https://github.com/laoshanxi/app-mesh)
+A high available cloud native micro-service application management platform implemented by modern C++.
 
 ### [ArangoDB](https://github.com/arangodb/arangodb)
 ArangoDB is a native multi-model database with flexible data models for documents, graphs, and key-values.
@@ -102,6 +108,9 @@ MAME originally stood for Multiple Arcade Machine Emulator.
 
 ### [Newsbeuter](https://github.com/akrennmair/newsbeuter)
 Newsbeuter is an open-source RSS/Atom feed reader for text terminals.
+
+### [PopHead](https://github.com/SPC-Some-Polish-Coders/PopHead)
+A 2D, Zombie, RPG game which is being made on our own engine.
 
 ### [raspigcd](https://github.com/pantadeusz/raspigcd)
 Low level CLI app and library for execution of GCODE on Raspberry Pi without any additional microcontrolers (just RPi + Stepsticks).

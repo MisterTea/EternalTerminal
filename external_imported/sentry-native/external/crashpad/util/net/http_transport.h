@@ -103,6 +103,11 @@ class HTTPTransport {
  protected:
   HTTPTransport();
 
+  //! \brief Handles an HTTP response status.
+  //!
+  //! \return `true` for HTTP statuses considered successful.
+  static bool HandleHTTPStatus(unsigned long status_code);
+
   const std::string& url() const { return url_; }
   const std::string& http_proxy() const { return http_proxy_; }
   const std::string& method() const { return method_; }

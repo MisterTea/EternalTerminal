@@ -31,3 +31,11 @@ build
 # .NET
 bin/
 obj/
+sentry-native.sln
+*.csproj.user
+
+# clangd
+.cache
+
+# Local Claude Code settings that should not be committed
+.claude/settings.local.json

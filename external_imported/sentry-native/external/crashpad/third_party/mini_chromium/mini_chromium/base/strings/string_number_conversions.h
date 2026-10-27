@@ -8,19 +8,18 @@
 #include <stdint.h>
 
 #include <string>
+#include <string_view>
 #include <vector>
-
-#include "base/strings/string_piece.h"
 
 namespace base {
 
-bool StringToInt(const StringPiece& input, int* output);
-bool StringToUint(const StringPiece& input, unsigned int* output);
-bool StringToInt64(const StringPiece& input, int64_t* output);
-bool StringToUint64(const StringPiece& input, uint64_t* output);
-bool StringToSizeT(const StringPiece& input, size_t* output);
+bool StringToInt(std::string_view input, int* output);
+bool StringToUint(std::string_view input, unsigned int* output);
+bool StringToInt64(std::string_view input, int64_t* output);
+bool StringToUint64(std::string_view input, uint64_t* output);
+bool StringToSizeT(std::string_view input, size_t* output);
 
-bool HexStringToInt(const StringPiece& input, int* output);
+bool HexStringToInt(std::string_view input, int* output);
 bool HexStringToBytes(const std::string& input, std::vector<uint8_t>* output);
 
 }  // namespace base

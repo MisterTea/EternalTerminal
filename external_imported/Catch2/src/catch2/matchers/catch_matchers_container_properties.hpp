@@ -18,7 +18,7 @@ namespace Catch {
         class IsEmptyMatcher final : public MatcherGenericBase {
         public:
             template <typename RangeLike>
-            bool match(RangeLike&& rng) const {
+            constexpr bool match(RangeLike&& rng) const {
 #if defined(CATCH_CONFIG_POLYFILL_NONMEMBER_CONTAINER_ACCESS)
                 using Catch::Detail::empty;
 #else
@@ -33,12 +33,12 @@ namespace Catch {
         class HasSizeMatcher final : public MatcherGenericBase {
             std::size_t m_target_size;
         public:
-            explicit HasSizeMatcher(std::size_t target_size):
+            constexpr explicit HasSizeMatcher(std::size_t target_size):
                 m_target_size(target_size)
             {}
 
             template <typename RangeLike>
-            bool match(RangeLike&& rng) const {
+            constexpr bool match(RangeLike&& rng) const {
 #if defined(CATCH_CONFIG_POLYFILL_NONMEMBER_CONTAINER_ACCESS)
                 using Catch::Detail::size;
 #else
@@ -54,12 +54,12 @@ namespace Catch {
         class SizeMatchesMatcher final : public MatcherGenericBase {
             Matcher m_matcher;
         public:
-            explicit SizeMatchesMatcher(Matcher m):
+            constexpr explicit SizeMatchesMatcher(Matcher m):
                 m_matcher(CATCH_MOVE(m))
             {}
 
             template <typename RangeLike>
-            bool match(RangeLike&& rng) const {
+            constexpr bool match(RangeLike&& rng) const {
 #if defined(CATCH_CONFIG_POLYFILL_NONMEMBER_CONTAINER_ACCESS)
                 using Catch::Detail::size;
 #else
@@ -75,11 +75,13 @@ namespace Catch {
 
 
         //! Creates a matcher that accepts empty ranges/containers
-        IsEmptyMatcher IsEmpty();
+        inline CATCH_DESTRUCTOR_CONSTEXPR IsEmptyMatcher IsEmpty() { return {}; }
         //! Creates a matcher that accepts ranges/containers with specific size
-        HasSizeMatcher SizeIs(std::size_t sz);
+        inline CATCH_DESTRUCTOR_CONSTEXPR HasSizeMatcher SizeIs( std::size_t sz ) {
+            return HasSizeMatcher{ sz };
+        }
         template <typename Matcher>
-        std::enable_if_t<Detail::is_matcher<Matcher>::value,
+        constexpr std::enable_if_t<Detail::is_matcher_v<Matcher>,
         SizeMatchesMatcher<Matcher>> SizeIs(Matcher&& m) {
             return SizeMatchesMatcher<Matcher>{CATCH_FORWARD(m)};
         }

@@ -19,6 +19,9 @@ SENTRY_TEST(uninitialized)
     sentry_remove_tag("foo");
     sentry_set_extra("foo", sentry_value_new_null());
     sentry_remove_extra("foo");
+    sentry_set_attribute("foo",
+        sentry_value_new_attribute(sentry_value_new_string("bar"), NULL));
+    sentry_remove_attribute("foo");
     sentry_set_context("foo", sentry_value_new_object());
     sentry_remove_context("foo");
     sentry_set_fingerprint("foo", "bar", NULL);

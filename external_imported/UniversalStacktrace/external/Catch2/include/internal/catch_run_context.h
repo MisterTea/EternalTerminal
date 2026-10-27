@@ -80,10 +80,14 @@ namespace Catch {
         void sectionEnded( SectionEndInfo const& endInfo ) override;
         void sectionEndedEarly( SectionEndInfo const& endInfo ) override;
 
-        auto acquireGeneratorTracker( SourceLineInfo const& lineInfo ) -> IGeneratorTracker& override;
+        auto acquireGeneratorTracker( StringRef generatorName, SourceLineInfo const& lineInfo ) -> IGeneratorTracker& override;
 
+#if defined(CATCH_CONFIG_ENABLE_BENCHMARKING)
+        void benchmarkPreparing( std::string const& name ) override;
         void benchmarkStarting( BenchmarkInfo const& info ) override;
-        void benchmarkEnded( BenchmarkStats const& stats ) override;
+        void benchmarkEnded( BenchmarkStats<> const& stats ) override;
+        void benchmarkFailed( std::string const& error ) override;
+#endif // CATCH_CONFIG_ENABLE_BENCHMARKING
 
         void pushScopedMessage( MessageInfo const& message ) override;
         void popScopedMessage( MessageInfo const& message ) override;
@@ -142,11 +146,14 @@ namespace Catch {
         std::vector<SectionEndInfo> m_unfinishedSections;
         std::vector<ITracker*> m_activeSections;
         TrackerContext m_trackerContext;
+        FatalConditionHandler m_fatalConditionhandler;
         bool m_lastAssertionPassed = false;
         bool m_shouldReportUnexpected = true;
         bool m_includeSuccessfulResults;
     };
 
+    void seedRng(IConfig const& config);
+    unsigned int rngSeed();
 } // end namespace Catch
 
 #endif // TWOBLUECUBES_CATCH_RUNNER_IMPL_HPP_INCLUDED

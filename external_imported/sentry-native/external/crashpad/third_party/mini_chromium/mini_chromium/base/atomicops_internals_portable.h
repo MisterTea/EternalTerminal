@@ -78,11 +78,6 @@ inline Atomic32 NoBarrier_AtomicIncrement(volatile Atomic32* ptr,
              ->fetch_add(increment, std::memory_order_relaxed);
 }
 
-inline Atomic32 Barrier_AtomicIncrement(volatile Atomic32* ptr,
-                                        Atomic32 increment) {
-  return increment + ((AtomicLocation32)ptr)->fetch_add(increment);
-}
-
 inline Atomic32 Acquire_CompareAndSwap(volatile Atomic32* ptr,
                                        Atomic32 old_value,
                                        Atomic32 new_value) {
@@ -159,11 +154,6 @@ inline Atomic64 NoBarrier_AtomicIncrement(volatile Atomic64* ptr,
   return increment +
          ((AtomicLocation64)ptr)
              ->fetch_add(increment, std::memory_order_relaxed);
-}
-
-inline Atomic64 Barrier_AtomicIncrement(volatile Atomic64* ptr,
-                                        Atomic64 increment) {
-  return increment + ((AtomicLocation64)ptr)->fetch_add(increment);
 }
 
 inline Atomic64 Acquire_CompareAndSwap(volatile Atomic64* ptr,

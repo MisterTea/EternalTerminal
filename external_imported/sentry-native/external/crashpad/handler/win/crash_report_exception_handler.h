@@ -21,6 +21,7 @@
 #include <string>
 
 #include "handler/user_stream_data_source.h"
+#include "util/misc/uuid.h"
 #include "util/win/exception_handler_server.h"
 
 namespace crashpad {
@@ -62,7 +63,10 @@ class CrashReportExceptionHandler final
       const std::vector<base::FilePath>* attachments,
       const base::FilePath* screenshot,
       const UserStreamDataSources* user_stream_data_sources,
-      bool wait_for_upload);
+      bool wait_for_upload,
+      const base::FilePath* crash_reporter,
+      const base::FilePath* crash_envelope,
+      const UUID* report_id);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
   CrashReportExceptionHandler& operator=(const CrashReportExceptionHandler&) =
@@ -83,6 +87,7 @@ class CrashReportExceptionHandler final
       const base::FilePath& attachment) override;
   void ExceptionHandlerServerAttachmentRemoved(
       const base::FilePath& attachment) override;
+  void ExceptionHandlerServerRetryRequested() override;
 
  private:
   CrashReportDatabase* database_;  // weak
@@ -91,6 +96,9 @@ class CrashReportExceptionHandler final
   std::vector<base::FilePath> attachments_;
   const base::FilePath* screenshot_;  // weak
   const bool wait_for_upload_;
+  const base::FilePath* crash_reporter_;  // weak
+  const base::FilePath* crash_envelope_;  // weak
+  const UUID* report_id_;  // weak
   const UserStreamDataSources* user_stream_data_sources_;  // weak
 };
 

@@ -16,9 +16,9 @@
 #define CRASHPAD_TOOLS_TOOL_SUPPORT_H_
 
 #include <string>
+#include <string_view>
 
 #include "base/files/file_path.h"
-#include "base/strings/string_piece.h"
 #include "build/build_config.h"
 
 namespace crashpad {
@@ -77,7 +77,7 @@ class ToolSupport {
   //! \sa Wmain()
   //! \sa FilePathToCommandLineArgument()
   static base::FilePath::StringType CommandLineArgumentToFilePathStringType(
-      const base::StringPiece& arg);
+      std::string_view arg);
 
   //! \brief Converts a base::FilePath to a command line argument.
   //!

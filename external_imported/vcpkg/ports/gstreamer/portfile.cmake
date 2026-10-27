@@ -3,7 +3,7 @@ vcpkg_from_gitlab(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO gstreamer/gstreamer
     REF "${VERSION}"
-    SHA512 60ca414d05e219b760c6b22c693a5d127b368736a160217919719ad99d7e0ec7bc7a10390edeb27cc65fc647fd41e4bd9edddb60cb429f81e267c6e78a229c60
+    SHA512 010a5528cb789844e36a540b0a17c6cf342a89ac124e362aefbc5650b332a2617a74e66f9b3186672fa14a66fdd74a542e7c959e3237e70a4b00c17216ae5b5b
     HEAD_REF main
     PATCHES
         fix-clang-cl.patch
@@ -11,15 +11,21 @@ vcpkg_from_gitlab(
         fix-multiple-def.patch
         x264-api-imports.diff
         duplicate-unused.diff
+        11894.diff  # https://gitlab.freedesktop.org/gstreamer/gstreamer/-/merge_requests/11894
+        no-moltenvk-download.diff
 )
+
+# subprojects that do their own downloads
+file(REMOVE_RECURSE "${SOURCE_PATH}/subprojects/moltenvk")
 
 vcpkg_find_acquire_program(FLEX)
 vcpkg_find_acquire_program(BISON)
 vcpkg_find_acquire_program(NASM)
 
-# gstreamer/meson tends to pick host modules (e.g. libdrm),
-# so clean the search root unless explicitly set externally.
-if(VCPKG_CROSSCOMPILING AND "$ENV{PKG_CONFIG}$ENV{PKG_CONFIG_LIBDIR}" STREQUAL "")
+# gstreamer/meson tends to pick host modules (e.g. libdrm)
+# or X11 etc. from brew, so control installation order by
+# explicitly cleaning the search root unless set externally.
+if((VCPKG_CROSSCOMPILING OR VCPKG_TARGET_IS_OSX) AND "$ENV{PKG_CONFIG}$ENV{PKG_CONFIG_LIBDIR}" STREQUAL "")
     set(ENV{PKG_CONFIG_LIBDIR} "${CURRENT_INSTALLED_DIR}/share/pkgconfig")
 endif()
 
@@ -89,6 +95,7 @@ vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
         fdkaac          gst-plugins-bad:fdkaac
         fluidsynth      gst-plugins-bad:fluidsynth
         gl              gst-plugins-bad:gl
+        hls             gst-plugins-bad:hls
         libde265        gst-plugins-bad:libde265
         microdns        gst-plugins-bad:microdns
         modplug         gst-plugins-bad:modplug
@@ -135,6 +142,11 @@ else()
     set(PLUGIN_BASE_GL_PLATFORM auto)
 endif()
 
+# Darwin platforms require MoltenVK for Vulkan support
+if(VCPKG_TARGET_IS_APPLE AND "vulkan" IN_LIST FEATURES)
+    message(WARNING "You will need to install MoltenVK dependencies to use feature vulkan\n")
+endif()
+
 #
 # References
 #   https://gitlab.freedesktop.org/gstreamer/gstreamer/-/blob/1.20.4/subprojects/gstreamer/meson_options.txt
@@ -159,7 +171,6 @@ vcpkg_configure_meson(
         -Ddevtools=disabled
         -Drtsp_server=disabled
         -Drs=disabled
-        -Dvaapi=disabled
         -Dgst-examples=disabled
         # Bindings
         -Dpython=disabled
@@ -245,6 +256,7 @@ vcpkg_configure_meson(
         -Dgst-plugins-bad:gme=disabled
         -Dgst-plugins-bad:gs=disabled # Error during plugin configuration (abseil pkg-config file missing)
         -Dgst-plugins-bad:gsm=disabled
+        -Dgst-plugins-bad:hls-crypto=openssl
         -Dgst-plugins-bad:ipcpipeline=auto
         -Dgst-plugins-bad:iqa=disabled
         -Dgst-plugins-bad:kms=disabled

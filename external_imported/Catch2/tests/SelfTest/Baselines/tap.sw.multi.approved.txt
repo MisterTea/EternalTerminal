@@ -163,9 +163,13 @@ ok {test-number} - smallest_non_zero, WithinULP( -smallest_non_zero, 2 ) for: 0.
 # #2152 - ULP checks between differently signed values were wrong - float
 ok {test-number} - smallest_non_zero, !WithinULP( -smallest_non_zero, 1 ) for: 0.0f not is within 1 ULPs of -1.40129846e-45f ([-2.80259693e-45, -0.00000000e+00])
 # #2615 - Throwing in constructor generator fails test case but does not abort
-not ok {test-number} - unexpected exception with message: 'failure to init'
+not ok {test-number} - unexpected exception with message: 'failure to init'; expression was: {Unknown expression after the reported line}
+# #3001: Enum-based bitfields can be captured
+ok {test-number} - bf.e == 1 for: 1 == 1
+# #3001: Enum-based bitfields can be captured
+ok {test-number} - 1 == bf.e for: 1 == 1
 # #748 - captures with unexpected exceptions
-not ok {test-number} - unexpected exception with message: 'answer := 42' with 1 message: 'expected exception'
+not ok {test-number} - unexpected exception with message: 'expected exception'; expression was: {Unknown expression after the reported line}
 # #748 - captures with unexpected exceptions
 not ok {test-number} - unexpected exception with message: 'answer := 42'; expression was: thisThrows() with 1 message: 'expected exception'
 # #748 - captures with unexpected exceptions
@@ -610,6 +614,16 @@ ok {test-number} - HasBitOperators{ 1 } & HasBitOperators{ 1 } for: Val: 1 & Val
 ok {test-number} - lhs ^ rhs for: Val: 1 ^ Val: 2
 # Assertion macros support bit operators and bool conversions
 ok {test-number} - !(lhs ^ lhs) for: !(Val: 1 ^ Val: 1)
+# Assertions can be nested - CHECK
+not ok {test-number} - i > 10 for: 2 > 10
+# Assertions can be nested - CHECK
+not ok {test-number} - unexpected exception with message: '{ nested assertion failed }'; expression was: foo( 2 ) == 2
+# Assertions can be nested - CHECK
+ok {test-number} - true
+# Assertions can be nested - REQUIRE
+not ok {test-number} - i > 10 for: 2 > 10
+# Assertions can be nested - REQUIRE
+not ok {test-number} - unexpected exception with message: '{ nested assertion failed }'; expression was: foo( 2 ) == 2
 # Assertions then sections
 ok {test-number} - true
 # Assertions then sections
@@ -672,6 +686,12 @@ ok {test-number} - with 11 messages: '("comma, in string", "escaped, \", ") := "
 ok {test-number} - true with 1 message: 'i := 2'
 # Capture and info messages
 ok {test-number} - true with 1 message: '3'
+# Captures do not leave block with an exception
+not ok {test-number} - false with 1 message: 'a := 1'
+# Captures outlive section end
+ok {test-number} - true with 1 message: 'a := 1'
+# Captures outlive section end
+not ok {test-number} - false with 1 message: 'a := 1'
 # CaseInsensitiveEqualsTo is case insensitive
 ok {test-number} - eq( "", "" ) for: true
 # CaseInsensitiveEqualsTo is case insensitive
@@ -844,6 +864,20 @@ ok {test-number} - std::vector<int>{1, 2} == std::vector<int>{1, 2} for: { 1, 2 
 ok {test-number} - true
 # Commas in various macros are allowed
 ok {test-number} - std::vector<int>{1, 2} == std::vector<int>{1, 2} for: { 1, 2 } == { 1, 2 }
+# Comparing (and stringifying) volatile pointers works
+ok {test-number} - !(ptr) for: !0
+# Comparing (and stringifying) volatile pointers works
+ok {test-number} - ptr == ptr for: 0 == 0
+# Comparing (and stringifying) volatile pointers works
+ok {test-number} - !(ptr != ptr) for: !(0 != 0)
+# Comparing (and stringifying) volatile pointers works
+ok {test-number} - !(ptr < ptr) for: !(0 < 0)
+# Comparing (and stringifying) volatile pointers works
+ok {test-number} - ptr <= ptr for: 0 <= 0
+# Comparing (and stringifying) volatile pointers works
+ok {test-number} - !(ptr > ptr) for: !(0 > 0)
+# Comparing (and stringifying) volatile pointers works
+ok {test-number} - ptr >= ptr for: 0 >= 0
 # Comparing function pointers
 ok {test-number} - a for: 0x<hex digits>
 # Comparing function pointers
@@ -944,6 +978,30 @@ ok {test-number} - matcher.match( 1 ) for: true
 ok {test-number} - first.matchCalled for: true
 # Composed matchers shortcircuit
 ok {test-number} - !second.matchCalled for: true
+# ConcatGenerator
+ok {test-number} - c.get() == 1 for: 1 == 1
+# ConcatGenerator
+ok {test-number} - !(c.next()) for: !false
+# ConcatGenerator
+ok {test-number} - c.get() == i + 1 for: 1 == 1
+# ConcatGenerator
+ok {test-number} - c.next() for: true
+# ConcatGenerator
+ok {test-number} - c.get() == i + 1 for: 2 == 2
+# ConcatGenerator
+ok {test-number} - c.next() for: true
+# ConcatGenerator
+ok {test-number} - c.get() == i + 1 for: 3 == 3
+# ConcatGenerator
+ok {test-number} - c.next() for: true
+# ConcatGenerator
+ok {test-number} - c.get() == i + 1 for: 4 == 4
+# ConcatGenerator
+ok {test-number} - c.next() for: true
+# ConcatGenerator
+ok {test-number} - c.get() == 5 for: 5 == 5
+# ConcatGenerator
+ok {test-number} - !(c.next()) for: !false
 # Contains string matcher
 not ok {test-number} - testStringForMatching(), ContainsSubstring( "not there", Catch::CaseSensitive::No ) for: "this string contains 'abc' as a substring" contains: "not there" (case insensitive)
 # Contains string matcher
@@ -988,12 +1046,16 @@ not ok {test-number} - unexpected exception with message: 'custom std exception'
 ok {test-number} - 101.000001 != Approx(100).epsilon(0.01) for: 101.00000099999999748 != Approx( 100.0 )
 # Default scale is invisible to comparison
 ok {test-number} - std::pow(10, -5) != Approx(std::pow(10, -7)) for: 0.00001 != Approx( 0.0000001 )
+# Delayed unscoped message clearing does not catch newly inserted messages
+ok {test-number} - true with 1 message: 'a'
+# Delayed unscoped message clearing does not catch newly inserted messages
+not ok {test-number} - false with 1 message: 'b'
 # Directly creating an EnumInfo
-ok {test-number} - enumInfo->lookup(0) == "Value1" for: Value1 == "Value1"
+ok {test-number} - enumInfo.lookup(0) == "Value1" for: Value1 == "Value1"
 # Directly creating an EnumInfo
-ok {test-number} - enumInfo->lookup(1) == "Value2" for: Value2 == "Value2"
+ok {test-number} - enumInfo.lookup(1) == "Value2" for: Value2 == "Value2"
 # Directly creating an EnumInfo
-ok {test-number} - enumInfo->lookup(3) == "{** unexpected enum value **}" for: {** unexpected enum value **} == "{** unexpected enum value **}"
+ok {test-number} - enumInfo.lookup(3) == "{** unexpected enum value **}" for: {** unexpected enum value **} == "{** unexpected enum value **}"
 # Empty generators can SKIP in constructor
 ok {test-number} -  # SKIP 'This generator is empty'
 # Empty stream name opens cout stream
@@ -1002,6 +1064,12 @@ ok {test-number} - Catch::makeStream( "" )->isConsole() for: true
 not ok {test-number} - testStringForMatching(), EndsWith( "Substring" ) for: "this string contains 'abc' as a substring" ends with: "Substring"
 # EndsWith string matcher
 not ok {test-number} - testStringForMatching(), EndsWith( "this", Catch::CaseSensitive::No ) for: "this string contains 'abc' as a substring" ends with: "this" (case insensitive)
+# Enum backed by larger underlying type
+ok {test-number} - stringify( LargeEnum::Flag1 ) == "Flag1" for: "Flag1" == "Flag1"
+# Enum backed by larger underlying type
+ok {test-number} - stringify( LargeEnum::Flag2 ) == "Flag2" for: "Flag2" == "Flag2"
+# Enum backed by larger underlying type
+ok {test-number} - stringify( LargeEnum::Flag5 ) == "Flag5" for: "Flag5" == "Flag5"
 # Enums can quickly have stringification enabled using CATCH_REGISTER_ENUM
 ok {test-number} - stringify( EnumClass3::Value1 ) == "Value1" for: "Value1" == "Value1"
 # Enums can quickly have stringification enabled using CATCH_REGISTER_ENUM
@@ -1108,6 +1176,8 @@ ok {test-number} - thisThrows(), EndsWith( "exception" ) for: "expected exceptio
 ok {test-number} - thisThrows(), ContainsSubstring( "except" ) for: "expected exception" contains: "except"
 # Exception messages can be tested for
 ok {test-number} - thisThrows(), ContainsSubstring( "exCept", Catch::CaseSensitive::No ) for: "expected exception" contains: "except" (case insensitive)
+# Exception thrown inside stringify does not fail the test
+ok {test-number} - tos == tos for: { stringification failed with an exception: "Invalid" } == { stringification failed with an exception: "Invalid" }
 # Exceptions matchers
 ok {test-number} - throwsDerivedException(), DerivedException, Message( "DerivedException::what" ) for: DerivedException::what exception message matches "DerivedException::what"
 # Exceptions matchers
@@ -1124,6 +1194,10 @@ not ok {test-number} - expected exception, got none; expression was: thisDoesntT
 not ok {test-number} - unexpected exception with message: 'expected exception'; expression was: thisThrows()
 # FAIL aborts the test
 not ok {test-number} - explicitly with 1 message: 'This is a failure'
+# FAIL can be nested in assertion
+not ok {test-number} - explicitly with 1 message: 'Throw a Catch::TestFailureException'
+# FAIL can be nested in assertion
+not ok {test-number} - unexpected exception with message: '{ nested assertion failed }'; expression was: do_fail()
 # FAIL does not require an argument
 not ok {test-number} - explicitly
 # FAIL_CHECK does not abort the test
@@ -1142,6 +1216,18 @@ ok {test-number} - Factorial(3) == 6 for: 6 == 6
 ok {test-number} - Factorial(10) == 3628800 for: 3628800 (0x<hex digits>) == 3628800 (0x<hex digits>)
 # Filter generator throws exception for empty generator
 ok {test-number} - filter( []( int ) { return false; }, value( 3 ) ), Catch::GeneratorException
+# FixedValuesGenerator can be skipped forward
+ok {test-number} - values.currentElementIndex() == 0 for: 0 == 0
+# FixedValuesGenerator can be skipped forward
+ok {test-number} - values.currentElementIndex() == 3 for: 3 == 3
+# FixedValuesGenerator can be skipped forward
+ok {test-number} - values.get() == 3 for: 3 == 3
+# FixedValuesGenerator can be skipped forward
+ok {test-number} - values.currentElementIndex() == 4 for: 4 == 4
+# FixedValuesGenerator can be skipped forward
+ok {test-number} - values.get() == 4 for: 4 == 4
+# FixedValuesGenerator can be skipped forward
+ok {test-number} - values.skipToNthElement( 5 )
 # Floating point matchers: double
 ok {test-number} - 10., WithinRel( 11.1, 0.1 ) for: 10.0 and 11.09999999999999964 are within 10% of each other
 # Floating point matchers: double
@@ -1276,6 +1362,26 @@ ok {test-number} - i % 2 == 0 for: 0 == 0
 ok {test-number} - i % 2 == 0 for: 0 == 0
 # GENERATE can combine literals and generators
 ok {test-number} - i % 2 == 0 for: 0 == 0
+# Generator adapters properly handle isFinite
+ok {test-number} - finite_cat.isFinite() for: true
+# Generator adapters properly handle isFinite
+ok {test-number} - !(infinite_cat.isFinite()) for: !false
+# Generator adapters properly handle isFinite
+ok {test-number} - take_1.isFinite() for: true
+# Generator adapters properly handle isFinite
+ok {test-number} - take_2.isFinite() for: true
+# Generator adapters properly handle isFinite
+ok {test-number} - finite_chunk.isFinite() for: true
+# Generator adapters properly handle isFinite
+ok {test-number} - !(infinite_chunk.isFinite()) for: !false
+# Generator adapters properly handle isFinite
+ok {test-number} - finite_map.isFinite() for: true
+# Generator adapters properly handle isFinite
+ok {test-number} - !(infinite_map.isFinite()) for: !false
+# Generator adapters properly handle isFinite
+ok {test-number} - finite_filter.isFinite() for: true
+# Generator adapters properly handle isFinite
+ok {test-number} - !(infinite_filter.isFinite()) for: !false
 # Generators -- adapters
 ok {test-number} - i % 2 == 0 for: 0 == 0
 # Generators -- adapters
@@ -1388,6 +1494,24 @@ ok {test-number} - 4u * i > str.size() for: 12 > 1
 ok {test-number} - 4u * i > str.size() for: 12 > 2
 # Generators -- simple
 ok {test-number} - 4u * i > str.size() for: 12 > 3
+# Generators can be skipped forward
+ok {test-number} - generator.currentElementIndex() == 0 for: 0 == 0
+# Generators can be skipped forward
+ok {test-number} - generator.currentElementIndex() == 3 for: 3 == 3
+# Generators can be skipped forward
+ok {test-number} - generator.get() == 3 for: 3 == 3
+# Generators can be skipped forward
+ok {test-number} - generator.currentElementIndex() == 3 for: 3 == 3
+# Generators can be skipped forward
+ok {test-number} - generator.get() == 3 for: 3 == 3
+# Generators can be skipped forward
+ok {test-number} - generator.currentElementIndex() == 5 for: 5 == 5
+# Generators can be skipped forward
+ok {test-number} - generator.get() == 5 for: 5 == 5
+# Generators can be skipped forward
+ok {test-number} - generator.skipToNthElement( 3 )
+# Generators can be skipped forward
+ok {test-number} - generator.skipToNthElement( 6 )
 # Generators internals
 ok {test-number} - gen.get() == 123 for: 123 == 123
 # Generators internals
@@ -1458,6 +1582,14 @@ ok {test-number} - !(gen.next()) for: !false
 ok {test-number} - filter([](int) { return false; }, value(1)), Catch::GeneratorException
 # Generators internals
 ok {test-number} - filter([](int) { return false; }, values({ 1, 2, 3 })), Catch::GeneratorException
+# Generators internals
+ok {test-number} - gen.get() == 1 for: 1 == 1
+# Generators internals
+ok {test-number} - gen.next() for: true
+# Generators internals
+ok {test-number} - gen.get() == 3 for: 3 == 3
+# Generators internals
+ok {test-number} - !(gen.next()) for: !false
 # Generators internals
 ok {test-number} - gen.get() == 1 for: 1 == 1
 # Generators internals
@@ -1902,23 +2034,23 @@ ok {test-number} - stream.str() == "{\n}" for: "{ }" == "{ }"
 ok {test-number} - stream.str() == "[\n]" for: "[ ]" == "[ ]"
 # JsonWriter
 ok {test-number} - stream.str() == "\"custom\"" for: ""custom"" == ""custom""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\\"\"" for: ""\""" == ""\"""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\\\\"" for: ""\\"" == ""\\""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"/\"" for: ""/"" == ""/""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\b\"" for: ""\b"" == ""\b""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\f\"" for: ""\f"" == ""\f""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\n\"" for: ""\n"" == ""\n""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\r\"" for: ""\r"" == ""\r""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\t\"" for: ""\t"" == ""\t""
-# JsonWriter escapes charaters in strings properly
+# JsonWriter escapes characters in strings properly
 ok {test-number} - sstream.str() == "\"\\\\/\\t\\r\\n\"" for: ""\\/\t\r\n"" == ""\\/\t\r\n""
 # Lambdas in assertions
 ok {test-number} - []() { return true; }() for: true
@@ -1932,6 +2064,50 @@ ok {test-number} - !(d <= Approx( 1.22 )) for: !(1.22999999999999998 <= Approx( 
 ok {test-number} - d <= Approx( 1.22 ).epsilon(0.1) for: 1.22999999999999998 <= Approx( 1.21999999999999997 )
 # ManuallyRegistered
 ok {test-number} - with 1 message: 'was called'
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 0 for: 0 == 0
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 0 for: 0 == 0
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_generator.get() == 3 for: 3 == 3
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 1 for: 1 == 1
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_generator.get() == 3 for: 3 == 3
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 1 for: 1 == 1
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 1 for: 1 == 1
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 0 for: 0 == 0
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 0 for: 0 == 0
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_generator.get() == 4 for: 4 == 4
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 1 for: 1 == 1
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_generator.get() == 4 for: 4 == 4
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 1 for: 1 == 1
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 1 for: 1 == 1
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_generator.get() == 6 for: 6 == 6
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 2 for: 2 == 2
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_generator.skipToNthElement( 7 )
+# MapGenerator can be skipped forward efficiently
+ok {test-number} - map_calls == 2 for: 2 == 2
+# MapGenerator can handle not default constructible types
+ok {test-number} - map_generator.get().m_i == 1 for: 1 == 1
+# MapGenerator can handle not default constructible types
+ok {test-number} - map_generator.next() for: true
+# MapGenerator can handle not default constructible types
+ok {test-number} - map_generator.next() for: true
+# MapGenerator can handle not default constructible types
+ok {test-number} - map_generator.get().m_i == 3 for: 3 == 3
 # Matchers can be (AllOf) composed with the && operator
 ok {test-number} - testStringForMatching(), ContainsSubstring( "string" ) && ContainsSubstring( "abc" ) && ContainsSubstring( "substring" ) && ContainsSubstring( "contains" ) for: "this string contains 'abc' as a substring" ( contains: "string" and contains: "abc" and contains: "substring" and contains: "contains" )
 # Matchers can be (AnyOf) composed with the || operator
@@ -2184,6 +2360,52 @@ ok {test-number} - spec.hasFilters() for: true
 ok {test-number} - spec.getInvalidSpecs().empty() for: true
 # Parsed tags are matched case insensitive
 ok {test-number} - spec.matches( testCase ) for: true
+# Parsing path filter specs
+ok {test-number} - result for: {?}
+# Parsing path filter specs
+ok {test-number} - !(config.useNewPathFilteringBehaviour) for: !false
+# Parsing path filter specs
+ok {test-number} - result for: {?}
+# Parsing path filter specs
+ok {test-number} - config.useNewPathFilteringBehaviour for: true
+# Parsing path filter specs
+ok {test-number} - !(result) for: !{?}
+# Parsing path filter specs
+ok {test-number} - result for: {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[0] == PathFilter( PathFilter::For::Generator, "*" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - !(result) for: !{?}
+# Parsing path filter specs
+ok {test-number} - result for: {?}
+# Parsing path filter specs
+ok {test-number} - config.useNewPathFilteringBehaviour for: true
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[0] == PathFilter( PathFilter::For::Generator, "1" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[1] == PathFilter( PathFilter::For::Section, "foobar" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - !(result) for: !{?}
+# Parsing path filter specs
+ok {test-number} - !(result1) for: !{?}
+# Parsing path filter specs
+ok {test-number} - !(result2) for: !{?}
+# Parsing path filter specs
+ok {test-number} - result for: {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[0] == PathFilter( PathFilter::For::Section, "foo-bar" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[1] == PathFilter( PathFilter::For::Generator, "3" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[2] == PathFilter( PathFilter::For::Generator, "123" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[3] == PathFilter( PathFilter::For::Section, "baz" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - result for: {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[0] == PathFilter(PathFilter::For::Section, "untrimmed" ) for: {?} == {?}
+# Parsing path filter specs
+ok {test-number} - config.pathFilters[1] == PathFilter(PathFilter::For::Generator, "42" ) for: {?} == {?}
 # Parsing sharding-related cli flags
 ok {test-number} - cli.parse({ "test", "--shard-count=8" }) for: {?}
 # Parsing sharding-related cli flags
@@ -2227,9 +2449,9 @@ ok {test-number} - config.warnings == WarnAbout::NoAssertions for: 1 == 1
 # Parsing warnings
 ok {test-number} - !(cli.parse( { "test", "-w", "NoTests" } )) for: !{?}
 # Parsing warnings
-ok {test-number} - cli.parse( { "test", "--warn", "NoAssertions", "--warn", "UnmatchedTestSpec" } ) for: {?}
+ok {test-number} - cli.parse( { "test", "--warn", "NoAssertions", "--warn", "UnmatchedTestSpec", "--warn", "InfiniteGenerators" } ) for: {?}
 # Parsing warnings
-ok {test-number} - config.warnings == ( WarnAbout::NoAssertions | WarnAbout::UnmatchedTestSpec ) for: 3 == 3
+ok {test-number} - config.warnings == ( WarnAbout::NoAssertions | WarnAbout::UnmatchedTestSpec | WarnAbout::InfiniteGenerator ) for: 7 == 7
 # Pointers can be compared to null
 ok {test-number} - p == 0 for: 0 == 0
 # Pointers can be compared to null
@@ -2431,6 +2653,14 @@ ok {test-number} - cli.parse({ "test", "--benchmark-samples=200" }) for: {?}
 # Process can be configured on command line
 ok {test-number} - config.benchmarkSamples == 200 for: 200 == 200
 # Process can be configured on command line
+ok {test-number} - !(result) for: !{?}
+# Process can be configured on command line
+ok {test-number} - result.errorMessage(), ContainsSubstring("Benchmark samples must be greater than 0") for: "Benchmark samples must be greater than 0" contains: "Benchmark samples must be greater than 0"
+# Process can be configured on command line
+ok {test-number} - !(result) for: !{?}
+# Process can be configured on command line
+ok {test-number} - result.errorMessage(), ContainsSubstring("Could not parse 'abc' as benchmark samples") for: "Could not parse 'abc' as benchmark samples" contains: "Could not parse 'abc' as benchmark samples"
+# Process can be configured on command line
 ok {test-number} - cli.parse({ "test", "--benchmark-resamples=20000" }) for: {?}
 # Process can be configured on command line
 ok {test-number} - config.benchmarkResamples == 20000 for: 20000 (0x<hex digits>) == 20000 (0x<hex digits>)
@@ -2460,6 +2690,12 @@ ok {test-number} - Catch::generateRandomSeed(method)
 ok {test-number} - Catch::generateRandomSeed(method)
 # Random seed generation reports unknown methods
 ok {test-number} - Catch::generateRandomSeed(static_cast<Catch::GenerateFrom>(77))
+# RandomGenerator reports itself as infinite - float
+ok {test-number} - !(Catch::Generators::random( TestType{ 0 }, TestType{ 100 } ).isFinite()) for: !false
+# RandomGenerator reports itself as infinite - int
+ok {test-number} - !(Catch::Generators::random( TestType{ 0 }, TestType{ 100 } ).isFinite()) for: !false
+# RandomGenerator reports itself as infinite - long double
+ok {test-number} - !(Catch::Generators::random( TestType{ 0 }, TestType{ 100 } ).isFinite()) for: !false
 # Range type with sentinel
 ok {test-number} - Catch::Detail::stringify(UsesSentinel{}) == "{  }" for: "{  }" == "{  }"
 # Reconstruction should be based on stringification: #914
@@ -2474,6 +2710,8 @@ not ok {test-number} - testStringForMatching(), Matches( "this string contains '
 ok {test-number} - registry.registerReporter( "with::doublecolons", Catch::Detail::make_unique<TestReporterFactory>() ), "'::' is not allowed in reporter name: 'with::doublecolons'" for: "'::' is not allowed in reporter name: 'with::doublecolons'" equals: "'::' is not allowed in reporter name: 'with::doublecolons'"
 # Regression test #1
 ok {test-number} - actual, !UnorderedEquals( expected ) for: { 'a', 'b' } not UnorderedEquals: { 'c', 'b' }
+# RepeatGenerator refuses infinite generators
+ok {test-number} - RepeatGenerator<int>( 2, random( 1, 100 ) )
 # Reporter's write listings to provided stream
 ok {test-number} - !(factories.empty()) for: !false
 # Reporter's write listings to provided stream
@@ -2614,6 +2852,16 @@ ok {test-number} - v.size() == 0 for: 0 == 0
 ok {test-number} - v.capacity() >= 10 for: 10 >= 10
 # Scenario: Vector resizing affects size and capacity
 ok {test-number} - v.size() == 0 for: 0 == 0
+# Scoped message applies to all assertions in scope
+not ok {test-number} - false with 1 message: 'This will be reported multiple times'
+# Scoped message applies to all assertions in scope
+not ok {test-number} - false with 1 message: 'This will be reported multiple times'
+# Scoped messages do not leave block with an exception
+not ok {test-number} - false with 1 message: 'Should be in scope at the end'
+# Scoped messages outlive section end
+ok {test-number} - true with 1 message: 'Should survive a section end'
+# Scoped messages outlive section end
+not ok {test-number} - false with 1 message: 'Should survive a section end'
 # Some simple comparisons between doubles
 ok {test-number} - d == Approx( 1.23 ) for: 1.22999999999999998 == Approx( 1.22999999999999998 )
 # Some simple comparisons between doubles
@@ -2810,6 +3058,22 @@ ok {test-number} - registry.add( "[@no square bracket at end", "", Catch::Source
 ok {test-number} - testCase.tags.size() == 2 for: 2 == 2
 # Tags with spaces and non-alphanumerical characters are accepted
 ok {test-number} - testCase.tags, VectorContains( Tag( "tag with spaces" ) ) && VectorContains( Tag( "I said \"good day\" sir!"_catch_sr ) ) for: { {?}, {?} } ( Contains: {?} and Contains: {?} )
+# TakeGenerator can be skipped forward
+ok {test-number} - take.get() == 0 for: 0 == 0
+# TakeGenerator can be skipped forward
+ok {test-number} - take.get() == 2 for: 2 == 2
+# TakeGenerator can be skipped forward
+ok {test-number} - take.get() == 5 for: 5 == 5
+# TakeGenerator can be skipped forward
+ok {test-number} - take.skipToNthElement( 6 )
+# TakeGenerator can be skipped forward
+ok {test-number} - take.get() == 0 for: 0 == 0
+# TakeGenerator can be skipped forward
+ok {test-number} - take.get() == 2 for: 2 == 2
+# TakeGenerator can be skipped forward
+ok {test-number} - take.get() == 5 for: 5 == 5
+# TakeGenerator can be skipped forward
+ok {test-number} - take.skipToNthElement( 6 )
 # Template test case method with test types specified inside std::tuple - MyTypes - 0
 ok {test-number} - Template_Fixture<TestType>::m_a == 1 for: 1 == 1
 # Template test case method with test types specified inside std::tuple - MyTypes - 1
@@ -3340,6 +3604,8 @@ ok {test-number} - vector_a, RangeEquals( array_a_plus_1, close_enough ) for: { 
 ok {test-number} - vector_a, UnorderedRangeEquals( array_a_plus_1, close_enough ) for: { 1, 2, 3 } unordered elements are { 2, 3, 4 }
 # Unexpected exceptions can be translated
 not ok {test-number} - unexpected exception with message: '3.14000000000000012'
+# Unscoped capture outlives scope
+not ok {test-number} - false with 3 messages: 'i := 1' and 'j := 2' and 'i + j := 3'
 # Upcasting special member functions
 ok {test-number} - bptr->i == 3 for: 3 == 3
 # Upcasting special member functions
@@ -3765,7 +4031,7 @@ not ok {test-number} - unexpected exception with message: 'expected exception'; 
 # When unchecked exceptions are thrown from functions they are always failures
 not ok {test-number} - unexpected exception with message: 'expected exception'; expression was: thisThrows() == 0
 # When unchecked exceptions are thrown from sections they are always failures
-not ok {test-number} - unexpected exception with message: 'unexpected exception'
+not ok {test-number} - unexpected exception with message: 'unexpected exception'; expression was: {Unknown expression after the reported line}
 # X/level/0/a
 ok {test-number} -
 # X/level/0/b
@@ -3854,6 +4120,22 @@ ok {test-number} - model.finished == 0 for: 0 == 0
 ok {test-number} - called == 1 for: 1 == 1
 # boolean member
 ok {test-number} - obj.prop != 0 for: 0x<hex digits> != 0
+# cat generator
+ok {test-number} - input < 3 for: 0 < 3
+# cat generator
+ok {test-number} - input < 3 for: 1 < 3
+# cat generator
+ok {test-number} - input < 3 for: 2 < 3
+# cat generator
+ok {test-number} - input % 2 == 0 for: 0 == 0
+# cat generator
+ok {test-number} - input % 2 == 0 for: 0 == 0
+# cat generator
+ok {test-number} - input % 2 == 0 for: 0 == 0
+# cat generator
+ok {test-number} - input % 2 == 0 for: 0 == 0
+# cat generator
+ok {test-number} - input % 2 == 0 for: 0 == 0
 # checkedElse
 ok {test-number} - flag for: true
 # checkedElse
@@ -4011,29 +4293,29 @@ ok {test-number} -  # SKIP
 # failing in some unskipped sections causes entire test case to fail
 not ok {test-number} - explicitly
 # is_unary_function
-ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function<decltype(unary1)>::value'
+ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function_v<decltype(unary1)>'
 # is_unary_function
-ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function<decltype(unary2)>::value'
+ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function_v<decltype(unary2)>'
 # is_unary_function
-ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function<decltype(unary3)>::value'
+ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function_v<decltype(unary3)>'
 # is_unary_function
-ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function<decltype(unary4)>::value'
+ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function_v<decltype(unary4)>'
 # is_unary_function
-ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function<decltype(unary5)>::value'
+ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function_v<decltype(unary5)>'
 # is_unary_function
-ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function<decltype(unary6)>::value'
+ok {test-number} - with 1 message: 'Catch::Clara::Detail::is_unary_function_v<decltype(unary6)>'
 # is_unary_function
-ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function<decltype(binary1)>::value)'
+ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function_v<decltype(binary1)>)'
 # is_unary_function
-ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function<decltype(binary2)>::value)'
+ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function_v<decltype(binary2)>)'
 # is_unary_function
-ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function<decltype(nullary1)>::value)'
+ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function_v<decltype(nullary1)>)'
 # is_unary_function
-ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function<decltype(nullary2)>::value)'
+ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function_v<decltype(nullary2)>)'
 # is_unary_function
-ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function<int>::value)'
+ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function_v<int>)'
 # is_unary_function
-ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function<std::string const&>::value)'
+ok {test-number} - with 1 message: '!(Catch::Clara::Detail::is_unary_function_v<std::string const&>)'
 # just failure
 not ok {test-number} - explicitly with 1 message: 'Previous info should not be seen'
 # just failure after unscoped info
@@ -4366,6 +4648,8 @@ ok {test-number} - data.str.size() == data.len for: 3 == 3
 ok {test-number} - data.str.size() == data.len for: 5 == 5
 # strlen3
 ok {test-number} - data.str.size() == data.len for: 4 == 4
+# system_clock timepoint with non-default duration
+ok {test-number} - tp1 == tp2 for: {iso8601-timestamp} == {iso8601-timestamp}
 # tables
 ok {test-number} - strlen(std::get<0>(data)) == static_cast<size_t>(std::get<1>(data)) for: 5 == 5
 # tables
@@ -4556,5 +4840,5 @@ ok {test-number} - q3 == 23. for: 23.0 == 23.0
 ok {test-number} -
 # xmlentitycheck
 ok {test-number} -
-1..2281
+1..2428
 

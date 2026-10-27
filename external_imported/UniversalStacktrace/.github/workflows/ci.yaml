@@ -1,60 +1,76 @@
 name: CI
 
 on:
-  push:
   pull_request:
 
 jobs:
-  linux_test:
-    runs-on: ubuntu-latest
-
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-      - name: Setup
-        shell: bash
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
         run: |
-          mkdir -p ~/.ssh/
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libunwind-dev g++
-          ACCEPT_EULA=Y sudo apt-get -y upgrade
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          sudo apt-get install -y libunwind-dev gdb
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build --config RelWithDebInfo -j 4
 
       - name: Test
-        run: |
-          mkdir build
-          pushd build
-          cmake ../
-          make -j`nproc`
-          ./ust-test
-          popd
-          rm -Rf build
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure -V
 
-  mac_test:
-    runs-on: macos-10.15
-
+  mingw-posix:
+    runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: Setup
-        shell: bash
-        run: |
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
-          mkdir -p ~/.ssh/
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Test with ubsan
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-gdb mingw-w64-x86_64-binutils
+
+      - name: Configure (MinGW POSIX)
+        shell: msys2 {0}
+        run: cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --config RelWithDebInfo -j 4
+
+      - name: Test
+        shell: msys2 {0}
+        run: ctest --test-dir build -C RelWithDebInfo --output-on-failure -V
+
+  mingw-win32:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+      - name: Check win32 thread model handling (issue #3)
         run: |
-          mkdir build
-          pushd build
-          cmake ../
-          make -j`nproc`
-          ./ust-test
-          popd
-          rm -Rf build
+          # Verify header compiles without _GLIBCXX_HAS_GTHREADS (win32 thread model)
+          echo '#include "ust/ust.hpp"' | x86_64-w64-mingw32-g++ -x c++ -D__MINGW32__ -U_GLIBCXX_HAS_GTHREADS -std=c++17 -I. -Iust -c - -o /dev/null && echo "win32 thread model header check passed"
+          # Also verify full project builds with MinGW cross-compiler
+          cmake -S . -B build-mingw -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++ -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build (cross-compile)
+        run: cmake --build build-mingw --config RelWithDebInfo -j 4

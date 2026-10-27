@@ -10,7 +10,7 @@
 
 #include <catch2/interfaces/catch_interfaces_capture.hpp>
 #include <catch2/internal/catch_test_registry.hpp>
-#include <catch2/internal/catch_test_run_info.hpp>
+#include <catch2/catch_test_run_info.hpp>
 #include <catch2/internal/catch_fatal_condition_handler.hpp>
 #include <catch2/catch_test_case_info.hpp>
 #include <catch2/catch_message.hpp>
@@ -20,6 +20,7 @@
 #include <catch2/catch_assertion_result.hpp>
 #include <catch2/internal/catch_optional.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
+#include <catch2/internal/catch_thread_support.hpp>
 
 #include <string>
 
@@ -93,11 +94,6 @@ namespace Catch {
         void benchmarkEnded( BenchmarkStats<> const& stats ) override;
         void benchmarkFailed( StringRef error ) override;
 
-        void pushScopedMessage( MessageInfo const& message ) override;
-        void popScopedMessage( MessageInfo const& message ) override;
-
-        void emplaceUnscopedMessage( MessageBuilder&& builder ) override;
-
         std::string getCurrentTestName() const override;
 
         const AssertionResult* getLastResult() const override;
@@ -106,20 +102,18 @@ namespace Catch {
 
         void handleFatalErrorCondition( StringRef message ) override;
 
-        bool lastAssertionPassed() override;
-
-        void assertionPassed() override;
-
     public:
         // !TBD We need to do this another way!
         bool aborting() const;
 
     private:
+        void assertionPassedFastPath( SourceLineInfo lineInfo );
+        // Update the non-thread-safe m_totals from the atomic assertion counts.
+        void updateTotalsFromAtomics();
 
         void runCurrentTest();
         void invokeActiveTestCase();
 
-        void resetAssertionInfo();
         bool testForMissingAssertions( Counts& assertions );
 
         void assertionEnded( AssertionResult&& result );
@@ -129,31 +123,39 @@ namespace Catch {
                     ITransientExpression const *expr,
                     bool negated );
 
-        void populateReaction( AssertionReaction& reaction );
+        void populateReaction( AssertionReaction& reaction, bool has_normal_disposition ) const;
+
+        // Creates dummy info for unexpected exceptions/fatal errors,
+        // where we do not have the access to one, but we still need
+        // to send one to the reporters.
+        AssertionInfo makeDummyAssertionInfo();
 
     private:
 
         void handleUnfinishedSections();
-
+        mutable Detail::Mutex m_assertionMutex;
         TestRunInfo m_runInfo;
         TestCaseHandle const* m_activeTestCase = nullptr;
         ITracker* m_testCaseTracker = nullptr;
         Optional<AssertionResult> m_lastResult;
-
         IConfig const* m_config;
         Totals m_totals;
+        Detail::AtomicCounts m_atomicAssertionCount;
         IEventListenerPtr m_reporter;
-        std::vector<MessageInfo> m_messages;
-        std::vector<ScopedMessage> m_messageScopes; /* Keeps owners of so-called unscoped messages. */
-        AssertionInfo m_lastAssertionInfo;
         std::vector<SectionEndInfo> m_unfinishedSections;
         std::vector<ITracker*> m_activeSections;
         TrackerContext m_trackerContext;
         Detail::unique_ptr<OutputRedirect> m_outputRedirect;
         FatalConditionHandler m_fatalConditionhandler;
-        bool m_lastAssertionPassed = false;
+        // Caches m_config->abortAfter() to avoid vptr calls/allow inlining
+        size_t m_abortAfterXFailedAssertions;
         bool m_shouldReportUnexpected = true;
+        // Caches whether `assertionStarting` events should be sent to the reporter.
+        bool m_reportAssertionStarting;
+        // Caches whether `assertionEnded` events for successful assertions should be sent to the reporter
         bool m_includeSuccessfulResults;
+        // Caches m_config->shouldDebugBreak() to avoid vptr calls/allow inlining
+        bool m_shouldDebugBreak;
     };
 
     void seedRng(IConfig const& config);

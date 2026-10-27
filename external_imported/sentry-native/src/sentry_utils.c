@@ -7,8 +7,14 @@
 #include "sentry_string.h"
 #include "sentry_sync.h"
 #include "sentry_utils.h"
+
+#include "sentry_random.h"
+
+#include <ctype.h>
 #include <locale.h>
+#include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -227,12 +233,13 @@ sentry__dsn_new_n(const char *raw_dsn, size_t raw_dsn_len)
     memset(&url, 0, sizeof(sentry_url_t));
     size_t path_len;
     char *project_id;
+    // org_id is u64 in relay, so needs 20 characters + null termination
+    char org_id[21] = "";
 
     sentry_dsn_t *dsn = SENTRY_MAKE(sentry_dsn_t);
     if (!dsn) {
         return NULL;
     }
-    memset(dsn, 0, sizeof(sentry_dsn_t));
     dsn->refcount = 1;
 
     dsn->raw = sentry__string_clone_n(raw_dsn, raw_dsn_len);
@@ -250,6 +257,21 @@ sentry__dsn_new_n(const char *raw_dsn, size_t raw_dsn_len)
     }
 
     dsn->host = url.host;
+    const char *org_id_dot = strchr(url.host, '.');
+    if (org_id_dot && url.host[0] == 'o') {
+        size_t length = (size_t)(org_id_dot - url.host - 1); // leave the o
+        strncpy(org_id, url.host + 1, MIN(length, 20));
+        org_id[MIN(length, 20)] = '\0'; // Null-terminate the string
+        char *org_id_end_ptr;
+        const unsigned long long int org_id_int
+            = strtoull(org_id, &org_id_end_ptr, 10);
+        // check if valid uint64 AND not actually the number 0
+        if (length > 20
+            || (org_id_int == 0ULL && org_id_end_ptr != org_id + length)) {
+            memset(org_id, '\0', 20);
+        }
+    }
+    dsn->org_id = sentry__string_clone(org_id);
     url.host = NULL;
     dsn->public_key = url.username;
     url.username = NULL;
@@ -312,6 +334,7 @@ sentry__dsn_decref(sentry_dsn_t *dsn)
     if (sentry__atomic_fetch_and_add(&dsn->refcount, -1) == 1) {
         sentry_free(dsn->raw);
         sentry_free(dsn->host);
+        sentry_free(dsn->org_id);
         sentry_free(dsn->path);
         sentry_free(dsn->public_key);
         sentry_free(dsn->secret_key);
@@ -368,6 +391,37 @@ sentry__dsn_get_envelope_url(const sentry_dsn_t *dsn)
 }
 
 char *
+sentry__dsn_get_upload_url(const sentry_dsn_t *dsn)
+{
+    if (!dsn || !dsn->is_valid) {
+        return NULL;
+    }
+    sentry_stringbuilder_t sb;
+    init_string_builder_for_url(&sb, dsn);
+    sentry__stringbuilder_append(&sb, "/upload/");
+    return sentry__stringbuilder_into_string(&sb);
+}
+
+char *
+sentry__dsn_resolve_url(const sentry_dsn_t *dsn, const char *path)
+{
+    if (!dsn || !dsn->is_valid || !path) {
+        return NULL;
+    }
+    sentry_stringbuilder_t sb;
+    sentry__stringbuilder_init(&sb);
+    if (path[0] == '/') {
+        sentry__stringbuilder_append(&sb, dsn->is_secure ? "https" : "http");
+        sentry__stringbuilder_append(&sb, "://");
+        sentry__stringbuilder_append(&sb, dsn->host);
+        sentry__stringbuilder_append_char(&sb, ':');
+        sentry__stringbuilder_append_int64(&sb, (int64_t)dsn->port);
+    }
+    sentry__stringbuilder_append(&sb, path);
+    return sentry__stringbuilder_into_string(&sb);
+}
+
+char *
 sentry__dsn_get_minidump_url(const sentry_dsn_t *dsn, const char *user_agent)
 {
     if (!dsn || !dsn->is_valid || !user_agent) {
@@ -380,6 +434,37 @@ sentry__dsn_get_minidump_url(const sentry_dsn_t *dsn, const char *user_agent)
     sentry__stringbuilder_append(&sb, "&sentry_key=");
     sentry__stringbuilder_append(&sb, dsn->public_key);
     return sentry__stringbuilder_into_string(&sb);
+}
+
+char *
+sentry__base64_encode(const char *data, size_t len)
+{
+    static const char b64[]
+        = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t output_len = 4 * ((len + 2) / 3);
+    char *out = sentry_malloc(output_len + 1);
+    if (!out) {
+        return NULL;
+    }
+
+    size_t i, j;
+    for (i = 0, j = 0; i < len; i += 3) {
+        uint32_t triple = (uint32_t)(unsigned char)data[i] << 16;
+        if (i + 1 < len) {
+            triple |= (uint32_t)(unsigned char)data[i + 1] << 8;
+        }
+        if (i + 2 < len) {
+            triple |= (uint32_t)(unsigned char)data[i + 2];
+        }
+
+        out[j++] = b64[(triple >> 18) & 0x3F];
+        out[j++] = b64[(triple >> 12) & 0x3F];
+        out[j++] = i + 1 < len ? b64[(triple >> 6) & 0x3F] : '=';
+        out[j++] = i + 2 < len ? b64[triple & 0x3F] : '=';
+    }
+
+    out[j] = '\0';
+    return out;
 }
 
 char *
@@ -542,6 +627,24 @@ sentry__strtod_c(const char *ptr, char **endptr)
 #endif
 }
 
+double
+sentry__getenv_double(const char *name, double fallback)
+{
+    const char *str = getenv(name);
+    if (!str) {
+        return fallback;
+    }
+    char *end = NULL;
+    double val = sentry__strtod_c(str, &end);
+    if (end == str || !isfinite(val)) {
+        return fallback;
+    }
+    if (end[strspn(end, " \t\r\n")] != '\0') {
+        return fallback;
+    }
+    return val;
+}
+
 int
 sentry__snprintf_c(char *buf, size_t buf_size, const char *fmt, ...)
 {
@@ -578,4 +681,72 @@ sentry__check_min_version(sentry_version_t actual, sentry_version_t expected)
     }
 
     return true;
+}
+
+void
+sentry__generate_sample_rand(sentry_value_t context)
+{
+    uint64_t rnd;
+    double sample_rand = 1.0;
+    do {
+        sentry__getrandom(&rnd, sizeof(rnd));
+        sample_rand = (double)rnd / (double)UINT64_MAX;
+    } while (sample_rand == 1.0); // re-roll when generating 1.0
+    sentry_value_set_by_key(
+        context, "sample_rand", sentry_value_new_double(sample_rand));
+}
+
+bool
+sentry__baggage_iter_next(
+    sentry_slice_t *remaining, sentry_slice_t *key, sentry_slice_t *value)
+{
+    while (remaining->len > 0) {
+        size_t comma = sentry__slice_find(*remaining, ',');
+        sentry_slice_t member;
+        if (comma == (size_t)-1) {
+            member = *remaining;
+            *remaining = sentry__slice_advance(*remaining, remaining->len);
+        } else {
+            member = (sentry_slice_t) { remaining->ptr, comma };
+            *remaining = sentry__slice_advance(*remaining, comma + 1);
+        }
+        member = sentry__slice_trim(member);
+
+        size_t eq = sentry__slice_find(member, '=');
+        if (eq == (size_t)-1) {
+            continue;
+        }
+        sentry_slice_t k
+            = sentry__slice_trim((sentry_slice_t) { member.ptr, eq });
+        if (k.len == 0) {
+            continue;
+        }
+        sentry_slice_t v = { member.ptr + eq + 1, member.len - eq - 1 };
+        size_t semi = sentry__slice_find(v, ';');
+        if (semi != (size_t)-1) {
+            v.len = semi;
+        }
+        *key = k;
+        *value = sentry__slice_trim(v);
+        return true;
+    }
+    return false;
+}
+
+size_t
+sentry__percent_decode_inplace(char *s, size_t len)
+{
+    size_t r = 0;
+    size_t w = 0;
+    while (r < len) {
+        if (s[r] == '%' && r + 2 < len && isxdigit((unsigned char)s[r + 1])
+            && isxdigit((unsigned char)s[r + 2])) {
+            char hex[3] = { s[r + 1], s[r + 2], '\0' };
+            s[w++] = (char)strtol(hex, NULL, 16);
+            r += 3;
+        } else {
+            s[w++] = s[r++];
+        }
+    }
+    return w;
 }

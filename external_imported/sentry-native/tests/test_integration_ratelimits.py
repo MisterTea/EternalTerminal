@@ -15,13 +15,13 @@ def test_retry_after(cmake, httpserver):
     httpserver.expect_oneshot_request("/api/123456/envelope/").respond_with_data(
         "OK", 200, {"retry-after": "60"}
     )
-    run(tmp_path, "sentry_example", ["log", "capture-multiple"], check=True, env=env)
+    run(tmp_path, "sentry_example", ["log", "capture-multiple"], env=env)
     assert len(httpserver.log) == 1
 
     httpserver.expect_oneshot_request("/api/123456/envelope/").respond_with_data(
         "OK", 429, {"retry-after": "60"}
     )
-    run(tmp_path, "sentry_example", ["log", "capture-multiple"], check=True, env=env)
+    run(tmp_path, "sentry_example", ["log", "capture-multiple"], env=env)
     assert len(httpserver.log) == 2
 
 
@@ -34,13 +34,13 @@ def test_rate_limits(cmake, httpserver):
     httpserver.expect_oneshot_request("/api/123456/envelope/").respond_with_data(
         "OK", 200, headers
     )
-    run(tmp_path, "sentry_example", ["log", "capture-multiple"], check=True, env=env)
+    run(tmp_path, "sentry_example", ["log", "capture-multiple"], env=env)
     assert len(httpserver.log) == 1
 
     httpserver.expect_oneshot_request("/api/123456/envelope/").respond_with_data(
         "OK", 429, headers
     )
-    run(tmp_path, "sentry_example", ["log", "capture-multiple"], check=True, env=env)
+    run(tmp_path, "sentry_example", ["log", "capture-multiple"], env=env)
     assert len(httpserver.log) == 2
 
 
@@ -52,5 +52,5 @@ def test_only_429(cmake, httpserver):
     httpserver.expect_oneshot_request("/api/123456/envelope/").respond_with_data(
         "OK", 429
     )
-    run(tmp_path, "sentry_example", ["log", "capture-multiple"], check=True, env=env)
+    run(tmp_path, "sentry_example", ["log", "capture-multiple"], env=env)
     assert len(httpserver.log) == 1

@@ -133,11 +133,17 @@ CrashpadInfo::CrashpadInfo()
       crashpad_handler_behavior_(TriState::kUnset),
       system_crash_reporter_forwarding_(TriState::kUnset),
       gather_indirectly_referenced_memory_(TriState::kUnset),
-      padding_1_(0),
+      limit_stack_capture_to_sp_(TriState::kUnset),
       extra_memory_ranges_(nullptr),
       simple_annotations_(nullptr),
       user_data_minidump_stream_head_(nullptr),
-      annotations_list_(nullptr) {}
+      annotations_list_(nullptr)
+#if BUILDFLAG(IS_IOS)
+      ,
+      intermediate_dump_extra_memory_ranges_(nullptr)
+#endif
+{
+}
 
 UserDataMinidumpStreamHandle* CrashpadInfo::AddUserDataMinidumpStream(
     uint32_t stream_type,

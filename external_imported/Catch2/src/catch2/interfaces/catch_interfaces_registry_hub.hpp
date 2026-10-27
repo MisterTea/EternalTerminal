@@ -53,7 +53,6 @@ namespace Catch {
         virtual void registerTranslator( Detail::unique_ptr<IExceptionTranslator>&& translator ) = 0;
         virtual void registerTagAlias( std::string const& alias, std::string const& tag, SourceLineInfo const& lineInfo ) = 0;
         virtual void registerStartupException() noexcept = 0;
-        virtual IMutableEnumValuesRegistry& getMutableEnumValuesRegistry() = 0;
     };
 
     IRegistryHub const& getRegistryHub();

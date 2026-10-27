@@ -10,6 +10,7 @@ on:
   pull_request:
     paths-ignore:
       - "*.md"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,18 +21,29 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - run: make style
 
-  build-ios:
-    name: Xcode Build for iOS
+  build-ios-inproc:
+    name: Xcode Build for inproc on iOS
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: "recursive"
       - run: |
-          cmake -B sentry-native-xcode -GXcode -DCMAKE_SYSTEM_NAME=iOS
+          cmake -B sentry-native-xcode -GXcode -DCMAKE_SYSTEM_NAME=iOS -DSENTRY_BACKEND=inproc
+          xcodebuild build -project sentry-native-xcode/Sentry-Native.xcodeproj -sdk iphonesimulator
+
+  build-ios-breakpad:
+    name: Xcode Build for breakpad on iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          submodules: "recursive"
+      - run: |
+          cmake -B sentry-native-xcode -GXcode -DCMAKE_SYSTEM_NAME=iOS -DSENTRY_BACKEND=breakpad
           xcodebuild build -project sentry-native-xcode/Sentry-Native.xcodeproj -sdk iphonesimulator
 
   test:
@@ -39,16 +51,34 @@ jobs:
       fail-fast: false
       matrix:
         include:
+            # toolchain per runner-image availability:
+            #   ubuntu 22.04
+            #     GCC: 9-12
+            #     clang: 11-15
+            #     kcov: 9-12
+            #   ubuntu 24.04
+            #     GCC: 9-14
+            #     clang: 16-20
+            #     kcov: 9-14
+            # note:
+            #   Since available GCCs on 22.04 are a strict
+            #   subset of the ones available on 24.04, we
+            #   run all GCC tests on the latter version.
           - name: Linux (GCC 9.5.0, 32-bit)
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             CC: gcc-9
             CXX: g++-9
             TEST_X86: 1
+          - name: Linux Arm32 (gcc-arm-linux-gnueabihf + qemu-user)
+            os: ubuntu-24.04-arm
+            CC: arm-linux-gnueabihf-gcc
+            CXX: arm-linux-gnueabihf-g++
+            TEST_ARM32: 1
+            TEST_QEMU: 1
           - name: Linux (GCC 9.5.0)
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             CC: gcc-9
             CXX: g++-9
-            # ERROR_ON_WARNINGS: 1
           - name: Linux (GCC 12.3.0)
             os: ubuntu-24.04
             CC: gcc-12
@@ -61,51 +91,75 @@ jobs:
             os: ubuntu-24.04
             CC: gcc-14
             CXX: g++-14
-            # ERROR_ON_WARNINGS: 1
-            # The GCC analyzer 10.0.1 (as on CI) has an internal compiler error
-            # currently, and is not stable enough to activate.
-            # RUN_ANALYZER: gcc
-          - name: Linux (clang 19 + asan + llvm-cov)
-            os: ubuntu-24.04
-            CC: clang-19
-            CXX: clang++-19
-            ERROR_ON_WARNINGS: 1
-            RUN_ANALYZER: asan,llvm-cov
-          - name: Linux Arm64 (clang 19 + asan + llvm-cov)
+          - name: Linux Arm64 (GCC 14.2.0 + tsan)
             os: ubuntu-24.04-arm
-            CC: clang-19
-            CXX: clang++-19
+            CC: gcc-14
+            CXX: g++-14
+            RUN_ANALYZER: tsan
+          - name: Linux (GCC 14.2.0 + tsan)
+            os: ubuntu-24.04
+            CC: gcc-14
+            CXX: g++-14
+            RUN_ANALYZER: tsan
+          - name: Linux (clang 11)
+            os: ubuntu-22.04
+            CC: clang-11
+            CXX: clang++-11
+          - name: Linux (clang 20 + asan + llvm-cov)
+            os: ubuntu-24.04
+            CC: clang-20
+            CXX: clang++-20
             ERROR_ON_WARNINGS: 1
             RUN_ANALYZER: asan,llvm-cov
-          - name: Linux (clang 19 + kcov)
+          - name: Linux Arm64 (clang 20 + asan + llvm-cov)
+            os: ubuntu-24.04-arm
+            CC: clang-20
+            CXX: clang++-20
+            ERROR_ON_WARNINGS: 1
+            RUN_ANALYZER: asan,llvm-cov
+          - name: Linux (clang 20 + tsan)
             os: ubuntu-24.04
-            CC: clang-19
-            CXX: clang++-19
+            CC: clang-20
+            CXX: clang++-20
+            ERROR_ON_WARNINGS: 1
+            RUN_ANALYZER: tsan
+          - name: Linux Arm64 (clang 20 + tsan)
+            os: ubuntu-24.04-arm
+            CC: clang-20
+            CXX: clang++-20
+            ERROR_ON_WARNINGS: 1
+            RUN_ANALYZER: tsan
+          - name: Linux (clang 20 + kcov)
+            os: ubuntu-24.04
+            CC: clang-20
+            CXX: clang++-20
             ERROR_ON_WARNINGS: 1
             RUN_ANALYZER: kcov
           - name: Linux (GCC 13.3.0 + code-checker + valgrind)
+            CC: gcc-13
+            CXX: g++-13
             os: ubuntu-24.04
             RUN_ANALYZER: code-checker,valgrind
           - name: Linux (GCC + musl + libunwind)
             os: ubuntu-latest
-            container: ghcr.io/getsentry/sentry-native-alpine:3.21
-            CMAKE_DEFINES: -DSENTRY_LIBUNWIND_SHARED=OFF
+            container: ghcr.io/getsentry/sentry-native-alpine:3.23
             CC: gcc
             CXX: g++
             SYSTEM_PYTHON: 1
+            CMAKE_DEFINES: -DSENTRY_LIBUNWIND_SYSTEM=ON
           - name: Linux (clang + musl + libunwind)
             os: ubuntu-latest
-            container: ghcr.io/getsentry/sentry-native-alpine:3.21
-            CMAKE_DEFINES: -DSENTRY_LIBUNWIND_SHARED=OFF
+            container: ghcr.io/getsentry/sentry-native-alpine:3.23
             CC: clang
             CXX: clang++
             SYSTEM_PYTHON: 1
+            CMAKE_DEFINES: -DSENTRY_LIBUNWIND_SYSTEM=ON
           - name: macOS 14 (xcode llvm)
             os: macos-14
             ERROR_ON_WARNINGS: 1
             SYSTEM_VERSION_COMPAT: 0
-          - name: macOS 13 (xcode llvm)
-            os: macos-13
+          - name: macOS 26 (xcode llvm)
+            os: macos-26
             ERROR_ON_WARNINGS: 1
             SYSTEM_VERSION_COMPAT: 0
           - name: macOS 14 (xcode llvm + universal)
@@ -120,31 +174,52 @@ jobs:
             ERROR_ON_WARNINGS: 1
             SYSTEM_VERSION_COMPAT: 0
             RUN_ANALYZER: asan,llvm-cov
+          - name: macOS 26 (arm64e + PAC test)
+            os: macos-26
+            ERROR_ON_WARNINGS: 1
+            SYSTEM_VERSION_COMPAT: 0
+            CMAKE_DEFINES: -DCMAKE_OSX_ARCHITECTURES=arm64e
           - name: Windows (old VS, 32-bit)
             os: windows-2022
             TEST_X86: 1
           - name: Windows (latest)
             os: windows-latest
-          - name: Windows ClangCL (latest)
+          - name: Windows arm64
+            os: windows-11-arm
+          - name: Windows (latest, UTF-8 paths)
             os: windows-latest
+            UTF8_TEST_CWD: 1
+          - name: Windows (latest, ninja + sccache)
+            os: windows-latest
+            USE_SCCACHE: 1
+          - name: Windows ClangCL (2022)
+            os: windows-2022
             VS_GENERATOR_TOOLSET: ClangCL
           - name: LLVM-Mingw
             os: windows-latest
             TEST_MINGW: 1
             MINGW_PKG_PREFIX: x86_64-w64-mingw32
-            MINGW_ASM_MASM_COMPILER: llvm-ml;-m64
-          # The Android emulator is currently only available on macos, see:
-          # https://docs.microsoft.com/en-us/azure/devops/pipelines/ecosystems/android?view=azure-devops#test-on-the-android-emulator
-          # TODO: switch to reactivecircus/android-emulator-runner, concurrently running emulators continuously fail now.
-          # - name: Android (API 31, NDK 23)
-          #   os: macos-15-large
-          #   ANDROID_API: 31
-          #   ANDROID_NDK: 23.2.8568313
-          #   ANDROID_ARCH: x86_64
-          - name: Android (API 35, NDK 27)
+            MINGW_ASM_MASM_COMPILER: llvm-ml
+            MINGW_ASM_MASM_FLAGS: -m64
+          - name: Android (API 21, NDK 23)
+            os: ubuntu-latest
+            ANDROID_API: 21
+            ANDROID_NDK: 23.2.8568313
+            ANDROID_ARCH: x86_64
+          - name: Android (API 26, NDK 27)
+            os: ubuntu-latest
+            ANDROID_API: 26
+            ANDROID_NDK: 27.3.13750724
+            ANDROID_ARCH: x86_64
+          - name: Android (API 31, NDK 27)
+            os: ubuntu-latest
+            ANDROID_API: 31
+            ANDROID_NDK: 27.3.13750724
+            ANDROID_ARCH: x86_64
+          - name: Android (API 35, NDK 29)
             os: macos-15-large
             ANDROID_API: 35
-            ANDROID_NDK: 27.2.12479018
+            ANDROID_NDK: 29.0.14206865
             ANDROID_ARCH: x86_64
 
     name: ${{ matrix.name }}
@@ -152,8 +227,14 @@ jobs:
     container: ${{ matrix.container }}
 
     env:
+      CC: ${{ matrix.CC }}
+      CXX: ${{ matrix.CXX }}
       TEST_X86: ${{ matrix.TEST_X86 }}
       TEST_MINGW: ${{ matrix.TEST_MINGW }}
+      TEST_ARM32: ${{ matrix.TEST_ARM32 }}
+      TEST_QEMU: ${{ matrix.TEST_QEMU }}
+      USE_SCCACHE: ${{ matrix.USE_SCCACHE }}
+      SCCACHE_GHA_ENABLED: ${{ matrix.USE_SCCACHE && 'true' || '' }}
       ERROR_ON_WARNINGS: ${{ matrix.ERROR_ON_WARNINGS }}
       RUN_ANALYZER: ${{ matrix.RUN_ANALYZER }}
       ANDROID_API: ${{ matrix.ANDROID_API }}
@@ -163,55 +244,102 @@ jobs:
       SYSTEM_VERSION_COMPAT: ${{ matrix.SYSTEM_VERSION_COMPAT }}
       VS_GENERATOR_TOOLSET: ${{ matrix.VS_GENERATOR_TOOLSET }}
       SYSTEM_PYTHON: ${{ matrix.SYSTEM_PYTHON }}
+      UTF8_TEST_CWD: ${{ matrix.UTF8_TEST_CWD }}
+      SENTRY_TEST_OOM_LIMIT: "4095" # ~4GB, to speed up OOM tests
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: recursive
-      - uses: actions/setup-python@v5
+
+      - name: Debug runner architecture
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          echo "Runner arch: $(uname -m)"
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
-          python-version: ${{ !env['SYSTEM_PYTHON'] && '3.11' || '' }}
+          python-version: ${{ !env['SYSTEM_PYTHON'] && '3.12' || '' }}
           cache: "pip"
 
+      - name: Check Linux CC/CXX
+        if: ${{ runner.os == 'Linux' && !env['ANDROID_API'] &&!matrix.container }}
+        run: |
+          [ -n "$CC" ] && [ -n "$CXX" ] || { echo "Ubuntu runner configurations require toolchain selection via CC and CXX" >&2; exit 1; }
+
       - name: Installing Linux Dependencies
-        if: ${{ runner.os == 'Linux' && matrix.os != 'ubuntu-22.04' && !env['TEST_X86'] && !matrix.container }}
+        if: ${{ runner.os == 'Linux' && !env['TEST_X86'] && !env['TEST_ARM32'] && !env['ANDROID_API'] && !matrix.container }}
         run: |
           sudo apt update
-          sudo apt install cmake clang-19 llvm g++-12 valgrind zlib1g-dev libcurl4-openssl-dev
+          # Install common dependencies
+          sudo apt install cmake llvm valgrind zlib1g-dev libcurl4-openssl-dev
+          # For GCC, install both gcc-X and g++-X. For Clang, only install clang-X (includes C++ compiler)
+          if [[ "$CC" == gcc-* ]]; then
+            sudo apt install "${CC}" "${CXX}"
+          elif [[ "$CC" == clang-* ]]; then
+            sudo apt install "${CC}"
+          else
+            echo "Unknown CC: $CC" >&2
+            exit 1
+          fi
+
+      - name: Installing kcov dependencies
+        if: ${{ contains(env['RUN_ANALYZER'], 'kcov') }}
+        run: |
           # Install kcov from source
-          sudo apt-get install binutils-dev libssl-dev libelf-dev libstdc++-12-dev libdw-dev libiberty-dev
+          sudo apt-get install binutils-dev libssl-dev libelf-dev libstdc++-14-dev libdw-dev libiberty-dev
           git clone https://github.com/SimonKagstrom/kcov.git
           cd kcov
-          git checkout v43 # pin to a version without the current coveralls git integration
+          # pin to a known good version with the coveralls git integration, performance bottlenecks,
+          # and signal exit code handling fixed
+          git checkout f65e1145b7f1c42872f37d03edcc29264fccf26a
           mkdir build
           cd build
           cmake ..
           make
           sudo make install
 
-      - name: Installing Linux GCC 9.4.0 Dependencies
-        if: ${{ runner.os == 'Linux' && matrix.os == 'ubuntu-22.04' && !env['TEST_X86'] && !matrix.container }}
-        run: |
-          sudo apt update
-          sudo apt install cmake llvm kcov g++ valgrind zlib1g-dev libcurl4-openssl-dev
-
       - name: Installing Linux 32-bit Dependencies
-        if: ${{ runner.os == 'Linux' && env['TEST_X86'] && !matrix.container }}
+        if: ${{ runner.os == 'Linux' && env['TEST_X86'] && !env['ANDROID_API'] &&!matrix.container }}
         run: |
           sudo dpkg --add-architecture i386
           sudo apt update
-          sudo apt install cmake gcc-9-multilib g++-9-multilib zlib1g-dev:i386 libssl-dev:i386 libcurl4-openssl-dev:i386
+          sudo apt install cmake "${CC}-multilib" "${CXX}-multilib" zlib1g-dev:i386 libssl-dev:i386 libcurl4-openssl-dev:i386 liblzma-dev:i386
+
+      - name: Installing Linux arm32 Dependencies
+        if: ${{ runner.os == 'Linux' && env['TEST_ARM32'] && !matrix.container }}
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt update
+          sudo apt install -y \
+            cmake \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            zlib1g-dev:armhf \
+            libssl-dev:armhf \
+            libcurl4-openssl-dev:armhf \
+            liblzma-dev:armhf \
+            libstdc++6:armhf
+
+      - name: Installing qemu-user
+        if: ${{ runner.os == 'Linux' && env['TEST_QEMU'] && !matrix.container }}
+        run: |
+          sudo apt update
+          sudo apt install -y qemu-user-static binfmt-support
 
       - name: Installing Alpine Linux Dependencies
         if: ${{ contains(matrix.container, 'alpine') }}
         run: |
           apk update
-          apk add curl-dev libunwind-dev libunwind-static xz-dev
-
-        # https://github.com/actions/runner-images/issues/9491
-      - name: Decrease vm.mmap_rnd_bit to prevent ASLR ASAN issues
-        if: ${{ runner.os == 'Linux' && contains(env['RUN_ANALYZER'], 'asan') }}
-        run: sudo sysctl vm.mmap_rnd_bits=28
+          apk add curl-dev libunwind-dev xz-dev
+      # install manually until available by default (also for future .NET updates)
+      - name: Install .NET 10 SDK for ARM64 runners
+        if: ${{ runner.os == 'Linux' && runner.arch == 'ARM64' && !matrix.container }}
+        run: |
+          wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+          chmod +x dotnet-install.sh
+          ./dotnet-install.sh --channel 10.0 --install-dir $HOME/.dotnet
+          echo "$HOME/.dotnet" >> $GITHUB_PATH
+          echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
 
       - name: Installing CodeChecker
         if: ${{ contains(env['RUN_ANALYZER'], 'code-checker') }}
@@ -225,12 +353,40 @@ jobs:
         if: ${{ runner.os == 'macOS' && matrix.os == 'macos-15-large' && matrix.RUN_ANALYZER == 'asan,llvm-cov' }}
         run: echo $(brew --prefix llvm@18)/bin >> $GITHUB_PATH
 
+      - name: Set macOS SDKROOT
+        if: ${{ runner.os == 'macOS' }}
+        run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+
+      - name: Remove Strawberry Perl from PATH
+        if: ${{ runner.os == 'Windows' }}
+        shell: powershell
+        run: |
+          $strawberryBins = @(
+            'C:\Strawberry\c\bin',
+            'C:\Strawberry\perl\site\bin',
+            'C:\Strawberry\perl\bin'
+          )
+
+          $cleanedPaths   = $env:Path -split ';' | Where-Object { $_ -and ($strawberryBins -notcontains $_) }
+          $newPath = ($cleanedPaths -join ';')
+
+          "PATH=$newPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Set up MSVC environment for Ninja
+        if: ${{ runner.os == 'Windows' && env['USE_SCCACHE'] }}
+        shell: cmd
+        run: |
+          for /f "tokens=*" %%i in ('"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath') do set "VS_PATH=%%i"
+          call "%VS_PATH%\VC\Auxiliary\Build\vcvarsall.bat" x64
+          set >> %GITHUB_ENV%
+
       - name: Installing LLVM-MINGW Dependencies
         if: ${{ runner.os == 'Windows' && env['TEST_MINGW'] }}
         shell: powershell
         env:
           MINGW_PKG_PREFIX: ${{ matrix.MINGW_PKG_PREFIX }}
           MINGW_ASM_MASM_COMPILER: ${{ matrix.MINGW_ASM_MASM_COMPILER }}
+          MINGW_ASM_MASM_FLAGS: ${{ matrix.MINGW_ASM_MASM_FLAGS }}
         run: . "scripts\install-llvm-mingw.ps1"
 
       - name: Set up zlib for Windows
@@ -238,23 +394,37 @@ jobs:
         shell: powershell
         run: . "scripts\install-zlib.ps1"
 
+      - name: Setup sccache
+        if: ${{ env['USE_SCCACHE'] }}
+        uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+
       - name: Setup Java Version
         if: ${{ env['ANDROID_API'] }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5
         with:
           distribution: "temurin"
           java-version: "17"
 
       - name: Setup Gradle
         if: ${{ env['ANDROID_API'] }}
-        uses: gradle/actions/setup-gradle@579fbbe7221704325eb4c4d4bf20c2b0859fba76 # pin@v3
-        with:
-          gradle-home-cache-cleanup: true
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # pin@v6.2.0
 
-      - name: Starting Android Simulator
+      - name: Setup .NET for Android
         if: ${{ env['ANDROID_API'] }}
-        run: bash scripts/start-android.sh
-        timeout-minutes: 20
+        uses: actions/setup-dotnet@9a946fdbd5fb07b82b2f5a4466058b876ab72bb2 # v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install .NET Android workload
+        if: ${{ env['ANDROID_API'] }}
+        run: dotnet workload restore tests/fixtures/dotnet_signal/test_dotnet.csproj
+
+      - name: Enable KVM group perms
+        if: ${{ runner.os == 'Linux' && env['ANDROID_API'] }}
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Add sentry.native.test hostname
         if: ${{ runner.os == 'Windows' }}
@@ -277,12 +447,27 @@ jobs:
           cat /etc/hosts
         shell: bash
 
+      - name: Test (Android)
+        if: ${{ env['ANDROID_API'] }}
+        uses: reactivecircus/android-emulator-runner@e89f39f1abbbd05b1113a29cf4db69e7540cae5a # v2.37.0
+        with:
+          api-level: ${{ env.ANDROID_API }}
+          ndk: ${{ env.ANDROID_NDK }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: google_apis
+          emulator-boot-timeout: 1200
+          script: |
+            # Sync emulator clock with host to avoid timestamp assertion failures
+            adb shell cmd alarm set-time $(date +%s000) || adb shell su root date $(date -u +%m%d%H%M%Y.%S)
+            pip install --upgrade --requirement tests/requirements.txt
+            pytest --capture=no --verbose tests
+            (cd ndk && ./gradlew :sentry-native-ndk:connectedDebugAndroidTest --stacktrace)
+
       - name: Test
+        if: ${{ !env['ANDROID_API'] }}
         shell: bash
         run: |
           pip install --upgrade --requirement tests/requirements.txt
-          [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
-          [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
           pytest --capture=no --verbose tests
 
       - name: Check NDK
@@ -292,7 +477,7 @@ jobs:
 
       - name: "Upload to codecov.io"
         if: ${{ contains(env['RUN_ANALYZER'], 'cov') }}
-        uses: codecov/codecov-action@ad3126e916f78f00edff4ed0317cf185271ccc2d # pin@v5.4.2
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # pin@v7.0.0
         with:
           directory: coverage
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -307,20 +492,18 @@ jobs:
     # run on master or the release branch
     if: ${{ needs.test.result == 'success' && github.event_name == 'push' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: recursive
 
       - name: Setup Java Version
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5
         with:
           distribution: "temurin"
           java-version: "17"
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@579fbbe7221704325eb4c4d4bf20c2b0859fba76 # pin@v3
-        with:
-          gradle-home-cache-cleanup: true
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # pin@v6.2.0
 
       - name: Create source archive
         run: |
@@ -332,10 +515,11 @@ jobs:
         run: ./gradlew clean distZip
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ github.sha }}
           if-no-files-found: error
           path: |
-            ndk/lib/build/distributions/*.zip
             sentry-native.zip
+            ndk/lib/build/distributions/*.zip
+            ndk/lib/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib/*

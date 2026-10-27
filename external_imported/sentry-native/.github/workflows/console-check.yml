@@ -1,0 +1,97 @@
+# Triggers build-compatibility checks in console repos (PlayStation, Xbox, Switch)
+# whenever a PR is updated, unit tests on master pushes, or full tests on
+# release branches.
+#
+# This workflow does NOT wait for results. Each console repo posts a commit
+# status back to this repo's SHA when it finishes (success/failure).
+# Those show up as (non-required) checks on the PR.
+
+name: Console Compatibility
+
+on:
+  pull_request:
+    paths-ignore:
+      - "*.md"
+  push:
+    branches:
+      - master
+      - "release/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trigger-console-builds:
+    if: github.actor != 'dependabot[bot]' && (github.event.pull_request.head.repo.fork == false || github.event_name == 'push') # secrets unavailable for fork/dependabot PRs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repo: getsentry/sentry-playstation
+            context: console/playstation
+          - repo: getsentry/sentry-xbox
+            context: console/xbox
+          - repo: getsentry/sentry-switch
+            context: console/switch
+    steps:
+      - name: Get auth token
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.CONSOLE_CI_APP_ID }}
+          private-key: ${{ secrets.CONSOLE_CI_PRIVATE_KEY }}
+          owner: getsentry
+          repositories: sentry-native,sentry-playstation,sentry-xbox,sentry-switch
+
+      # Immediately show "pending" checks on the PR.
+      - name: Set pending status
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          REPOSITORY: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CONTEXT: ${{ matrix.context }}
+        run: |
+          gh api repos/"$REPOSITORY"/statuses/"$SHA" \
+            -f state=pending \
+            -f context="$CONTEXT" \
+            -f description="Waiting for build to start..."
+
+      - name: Determine mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" && "$REF" == refs/heads/release/* ]]; then
+            echo "mode=FULL_TEST" >> "$GITHUB_OUTPUT"
+          elif [[ "$EVENT_NAME" == "push" && "$REF" == "refs/heads/master" ]]; then
+            echo "mode=UNIT_TEST" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=BUILD_ONLY" >> "$GITHUB_OUTPUT"
+          fi
+
+      # gh workflow run sends a workflow_dispatch event to the console repo.
+      # native-compat-check.yml must exist on the default branch (main) of
+      # the console repo for this to work.
+      - name: Trigger console build
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          MATRIX_REPO: ${{ matrix.repo }}
+          NATIVE_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          CALLBACK_REPO: ${{ github.repository }}
+          CALLBACK_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CALLBACK_CONTEXT: ${{ matrix.context }}
+          MODE: ${{ steps.mode.outputs.mode }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.ref_name }}
+        run: |
+          gh workflow run native-compat-check.yml \
+            --repo "$MATRIX_REPO" \
+            --ref main \
+            -f native_ref="$NATIVE_REF" \
+            -f callback_repo="$CALLBACK_REPO" \
+            -f callback_sha="$CALLBACK_SHA" \
+            -f callback_context="$CALLBACK_CONTEXT" \
+            -f mode="$MODE" \
+            -f pr_number="$PR_NUMBER"

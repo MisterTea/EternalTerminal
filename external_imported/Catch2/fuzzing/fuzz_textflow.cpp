@@ -13,6 +13,7 @@
 
 #include <string>
 #include <string_view>
+#include <cstdint>
 
 
 template<class Callback>

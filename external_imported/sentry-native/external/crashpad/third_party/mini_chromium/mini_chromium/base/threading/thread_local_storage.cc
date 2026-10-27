@@ -160,10 +160,8 @@ void OnThreadExitInternal(void* value) {
       // the whole vector again.  This is a pthread standard.
       need_to_scan_destructors = true;
     }
-    if (--remaining_attempts <= 0) {
-      NOTREACHED_IN_MIGRATION();  // Destructors might not have been called.
-      break;
-    }
+    // Destructors might not have been called.
+    CHECK_GT(--remaining_attempts, 0);
   }
 
   // Remove our stack allocated vector.

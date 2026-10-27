@@ -33,8 +33,12 @@ load_library(LPCWSTR name)
 {
     HMODULE library = LoadLibraryW(name);
     if (!library) {
-        SENTRY_WARNF(
-            "`LoadLibraryW(%S)` failed with code `%d`", name, GetLastError());
+        char *name_str = sentry__string_from_wstr(name);
+        if (name_str) {
+            SENTRY_WARNF("`LoadLibraryW(%s)` failed with code `%d`", name_str,
+                GetLastError());
+        }
+        sentry_free(name_str);
     }
     return library;
 }
@@ -110,10 +114,6 @@ save_bitmap(HBITMAP bitmap, const wchar_t *path)
 static void
 calculate_region(DWORD pid, HRGN region)
 {
-#ifdef SENTRY_PLATFORM_XBOX_SCARLETT
-    (DWORD) pid;
-    (HRGN) region;
-#else
     HMODULE dwmapi = load_library(L"dwmapi.dll");
     if (!dwmapi) {
         return;
@@ -145,18 +145,15 @@ calculate_region(DWORD pid, HRGN region)
         }
         hwnd = GetWindow(hwnd, GW_HWNDPREV);
     }
-#endif // SENTRY_PLATFORM_XBOX_SCARLETT
 }
 
 bool
-sentry__screenshot_capture(const sentry_path_t *path)
+sentry__screenshot_capture(const sentry_path_t *path, uint32_t pid)
 {
-#ifdef SENTRY_PLATFORM_XBOX_SCARLETT
-    (sentry_path_t *)path;
-    return false;
-#else
+    // Use provided PID, or current process if 0
+    DWORD target_pid = pid ? pid : GetCurrentProcessId();
     HRGN region = CreateRectRgn(0, 0, 0, 0);
-    calculate_region(GetCurrentProcessId(), region);
+    calculate_region(target_pid, region);
 
     RECT box;
     GetRgnBox(region, &box);
@@ -176,12 +173,11 @@ sentry__screenshot_capture(const sentry_path_t *path)
     SelectClipRgn(hdc, region);
     BitBlt(hdc, 0, 0, width, height, src, box.left, box.top, SRCCOPY);
 
-    bool rv = save_bitmap(bitmap, path->path);
+    bool rv = save_bitmap(bitmap, path->path_w);
     if (!rv) {
-        SENTRY_WARNF(
-            "Failed to save screenshot: \"%" SENTRY_PATH_PRI "\"", path->path);
+        SENTRY_WARNF("Failed to save screenshot: \"%s\"", path->path);
     } else {
-        SENTRY_DEBUGF("Saved screenshot: \"%" SENTRY_PATH_PRI "\"", path->path);
+        SENTRY_DEBUGF("Saved screenshot: \"%s\"", path->path);
     }
 
     DeleteObject(bitmap);
@@ -189,5 +185,4 @@ sentry__screenshot_capture(const sentry_path_t *path)
     ReleaseDC(NULL, src);
     DeleteObject(region);
     return rv;
-#endif // SENTRY_PLATFORM_XBOX_SCARLETT
 }

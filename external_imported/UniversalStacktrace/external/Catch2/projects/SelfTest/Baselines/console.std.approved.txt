@@ -164,6 +164,54 @@ with expansion:
   0 == 1
 
 -------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails -
+Template_Foo_2<float, 6>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  6 < 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails -
+Template_Foo_2<int, 2>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  2 < 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails - std::array
+<float, 6>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  6 < 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails - std::array
+<int, 2>
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Template_Fixture_2<TestType>{}.m_a.size() < 2 )
+with expansion:
+  2 < 2
+
+-------------------------------------------------------------------------------
 A TEMPLATE_TEST_CASE_METHOD based test run that fails - double
 -------------------------------------------------------------------------------
 Class.tests.cpp:<line number>
@@ -195,6 +243,39 @@ Class.tests.cpp:<line number>: FAILED:
   REQUIRE( Template_Fixture<TestType>::m_a == 2 )
 with expansion:
   1 == 2
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 1
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Nttp_Fixture<V>::value == 0 )
+with expansion:
+  1 == 0
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 3
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Nttp_Fixture<V>::value == 0 )
+with expansion:
+  3 == 0
+
+-------------------------------------------------------------------------------
+A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 6
+-------------------------------------------------------------------------------
+Class.tests.cpp:<line number>
+...............................................................................
+
+Class.tests.cpp:<line number>: FAILED:
+  REQUIRE( Nttp_Fixture<V>::value == 0 )
+with expansion:
+  6 == 0
 
 -------------------------------------------------------------------------------
 A TEST_CASE_METHOD based test run that fails
@@ -439,12 +520,12 @@ Matchers.tests.cpp:<line number>
 ...............................................................................
 
 Matchers.tests.cpp:<line number>: FAILED:
-  CHECK_THROWS_MATCHES( throws(3), SpecialException, ExceptionMatcher{1} )
+  CHECK_THROWS_MATCHES( throwsSpecialException(3), SpecialException, ExceptionMatcher{1} )
 with expansion:
   SpecialException::what special exception has value of 1
 
 Matchers.tests.cpp:<line number>: FAILED:
-  REQUIRE_THROWS_MATCHES( throws(4), SpecialException, ExceptionMatcher{1} )
+  REQUIRE_THROWS_MATCHES( throwsSpecialException(4), SpecialException, ExceptionMatcher{1} )
 with expansion:
   SpecialException::what special exception has value of 1
 
@@ -612,6 +693,46 @@ Matchers.tests.cpp:<line number>: FAILED:
   CHECK_THAT( testStringForMatching(), !Contains("substring") )
 with expansion:
   "this string contains 'abc' as a substring" not contains: "substring"
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  A
+  1
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  A
+  2
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  B
+  1
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
+
+-------------------------------------------------------------------------------
+Mayfail test case with nested sections
+  B
+  2
+-------------------------------------------------------------------------------
+Condition.tests.cpp:<line number>
+...............................................................................
+
+Condition.tests.cpp:<line number>: FAILED:
 
 -------------------------------------------------------------------------------
 Mismatching exception messages failing the test
@@ -1299,6 +1420,6 @@ due to unexpected exception with message:
   Why would you throw a std::string?
 
 ===============================================================================
-test cases:  267 |  200 passed |  63 failed |  4 failed as expected
-assertions: 1453 | 1308 passed | 124 failed | 21 failed as expected
+test cases:  323 |  248 passed |  70 failed |  5 failed as expected
+assertions: 1764 | 1608 passed | 131 failed | 25 failed as expected
 

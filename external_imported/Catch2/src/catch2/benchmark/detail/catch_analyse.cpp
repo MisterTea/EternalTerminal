@@ -36,11 +36,11 @@ namespace Catch {
                         samples.data(), samples.data() + samples.size() );
 
                     auto wrap_estimate = [](Estimate<double> e) {
-                        return Estimate<FDuration> {
-                            FDuration(e.point),
-                                FDuration(e.lower_bound),
-                                FDuration(e.upper_bound),
-                                e.confidence_interval,
+                        return Estimate<FDuration>{
+                            FDuration( e.point ),
+                            FDuration( e.lower_bound ),
+                            FDuration( e.upper_bound ),
+                            e.confidence_interval,
                         };
                     };
                     std::vector<FDuration> samples2;

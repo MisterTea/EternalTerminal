@@ -15,7 +15,7 @@ if (mini_chromium_is_mac) {
     # The minimum runtime macOS version that built products are expected to run
     # on. If empty, the toolchain will choose its own default, typically the
     # older of the SDK version and the build host’s OS version.
-    mac_deployment_target = "10.9"
+    mac_deployment_target = "12.0"
   }
 } else if (mini_chromium_is_ios) {
   import("../ios/ios_sdk.gni")
@@ -44,6 +44,9 @@ if (mini_chromium_is_mac) {
     # win_sdk\bin\SetEnv.cmd inside this path will be used to configure the
     # Windows toolchain.
     win_toolchain_path = "<autodetect>"
+
+    # Path to the Clang toolchain.
+    clang_path = "//third_party/windows/clang/" + host_os + "-amd64"
   }
 }
 
@@ -108,19 +111,24 @@ config("release") {
     }
   } else if (mini_chromium_is_win) {
     cflags = [
-      "/GL",  # LTCG.
       "/O2",
       "/Ob2",  # Both explicit and auto inlining.
       "/Oy-",  # Disable omitting frame pointers, must be after /O2.
       "/Zc:inline",  # Remove unreferenced COMDAT (faster links).
-      "/d2Zi+",  # Improve debugging of optimized code.
     ]
     ldflags = [
       "/OPT:ICF",
       "/OPT:REF",
-      "/LTCG",
     ]
-    arflags = [ "/LTCG" ]
+    arflags = []
+    if (!mini_chromium_is_clang) {
+      cflags += [
+        "/GL",  # LTCG.
+        "/d2Zi+",  # Improve debugging of optimized code.
+      ]
+      ldflags += [ "/LTCG" ]
+      arflags += [ "/LTCG" ]
+    }
   }
 }
 
@@ -132,17 +140,8 @@ config("default") {
   if (mini_chromium_is_posix || mini_chromium_is_fuchsia) {
     cflags = [
       "-Wall",
-      "-Wendif-labels",
       "-Werror",
       "-Wextra",
-      "-Wextra-semi",
-      "-Wheader-hygiene",
-      "-Wnewline-eof",
-      "-Wno-missing-field-initializers",
-      "-Wno-unused-parameter",
-      "-Wsign-compare",
-      "-Wstring-conversion",
-      "-Wvla",
       "-fno-exceptions",
       "-fno-rtti",
       "-fno-strict-aliasing",  # See https://crbug.com/32204
@@ -225,11 +224,20 @@ config("default") {
 
   if (mini_chromium_is_ios) {
     if (ios_deployment_target != "") {
-      if (target_environment == "simulator") {
-        common_flags +=
-            [ "-mios-simulator-version-min=" + ios_deployment_target ]
-      } else if (target_environment == "device") {
-        common_flags += [ "-mios-version-min=" + ios_deployment_target ]
+      if (target_platform == "iphoneos") {
+        if (target_environment == "simulator") {
+          common_flags +=
+          [ "-mios-simulator-version-min=" + ios_deployment_target ]
+        } else if (target_environment == "device") {
+          common_flags += [ "-mios-version-min=" + ios_deployment_target ]
+        }
+      } else if (target_platform == "tvos") {
+        if (target_environment == "simulator") {
+          common_flags +=
+          [ "-mtvos-simulator-version-min=" + ios_deployment_target ]
+        } else if (target_environment == "device") {
+          common_flags += [ "-mtvos-version-min=" + ios_deployment_target ]
+        }
       }
     }
   }
@@ -247,18 +255,33 @@ config("default") {
       "/WX",
       "/Zi",
       "/bigobj",  # Support larger number of sections in obj file.
-      "/wd4100",  # Unreferenced formal parameter.
-      "/wd4127",  # Conditional expression is constant.
-      "/wd4324",  # Structure was padded due to alignment specifier.
-      "/wd4351",  # New behavior: elements of array will be default initialized.
-      "/wd4577",  # 'noexcept' used with no exception handling mode specified.
       "/wd4996",  # 'X' was declared deprecated.
     ]
 
-    cflags_cc = [
-      "/std:c++20",
-      "/Zc:__cplusplus",
-    ]
+    cflags_cc = [ "/std:c++20" ]
+
+    if (mini_chromium_is_clang) {
+      if (current_cpu == "x86") {
+        cflags += [ "--target=i386-pc-windows" ]
+      } else if (current_cpu == "x64") {
+        cflags += [ "--target=x86_64-pc-windows" ]
+      } else if (current_cpu == "arm64") {
+        cflags += [ "--target=aarch64-pc-windows" ]
+      } else {
+        assert(false, "Unsupported architecture")
+      }
+    } else {
+      cflags += [
+        "/wd4100",  # Unreferenced formal parameter.
+        "/wd4127",  # Conditional expression is constant.
+        "/wd4324",  # Structure was padded due to alignment specifier.
+        "/wd4351",  # elements of array will be default initialized.
+        "/wd4577",  # 'noexcept' used with no exception handling mode specified.
+      ]
+
+      # This is the default in clang, no need to pass it there.
+      cflags_cc += [ "/Zc:__cplusplus" ]
+    }
 
     ldflags += [ "/DEBUG" ]
 
@@ -325,6 +348,34 @@ config("default") {
       "-lfdio",
       "-lzircon",
     ]
+  }
+
+  if (mini_chromium_is_posix || mini_chromium_is_fuchsia ||
+      mini_chromium_is_clang) {
+    cflags += [
+      "-Wendif-labels",
+      "-Wextra-semi",
+      "-Wheader-hygiene",
+      "-Wnewline-eof",
+      "-Wno-missing-field-initializers",
+      "-Wno-unused-parameter",
+      "-Wsign-compare",
+      "-Wstring-conversion",
+      "-Wvla",
+    ]
+
+    if (mini_chromium_is_win) {
+      # TODO: These should be cleaned up and enabled.
+      cflags += [
+        "-Wno-cast-function-type-mismatch",  # Currently 22 instances.
+        "-Wno-format",  # Currently 3 instances.
+        "-Wno-microsoft-cast",  # Currently 2 instances.
+        "-Wno-missing-field-initializers",  # Currently 24 instances.
+        "-Wno-sign-compare",  # Currently 6 instances.
+        "-Wno-unused-const-variable",  # Currently 1 instance.
+        "-Wno-unused-function",  # Currently 1 instance.
+      ]
+    }
   }
 
   if ((mini_chromium_is_posix && !mini_chromium_is_mac &&
@@ -634,10 +685,17 @@ if (mini_chromium_is_win) {
     toolchain("msvc_toolchain_$target_name") {
       # @rsp files are not used for simplicity, and because mini_chromium and
       # Crashpad shouldn't require them in any configurations.
-      cc = "cl.exe"
-      cxx = "cl.exe"
-      ar = "lib.exe"
-      ld = "link.exe"
+      if (mini_chromium_is_clang) {
+        cc = rebase_path(clang_path, root_build_dir) + "/bin/clang-cl.exe"
+        cxx = rebase_path(clang_path, root_build_dir) + "/bin/clang-cl.exe"
+        ar = rebase_path(clang_path, root_build_dir) + "/bin/lld-link.exe /lib"
+        ld = rebase_path(clang_path, root_build_dir) + "/bin/lld-link.exe"
+      } else {
+        cc = "cl.exe"
+        cxx = "cl.exe"
+        ar = "lib.exe"
+        ld = "link.exe"
+      }
       lib_switch = ""
       lib_dir_switch = "/LIBPATH:"
       env = invoker.environment_file
@@ -717,17 +775,43 @@ if (mini_chromium_is_win) {
       }
 
       tool("asm") {
-        if (invoker.current_cpu == "arm64") {
-          ml = "armasm64.exe"
-          command = "$python_path $helper_path asm-wrapper $env $ml {{include_dirs}} {{asmflags}} -o {{output}} {{source}}"
-        } else {
-          if (invoker.current_cpu == "x86") {
-            ml = "ml.exe"
+        is_msvc_assembler = true
+
+        if (mini_chromium_is_clang) {
+          if (invoker.current_cpu == "arm64") {
+            ml = "$cc --target=aarch64-pc-windows -o{{output}} /showIncludes"
+            is_msvc_assembler = false
+            depsformat = "msvc"
           } else {
-            ml = "ml64.exe"
+            ml = rebase_path(clang_path, root_build_dir) + "/bin/llvm-ml.exe"
+            if (invoker.current_cpu == "x64") {
+              ml += " -m64"
+            } else {
+              ml += " -m32"
+            }
           }
-          command = "$python_path $helper_path asm-wrapper $env $ml {{defines}} {{include_dirs}} {{asmflags}} /c /Fo{{output}} {{source}}"
+        } else {
+          if (invoker.current_cpu == "arm64") {
+            ml = "armasm64.exe"
+          } else if (invoker.current_cpu == "x64") {
+            ml = "ml64.exe"
+          } else {
+            ml = "ml.exe"
+          }
         }
+
+        if (is_msvc_assembler) {
+          ml += " /nologo /Fo{{output}}"
+
+          if (invoker.current_cpu == "arm64") {
+            command = "\"$python_path\" $helper_path asm-wrapper $env $ml {{include_dirs}} {{asmflags}} {{source}}"
+          } else {
+            command = "\"$python_path\" $helper_path asm-wrapper $env $ml {{defines}} {{include_dirs}} {{asmflags}} /c {{source}}"
+          }
+        } else {
+          command = "ninja -t msvc -e $env -- $ml {{defines}} {{include_dirs}} {{asmflags}} {{source}}"
+        }
+
         description = "ASM {{output}}"
         outputs =
             [ "{{source_out_dir}}/{{label_name}}.{{source_name_part}}.obj" ]

@@ -6,7 +6,7 @@
 	url = https://github.com/getsentry/breakpad.git
 [submodule "external/third_party/lss"]
 	path = external/third_party/lss
-	url = https://chromium.googlesource.com/linux-syscall-support
+	url = https://github.com/getsentry/chromium-linux-syscall-support
 [submodule "external/crashpad"]
 	path = external/crashpad
 	url = https://github.com/getsentry/crashpad.git

@@ -12,7 +12,78 @@
 
 #ifdef SENTRY_PLATFORM_WINDOWS
 
-#    if !defined(SENTRY_PLATFORM_XBOX_SCARLETT)
+#    include <signal.h>
+#    include <string.h>
+
+static sentry__win32_abort_handler_t g_sigabrt_handler = NULL;
+static void (*g_previous_sigabrt_handler)(int) = NULL;
+static bool g_sigabrt_installed = false;
+
+static void
+handle_sigabrt(int signum)
+{
+    (void)signum;
+
+    // Capture the current CPU context
+    CONTEXT context;
+    RtlCaptureContext(&context);
+
+    // Create a synthetic exception record for abort
+    EXCEPTION_RECORD record;
+    memset(&record, 0, sizeof(record));
+    record.ExceptionCode = STATUS_FATAL_APP_EXIT;
+    record.ExceptionFlags = EXCEPTION_NONCONTINUABLE;
+#    if defined(_M_AMD64)
+    record.ExceptionAddress = (PVOID)context.Rip;
+#    elif defined(_M_IX86)
+    record.ExceptionAddress = (PVOID)context.Eip;
+#    elif defined(_M_ARM64)
+    record.ExceptionAddress = (PVOID)context.Pc;
+#    endif
+
+    EXCEPTION_POINTERS exception_pointers;
+    exception_pointers.ContextRecord = &context;
+    exception_pointers.ExceptionRecord = &record;
+
+    if (g_sigabrt_handler) {
+        g_sigabrt_handler(&exception_pointers);
+    }
+
+    // If we get here, call the previous handler or terminate
+    if (g_previous_sigabrt_handler && g_previous_sigabrt_handler != SIG_DFL
+        && g_previous_sigabrt_handler != SIG_IGN) {
+        g_previous_sigabrt_handler(signum);
+    }
+
+    // Terminate the process - abort() must not return
+    TerminateProcess(GetCurrentProcess(), 3);
+}
+
+void
+sentry__win32_install_sigabrt_handler(sentry__win32_abort_handler_t handler)
+{
+    g_sigabrt_handler = handler;
+    if (!g_sigabrt_installed) {
+        g_previous_sigabrt_handler = signal(SIGABRT, handle_sigabrt);
+        g_sigabrt_installed = true;
+    }
+}
+
+void
+sentry__win32_restore_sigabrt_handler(void)
+{
+    if (g_sigabrt_installed) {
+        // Restore previous SIGABRT handler (unconditionally, since SIG_DFL is
+        // typically NULL on MSVC and a conditional check would skip
+        // restoration)
+        signal(SIGABRT, g_previous_sigabrt_handler);
+        g_sigabrt_installed = false;
+    }
+    g_previous_sigabrt_handler = NULL;
+    g_sigabrt_handler = NULL;
+}
+
+#    if !defined(SENTRY_PLATFORM_XBOX)
 #        include <stdlib.h>
 #        include <windows.h>
 #        define CURRENT_VERSION                                                \
@@ -107,7 +178,7 @@ sentry__get_windows_version(windows_version_t *win_ver)
     return 1;
 }
 
-#    endif // !defined(SENTRY_PLATFORM_XBOX_SCARLETT)
+#    endif // !defined(SENTRY_PLATFORM_XBOX)
 
 sentry_value_t
 sentry__get_os_context(void)
@@ -117,7 +188,7 @@ sentry__get_os_context(void)
         return os;
     }
 
-#    if defined(SENTRY_PLATFORM_XBOX_SCARLETT)
+#    if defined(SENTRY_PLATFORM_XBOX)
 #        pragma warning(push)
 #        pragma warning(disable : 4996)
     sentry_value_set_by_key(os, "name", sentry_value_new_string("Xbox"));
@@ -167,7 +238,7 @@ sentry__get_os_context(void)
 
     sentry_value_decref(os);
     return sentry_value_new_null();
-#    endif // defined(SENTRY_PLATFORM_XBOX_SCARLETT)
+#    endif // defined(SENTRY_PLATFORM_XBOX)
 }
 
 #    ifndef SENTRY_UNITTEST
@@ -263,6 +334,30 @@ sentry_set_thread_stack_guarantee(uint32_t stack_guarantee_in_bytes)
     return 1;
 }
 
+// Resolves the handler stack size (in KiB) from the `SENTRY_HANDLER_STACK_SIZE`
+// environment variable, falling back to the compile-time default. This is
+// called from `DllMain` via `sentry__set_default_thread_stack_guarantee`, so
+// it must avoid CRT (`getenv`, `strtod`, ...) and only use kernel32 exports.
+static size_t
+sentry__handler_stack_size_kib(void)
+{
+    char buf[12];
+    DWORD n = GetEnvironmentVariableA(
+        "SENTRY_HANDLER_STACK_SIZE", buf, sizeof(buf));
+    if (n == 0 || n >= sizeof(buf)) {
+        return SENTRY_HANDLER_STACK_SIZE;
+    }
+    size_t val = 0;
+    for (DWORD i = 0; i < n; i++) {
+        if (buf[i] < '0' || buf[i] > '9') {
+            return SENTRY_HANDLER_STACK_SIZE;
+        }
+        val = val * 10 + (size_t)(buf[i] - '0');
+    }
+    return (val > 0 && val <= 0xFFFFFFFFu / 1024) ? val
+                                                  : SENTRY_HANDLER_STACK_SIZE;
+}
+
 void
 sentry__set_default_thread_stack_guarantee(void)
 {
@@ -270,8 +365,9 @@ sentry__set_default_thread_stack_guarantee(void)
         return;
     }
 
+    const size_t stack_size_kib = sentry__handler_stack_size_kib();
     const unsigned long expected_stack_guarantee
-        = SENTRY_HANDLER_STACK_SIZE * 1024;
+        = (unsigned long)stack_size_kib * 1024;
     DWORD thread_id = GetThreadId(GetCurrentThread());
     ULONG_PTR high = 0;
     ULONG_PTR low = 0;
@@ -284,8 +380,7 @@ sentry__set_default_thread_stack_guarantee(void)
         SENTRY_WARNF(
             "Cannot set handler stack guarantee of %zuKiB for thread %lu "
             "(stack reserve: %zuKiB, expected factor: %zux, actual: %.2fx)",
-            (size_t)SENTRY_HANDLER_STACK_SIZE, thread_id,
-            thread_stack_reserve / 1024,
+            stack_size_kib, thread_id, thread_stack_reserve / 1024,
             (size_t)SENTRY_THREAD_STACK_GUARANTEE_FACTOR,
             expected_stack_reserve / (double)expected_stack_guarantee);
         return;
@@ -304,7 +399,7 @@ sentry__set_default_thread_stack_guarantee(void)
 #    endif
 }
 
-#    if defined(SENTRY_BUILD_SHARED) && !defined(SENTRY_PLATFORM_XBOX_SCARLETT)
+#    if defined(SENTRY_BUILD_SHARED) && !defined(SENTRY_PLATFORM_XBOX)
 
 BOOL APIENTRY
 DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
@@ -328,7 +423,7 @@ DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 }
 
 #    endif // defined(SENTRY_BUILD_SHARED) &&
-           // !defined(SENTRY_PLATFORM_XBOX_SCARLETT)
+           // !defined(SENTRY_PLATFORM_XBOX)
 
 void
 sentry__get_system_time(LPFILETIME filetime)

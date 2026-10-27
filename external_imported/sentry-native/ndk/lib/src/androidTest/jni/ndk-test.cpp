@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <sentry.h>
+#include <stdint.h>
 
 #define TAG "ndk-test"
 
@@ -14,6 +15,15 @@ JNIEXPORT void JNICALL Java_io_sentry_ndk_NdkTestHelper_message(JNIEnv *env, jcl
             /* message */ "It works!"
     );
     sentry_capture_event(event);
+}
+
+JNIEXPORT jlong JNICALL
+Java_io_sentry_ndk_NdkTestHelper_sentryGetModulesListAddress(
+        JNIEnv *env, jclass cls) {
+    (void)env;
+    (void)cls;
+    return static_cast<jlong>(
+            reinterpret_cast<uintptr_t>(&sentry_get_modules_list));
 }
 
 JNIEXPORT void JNICALL Java_io_sentry_ndk_NdkTestHelper_transaction(JNIEnv *env, jclass cls) {

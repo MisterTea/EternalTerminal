@@ -70,11 +70,6 @@ CF_CAST_DECL(CGColor);
 CF_CAST_DECL(CTFont);
 CF_CAST_DECL(CTRun);
 
-#if !BUILDFLAG(IS_IOS)
-CF_CAST_DECL(SecACL);
-CF_CAST_DECL(SecTrustedApplication);
-#endif
-
 #undef CF_CAST_DECL
 
 #if defined(__OBJC__)

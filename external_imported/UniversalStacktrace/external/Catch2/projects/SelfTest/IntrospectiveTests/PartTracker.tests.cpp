@@ -189,3 +189,65 @@ TEST_CASE( "#1394 nested", "[.][approvals][tracker]" ) {
         REQUIRE(1 == 0);
     }
 }
+
+// Selecting a "not last" section inside a test case via -c "section" would
+// previously only run the first subsection, instead of running all of them.
+// This allows us to check that `"#1670 regression check" -c A` leads to
+// 2 successful assertions.
+TEST_CASE("#1670 regression check", "[.approvals][tracker]") {
+    SECTION("A") {
+        SECTION("1") SUCCEED();
+        SECTION("2") SUCCEED();
+    }
+    SECTION("B") {
+        SECTION("1") SUCCEED();
+        SECTION("2") SUCCEED();
+    }
+}
+
+// #1938 required a rework on how generator tracking works, so that `GENERATE`
+// supports being sandwiched between two `SECTION`s. The following tests check
+// various other scenarios through checking output in approval tests.
+TEST_CASE("#1938 - GENERATE after a section", "[.][regression][generators]") {
+    SECTION("A") {
+        SUCCEED("A");
+    }
+    auto m = GENERATE(1, 2, 3);
+    SECTION("B") {
+        REQUIRE(m);
+    }
+}
+
+TEST_CASE("#1938 - flat generate", "[.][regression][generators]") {
+    auto m = GENERATE(1, 2, 3);
+    REQUIRE(m);
+}
+
+TEST_CASE("#1938 - nested generate", "[.][regression][generators]") {
+    auto m = GENERATE(1, 2, 3);
+    auto n = GENERATE(1, 2, 3);
+    REQUIRE(m);
+    REQUIRE(n);
+}
+
+TEST_CASE("#1938 - mixed sections and generates", "[.][regression][generators]") {
+    auto i = GENERATE(1, 2);
+    SECTION("A") {
+        SUCCEED("A");
+    }
+    auto j = GENERATE(3, 4);
+    SECTION("B") {
+        SUCCEED("B");
+    }
+    auto k = GENERATE(5, 6);
+    CAPTURE(i, j, k);
+    SUCCEED();
+}
+
+TEST_CASE("#1938 - Section followed by flat generate", "[.][regression][generators]") {
+    SECTION("A") {
+        REQUIRE(1);
+    }
+    auto m = GENERATE(2, 3);
+    REQUIRE(m);
+}

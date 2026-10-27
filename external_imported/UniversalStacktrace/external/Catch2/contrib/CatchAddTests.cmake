@@ -6,13 +6,20 @@ set(suffix "${TEST_SUFFIX}")
 set(spec ${TEST_SPEC})
 set(extra_args ${TEST_EXTRA_ARGS})
 set(properties ${TEST_PROPERTIES})
+set(reporter ${TEST_REPORTER})
+set(output_dir ${TEST_OUTPUT_DIR})
+set(output_prefix ${TEST_OUTPUT_PREFIX})
+set(output_suffix ${TEST_OUTPUT_SUFFIX})
 set(script)
 set(suite)
 set(tests)
 
 function(add_command NAME)
   set(_args "")
-  foreach(_arg ${ARGN})
+  # use ARGV* instead of ARGN, because ARGN splits arrays into multiple arguments
+  math(EXPR _last_arg ${ARGC}-1)
+  foreach(_n RANGE 1 ${_last_arg})
+    set(_arg "${ARGV${_n}}")
     if(_arg MATCHES "[^-./:a-zA-Z0-9_]")
       set(_args "${_args} [==[${_arg}]==]") # form a bracket_argument
     else()
@@ -22,39 +29,6 @@ function(add_command NAME)
   set(script "${script}${NAME}(${_args})\n" PARENT_SCOPE)
 endfunction()
 
-macro(_add_catch_test_labels LINE)
-  # convert to list of tags
-  string(REPLACE "][" "]\\;[" tags ${line})
-
-  add_command(
-    set_tests_properties "${prefix}${test}${suffix}"
-      PROPERTIES
-        LABELS "${tags}"
-  )
-endmacro()
-
-macro(_add_catch_test LINE)
-  set(test ${line})
-  # use escape commas to handle properly test cases with commans inside the name
-  string(REPLACE "," "\\," test_name ${test})
-  # ...and add to script
-  add_command(
-    add_test "${prefix}${test}${suffix}"
-      ${TEST_EXECUTOR}
-       "${TEST_EXECUTABLE}"
-       "${test_name}"
-       ${extra_args}
-     )
-
-  add_command(
-    set_tests_properties "${prefix}${test}${suffix}"
-      PROPERTIES
-        WORKING_DIRECTORY "${TEST_WORKING_DIR}"
-        ${properties}
-  )
-  list(APPEND tests "${prefix}${test}${suffix}")
-endmacro()
-
 # Run test executable to get list of available tests
 if(NOT EXISTS "${TEST_EXECUTABLE}")
   message(FATAL_ERROR
@@ -62,9 +36,10 @@ if(NOT EXISTS "${TEST_EXECUTABLE}")
   )
 endif()
 execute_process(
-  COMMAND ${TEST_EXECUTOR} "${TEST_EXECUTABLE}" ${spec} --list-tests
+  COMMAND ${TEST_EXECUTOR} "${TEST_EXECUTABLE}" ${spec} --list-test-names-only
   OUTPUT_VARIABLE output
   RESULT_VARIABLE result
+  WORKING_DIRECTORY "${TEST_WORKING_DIR}"
 )
 # Catch --list-test-names-only reports the number of tests, so 0 is... surprising
 if(${result} EQUAL 0)
@@ -80,22 +55,76 @@ elseif(${result} LESS 0)
 endif()
 
 string(REPLACE "\n" ";" output "${output}")
-set(test)
-set(tags_regex "(\\[([^\\[]*)\\])+$")
+
+# Run test executable to get list of available reporters
+execute_process(
+  COMMAND ${TEST_EXECUTOR} "${TEST_EXECUTABLE}" ${spec} --list-reporters
+  OUTPUT_VARIABLE reporters_output
+  RESULT_VARIABLE reporters_result
+  WORKING_DIRECTORY "${TEST_WORKING_DIR}"
+)
+if(${reporters_result} EQUAL 0)
+  message(WARNING
+    "Test executable '${TEST_EXECUTABLE}' contains no reporters!\n"
+  )
+elseif(${reporters_result} LESS 0)
+  message(FATAL_ERROR
+    "Error running test executable '${TEST_EXECUTABLE}':\n"
+    "  Result: ${reporters_result}\n"
+    "  Output: ${reporters_output}\n"
+  )
+endif()
+string(FIND "${reporters_output}" "${reporter}" reporter_is_valid)
+if(reporter AND ${reporter_is_valid} EQUAL -1)
+  message(FATAL_ERROR
+    "\"${reporter}\" is not a valid reporter!\n"
+  )
+endif()
+
+# Prepare reporter
+if(reporter)
+  set(reporter_arg "--reporter ${reporter}")
+endif()
+
+# Prepare output dir
+if(output_dir AND NOT IS_ABSOLUTE ${output_dir})
+  set(output_dir "${TEST_WORKING_DIR}/${output_dir}")
+  if(NOT EXISTS ${output_dir})
+    file(MAKE_DIRECTORY ${output_dir})
+  endif()
+endif()
 
 # Parse output
 foreach(line ${output})
-  # lines without leading whitespaces are catch output not tests
-  if(${line} MATCHES "^[ \t]+")
-    # strip leading spaces and tabs
-    string(REGEX REPLACE "^[ \t]+" "" line ${line})
-
-    if(${line} MATCHES "${tags_regex}")
-      _add_catch_test_labels(${line})
-    else()
-      _add_catch_test(${line})
-    endif()
+  set(test ${line})
+  # Escape characters in test case names that would be parsed by Catch2
+  set(test_name ${test})
+  foreach(char , [ ])
+    string(REPLACE ${char} "\\${char}" test_name ${test_name})
+  endforeach(char)
+  # ...add output dir
+  if(output_dir)
+    string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_name_clean ${test_name})
+    set(output_dir_arg "--out ${output_dir}/${output_prefix}${test_name_clean}${output_suffix}")
   endif()
+  
+  # ...and add to script
+  add_command(add_test
+    "${prefix}${test}${suffix}"
+    ${TEST_EXECUTOR}
+    "${TEST_EXECUTABLE}"
+    "${test_name}"
+    ${extra_args}
+    "${reporter_arg}"
+    "${output_dir_arg}"
+  )
+  add_command(set_tests_properties
+    "${prefix}${test}${suffix}"
+    PROPERTIES
+    WORKING_DIRECTORY "${TEST_WORKING_DIR}"
+    ${properties}
+  )
+  list(APPEND tests "${prefix}${test}${suffix}")
 endforeach()
 
 # Create a list of all discovered tests, which users may use to e.g. set

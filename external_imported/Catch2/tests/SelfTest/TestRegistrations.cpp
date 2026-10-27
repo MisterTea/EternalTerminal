@@ -54,6 +54,7 @@ public:
     ValidatingTestListener(Catch::IConfig const* config) :
         EventListenerBase(config) {
         m_preferences.shouldReportAllAssertions = true;
+        m_preferences.shouldReportAllAssertionStarts = true;
     }
 
     void testRunStarting( Catch::TestRunInfo const& ) override {

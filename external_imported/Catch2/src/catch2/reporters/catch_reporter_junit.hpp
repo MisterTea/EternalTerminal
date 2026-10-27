@@ -41,7 +41,7 @@ namespace Catch {
                            bool testOkToFail );
 
         void writeAssertions(SectionNode const& sectionNode);
-        void writeAssertion(AssertionStats const& stats);
+        bool writeAssertion(AssertionStats const& stats);
 
         XmlWriter xml;
         Timer suiteTimer;

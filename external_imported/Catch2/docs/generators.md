@@ -1,6 +1,12 @@
 <a id="top"></a>
 # Data Generators
 
+**Contents**<br>
+[Combining `GENERATE` and `SECTION`.](#combining-generate-and-section)<br>
+[Provided generators](#provided-generators)<br>
+[Generator interface](#generator-interface)<br>
+[Other usage examples](#other-usage-examples)<br>
+
 > Introduced in Catch2 2.6.0.
 
 Data generators (also known as _data driven/parametrized test cases_)
@@ -21,7 +27,10 @@ The "Generators" `TEST_CASE` will be entered 3 times, and the value of
 `i` will be 1, 3, and 5 in turn. `GENERATE`s can also be used multiple
 times at the same scope, in which case the result will be a cartesian
 product of all elements in the generators. This means that in the snippet
-below, the test case will be run 6 (2\*3) times.
+below, the test case will be run 6 (2\*3) times. The `GENERATE` macro
+is defined in the `catch_generators.hpp` header, so compiling
+the code examples below also requires
+`#include <catch2/generators/catch_generators.hpp>`.
 
 ```cpp
 TEST_CASE("Generators") {
@@ -103,7 +112,7 @@ a test case,
 * 2 fundamental generators
   * `SingleValueGenerator<T>` -- contains only single element
   * `FixedValuesGenerator<T>` -- contains multiple elements
-* 5 generic generators that modify other generators
+* 6 generic generators that modify other generators (defined in `catch2/generators/catch_generators_adapters.hpp`)
   * `FilterGenerator<T, Predicate>` -- filters out elements from a generator
   for which the predicate returns "false"
   * `TakeGenerator<T>` -- takes first `n` elements from a generator
@@ -111,15 +120,19 @@ a test case,
   * `MapGenerator<T, U, Func>` -- returns the result of applying `Func`
   on elements from a different generator
   * `ChunkGenerator<T>` -- returns chunks (inside `std::vector`) of n elements from a generator
-* 4 specific purpose generators
+  * `ConcatGenerator<T>` -- returns elements from multiple generators as if they were one
+* 2 random generators (defined in `catch2/generators/catch_generators_random.hpp`)
   * `RandomIntegerGenerator<Integral>` -- generates random Integrals from range
   * `RandomFloatGenerator<Float>` -- generates random Floats from range
+* 2 range generators (defined in `catch2/generators/catch_generators_range.hpp`)
   * `RangeGenerator<T>(first, last)` -- generates all values inside a `[first, last)` arithmetic range
   * `IteratorGenerator<T>` -- copies and returns values from an iterator range
 
 > `ChunkGenerator<T>`, `RandomIntegerGenerator<Integral>`, `RandomFloatGenerator<Float>` and `RangeGenerator<T>` were introduced in Catch2 2.7.0.
 
 > `IteratorGenerator<T>` was introduced in Catch2 2.10.0.
+
+> `ConcatGenerator<T>` was introduced in Catch2 3.13.0
 
 The generators also have associated helper functions that infer their
 type, making their usage much nicer. These are
@@ -138,12 +151,15 @@ type, making their usage much nicer. These are
 * `range(Arithmetic start, Arithmetic end, Arithmetic step)` for `RangeGenerator<Arithmetic>` with a custom step size
 * `from_range(InputIterator from, InputIterator to)` for `IteratorGenerator<T>`
 * `from_range(Container const&)` for `IteratorGenerator<T>`
+* `cat(GeneratorWrapper<T>&&...)` for `ConcatGenerator<T>`
 
 > `chunk()`, `random()` and both `range()` functions were introduced in Catch2 2.7.0.
 
 > `from_range` has been introduced in Catch2 2.10.0
 
 > `range()` for floating point numbers has been introduced in Catch2 2.11.0
+
+> `cat` has been introduced in Catch2 3.13.0
 
 And can be used as shown in the example below to create a generator
 that returns 100 odd random number:
@@ -216,8 +232,8 @@ For floating point generators, the situation is much more complex.
 Generally Catch2 only promises reproducibility (or even just correctness!)
 on platforms that obey the IEEE-754 standard. Furthermore, reproducibility
 only applies between binaries that perform floating point math in the
-same way, e.g. if you compile a binary targetting the x87 FPU and another
-one targetting SSE2 for floating point math, their results will vary.
+same way, e.g. if you compile a binary targeting the x87 FPU and another
+one targeting SSE2 for floating point math, their results will vary.
 Similarly, binaries compiled with compiler flags that relax the IEEE-754
 adherence, e.g. `-ffast-math`, might provide different results than those
 compiled for strict IEEE-754 adherence.
@@ -248,8 +264,33 @@ struct IGenerator : GeneratorUntypedBase {
     // Returns user-friendly string showing the current generator element
     // Does not have to be overridden, IGenerator provides default implementation
     virtual std::string stringifyImpl() const;
+
+    /**
+     * Customization point for `skipToNthElement`
+     *
+     * Does not have to be overridden, there is a default implementation.
+     * Can be overridden for better performance.
+     *
+     * If there are not enough elements, shall throw an error.
+     *
+     * Going backwards is not supported.
+     */
+    virtual void skipToNthElementImpl( std::size_t n );
+
+    /**
+     * Returns true if calls to `next` will eventually return false
+     *
+     * Note that for backwards compatibility this is currently defaulted
+     * to return `true`, but in the future all generators will have to
+     * provide their own implementation.
+     */
+    virtual bool isFinite() const = 0;
 };
 ```
+
+> `skipToNthElementImpl` was added in Catch2 3.13.0
+
+> `isFinite` was added in Catch2 3.13.0
 
 However, to be able to use your custom generator inside `GENERATE`, it
 will need to be wrapped inside a `GeneratorWrapper<T>`.
@@ -271,8 +312,34 @@ There are two ways to handle this, depending on whether you want this
 to be an error or not.
 
  * If empty generator **is** an error, throw an exception in constructor.
- * If empty generator **is not** an error, use the [`SKIP`](skipping-passing-failing.md#skipping-test-cases-at-runtime) in constructor.
+ * If empty generator **is not** an error, use the [`SKIP` macro](skipping-passing-failing.md#skipping-test-cases-at-runtime) in constructor.
 
+
+## Other usage examples
+
+### Adding a reproducer to random tests
+
+If you use generators to generate random inputs for testing, you might
+want to combine them with specific inputs, e.g. reproducers for previously
+found issues.
+
+Because `GENERATE` accepts multiple values/generators, the basic case is simple:
+```cpp
+const int input = GENERATE(1, 2, take(10, random(10, 10'000'000)));
+```
+This will set `input` first to "1", then to "2", and then to 10 random
+integers.
+
+But if you process the random inputs further (e.g. via `map`), you can't
+rely on `GENERATE`'s support for multiple generators. In that case, you
+have to use the `cat` generator combinator.
+```cpp
+const auto input = GENERATE(
+    map( foo,
+         cat( value( 4 ), take( 10, random( 10, 10'000'000 ) ) ) ) );
+```
+This will set `input` first to `foo(4)`, before transforming the 10 random
+integers through `foo`.
 
 
 ---

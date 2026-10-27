@@ -13,14 +13,23 @@ project(
     'b_lto=true',
     'warning_level=3'
   ],
-  meson_version: '>=0.62.0'
+  meson_version: '>=0.63.0'
 )
+
+cxx = meson.get_compiler('cpp')
+
+if cxx.sizeof('void *') != 8
+  if host_machine.system() == 'windows'
+    error('unsupported architecture: cpp-httplib doesn\'t support 32-bit Windows. Please use a 64-bit compiler.')
+  else
+    warning('cpp-httplib doesn\'t support 32-bit platforms. Please use a 64-bit compiler.')
+  endif
+endif
 
 # Check just in case downstream decides to edit the source
 # and add a project version
 version = meson.project_version()
 if version == 'undefined'
-  cxx = meson.get_compiler('cpp')
   version = cxx.get_define('CPPHTTPLIB_VERSION',
     prefix: '#include <httplib.h>',
     include_directories: include_directories('.')).strip('"')
@@ -30,28 +39,48 @@ endif
 deps = [dependency('threads')]
 args = []
 
-openssl_dep = dependency('openssl', version: '>=3.0.0', required: get_option('cpp-httplib_openssl'))
-if openssl_dep.found()
-  deps += openssl_dep
-  args += '-DCPPHTTPLIB_OPENSSL_SUPPORT'
-  if host_machine.system() == 'darwin'
-    macosx_keychain_dep = dependency('appleframeworks', modules: ['CoreFoundation', 'Security'], required: get_option('cpp-httplib_macosx_keychain'))
-    if macosx_keychain_dep.found()
+if get_option('tls').allowed()
+  tls_found = false
+  if get_option('tls_backend') == 'openssl'
+    openssl_dep = dependency('openssl', version: '>=3.0.0', required: get_option('tls'))
+    if openssl_dep.found()
+      deps += openssl_dep
+      args += '-DCPPHTTPLIB_OPENSSL_SUPPORT'
+      tls_found = true
+    endif
+  else
+    mbedtls_dep = dependency('mbedtls', required: get_option('tls'))
+    mbedtlsx509_dep = dependency('mbedx509', required: get_option('tls'))
+    mbedtlscrypto_dep = dependency('mbedcrypto', required: get_option('tls'))
+    if mbedtls_dep.found() and mbedtlsx509_dep.found() and mbedtlscrypto_dep.found()
+      deps += mbedtls_dep
+      deps += mbedtlsx509_dep
+      deps += mbedtlscrypto_dep
+      args += '-DCPPHTTPLIB_MBEDTLS_SUPPORT'
+      tls_found = true
+    endif
+  endif
+
+  if tls_found and host_machine.system() == 'darwin'
+    disable_macosx_certs = get_option('disable_macosx_automatic_root_certificates')
+    if disable_macosx_certs
+        args += '-DCPPHTTPLIB_DISABLE_MACOSX_AUTOMATIC_ROOT_CERTIFICATES'
+    else
+        macosx_keychain_dep = dependency('appleframeworks', modules: ['CFNetwork', 'CoreFoundation', 'Security'], required: true)
         deps += macosx_keychain_dep
-        args += '-DCPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN'
-    endif  
+    endif
   endif
 endif
 
-zlib_dep = dependency('zlib', required: get_option('cpp-httplib_zlib'))
+zlib_dep = dependency('zlib', required: get_option('zlib'))
 if zlib_dep.found()
   deps += zlib_dep
   args += '-DCPPHTTPLIB_ZLIB_SUPPORT'
 endif
 
-brotli_deps = [dependency('libbrotlicommon', required: get_option('cpp-httplib_brotli'))]
-brotli_deps += dependency('libbrotlidec',    required: get_option('cpp-httplib_brotli'))
-brotli_deps += dependency('libbrotlienc',    required: get_option('cpp-httplib_brotli'))
+brotli_deps = [dependency('libbrotlicommon', required: get_option('brotli'))]
+brotli_deps += dependency('libbrotlidec',    required: get_option('brotli'))
+brotli_deps += dependency('libbrotlienc',    required: get_option('brotli'))
 
 brotli_found_all = true
 foreach brotli_dep : brotli_deps
@@ -65,9 +94,35 @@ if brotli_found_all
   args += '-DCPPHTTPLIB_BROTLI_SUPPORT'
 endif
 
+zstd_dep = dependency('libzstd', required: get_option('zstd'))
+if zstd_dep.found()
+  deps += zstd_dep
+  args += '-DCPPHTTPLIB_ZSTD_SUPPORT'
+endif
+
+async_ns_opt = get_option('non_blocking_getaddrinfo')
+
+if host_machine.system() == 'windows'
+  async_ns_dep = cxx.find_library('ws2_32', required: async_ns_opt)
+elif host_machine.system() == 'darwin'
+  async_ns_dep = dependency('appleframeworks', modules: ['CFNetwork', 'CoreFoundation'], required: async_ns_opt)
+else
+  has_gai_a = cxx.has_function('getaddrinfo_a', args: '-D_GNU_SOURCE')
+  if has_gai_a
+    async_ns_dep = declare_dependency()
+  else
+    async_ns_dep = cxx.find_library('anl', required: async_ns_opt)
+  endif
+endif
+
+if async_ns_dep.found()
+  deps += async_ns_dep
+  args += '-DCPPHTTPLIB_USE_NON_BLOCKING_GETADDRINFO'
+endif
+
 cpp_httplib_dep = dependency('', required: false)
 
-if get_option('cpp-httplib_compile')
+if get_option('compile')
   python3 = find_program('python3')
 
   httplib_ch = custom_target(
@@ -111,6 +166,6 @@ endif
 
 meson.override_dependency('cpp-httplib', cpp_httplib_dep)
 
-if get_option('cpp-httplib_test')
+if get_option('test')
   subdir('test')
 endif

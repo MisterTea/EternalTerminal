@@ -10,18 +10,49 @@ public final class SentryNdk {
 
   private SentryNdk() {}
 
-  private static native void initSentryNative(@NotNull final NdkOptions options);
+  private static native void preloadSentryNative();
+
+  /**
+   * Initializes sentry-native and returns 0 on success, non-zero on failure.
+   *
+   * @return -1 if an JNI or options configuration issue occurred, 1 if sentry native itself failed
+   *     to initialize
+   */
+  private static native int initSentryNative(@NotNull final NdkOptions options);
 
   private static native void shutdown();
+
+  /**
+   * Preloads sentry-native into the process signal chain before full initialization.
+   *
+   * <p>Intended for downstream SDK/runtime integrations on Android. This does not initialize
+   * sentry-native, configure a database path, or start the inproc handler thread; it only
+   * establishes signal-handler ordering ahead of the managed runtime.
+   *
+   * <p>This is intended to be used by downstream integrations that gate the preload flow to
+   * supported runtimes and then call {@link #init(NdkOptions)} with the normal DEFAULT handler
+   * strategy.
+   */
+  public static void preload() {
+    loadNativeLibraries();
+    preloadSentryNative();
+  }
 
   /**
    * Init the NDK integration
    *
    * @param options the SentryAndroidOptions
+   * @throws IllegalStateException if sentry-native couldn't be initialized
    */
   public static void init(@NotNull final NdkOptions options) {
     loadNativeLibraries();
-    initSentryNative(options);
+    final int returnCode = initSentryNative(options);
+    if (returnCode > 0) {
+      throw new IllegalStateException(
+          "A sentry-native internal init error occurred, please check the logs for more details.");
+    } else if (returnCode < 0) {
+      throw new IllegalStateException("A sentry-native setup failure occurred");
+    }
   }
 
   /** Closes the NDK integration */

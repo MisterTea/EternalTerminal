@@ -4,7 +4,7 @@
 **Contents**<br>
 [Non-Templated test fixtures](#non-templated-test-fixtures)<br>
 [Templated test fixtures](#templated-test-fixtures)<br>
-[Signature-based parameterised test fixtures](#signature-based-parametrised-test-fixtures)<br>
+[Signature-based parameterised test fixtures](#signature-based-parameterised-test-fixtures)<br>
 [Template fixtures with types specified in template type lists](#template-fixtures-with-types-specified-in-template-type-lists)<br>
 
 ## Non-Templated test fixtures
@@ -130,7 +130,7 @@ TEST_CASE_PERSISTENT_FIXTURE( MyFixture, "Tests with MyFixture" ) {
 }
 ```
 
-This example demonstates two possible use-cases of this fixture type:
+This example demonstrates two possible use-cases of this fixture type:
 1. Improve test run times by reducing the amount of expensive and 
 redundant setup and tear-down required.
 2. Reusing results from the previous partial run, in the current

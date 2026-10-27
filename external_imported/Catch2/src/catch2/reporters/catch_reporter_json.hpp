@@ -39,7 +39,6 @@ namespace Catch {
         void sectionStarting( SectionInfo const& sectionInfo ) override;
         void sectionEnded( SectionStats const& sectionStats ) override;
 
-        void assertionStarting( AssertionInfo const& assertionInfo ) override;
         void assertionEnded( AssertionStats const& assertionStats ) override;
 
         //void testRunEndedCumulative() override;

@@ -1,7 +1,9 @@
 // 301-Gen-MapTypeConversion.cpp
 // Shows how to use map to modify generator's return type.
 
-// TODO
+// Specifically we wrap a std::string returning generator with a generator
+// that converts the strings using stoi, so the returned type is actually
+// an int.
 
 #include <catch2/catch.hpp>
 
@@ -22,14 +24,16 @@ public:
         }
     }
 
-    std::string const& get() const override {
-        return m_line;
-    }
+    std::string const& get() const override;
     
     bool next() override {
         return !!std::getline(m_stream, m_line);
     }
 };
+
+std::string const& LineGenerator::get() const {
+    return m_line;
+}
 
 // This helper function provides a nicer UX when instantiating the generator
 // Notice that it returns an instance of GeneratorWrapper<std::string>, which

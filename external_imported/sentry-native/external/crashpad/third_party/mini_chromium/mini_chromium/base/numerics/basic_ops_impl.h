@@ -10,7 +10,7 @@
 #include <cstring>
 #include <type_traits>
 
-namespace base::numerics::internal {
+namespace base::internal {
 
 #if defined(__GNUC__) || defined(__clang__)
 inline constexpr bool cxx17_is_constant_evaluated() noexcept {
@@ -152,6 +152,6 @@ inline constexpr std::array<uint8_t, sizeof(T)> ToLittleEndian(T val) {
   return bytes;
 }
 
-}  // namespace base::numerics::internal
+}  // namespace base::internal
 
 #endif  //  MINI_CHROMIUM_BASE_NUMERICS_BASIC_OPS_IMPL_H_

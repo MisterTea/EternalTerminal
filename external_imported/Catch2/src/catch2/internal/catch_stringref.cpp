@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <ostream>
 #include <cstring>
-#include <cstdint>
 
 namespace Catch {
     StringRef::StringRef( char const* rawChars ) noexcept

@@ -1,3 +1,4 @@
+#include "sentry_elf.h"
 #include "sentry_path.h"
 #include "sentry_testsupport.h"
 
@@ -8,8 +9,9 @@
 SENTRY_TEST(module_finder)
 {
 #if defined(SENTRY_PLATFORM_NX)
-    return SKIP_TEST();
+    SKIP_TEST();
 #endif
+
     // make sure that we are able to do multiple cleanup cycles
     sentry_value_decref(sentry_get_modules_list());
     sentry_clear_modulecache();
@@ -120,6 +122,43 @@ SENTRY_TEST(procmaps_parser)
 
     read = sentry__procmaps_parse_module_line(lines, &mod);
     TEST_CHECK(!read);
+#endif
+}
+
+SENTRY_TEST(elf_find_note)
+{
+#if !defined(SENTRY_PLATFORM_LINUX) && !defined(SENTRY_PLATFORM_ANDROID)
+    SKIP_TEST();
+#else
+    uint8_t note4[] = {
+        0x05, 0x00, 0x00, 0x00, // n_namesz
+        0x04, 0x00, 0x00, 0x00, // n_descsz
+        0x34, 0x12, 0x00, 0x00, // n_type
+        'T', 'E', 'S', 'T', '!', 0xaa, 0xbb, 0xcc, // 4-byte padding
+        0xca, 0xfe, 0xba, 0xbe, // descriptor
+    };
+    uint8_t note8[] = {
+        0x05, 0x00, 0x00, 0x00, // n_namesz
+        0x04, 0x00, 0x00, 0x00, // n_descsz
+        0x34, 0x12, 0x00, 0x00, // n_type
+        'T', 'E', 'S', 'T', '!', 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+        0x11, // 8-byte padding
+        0xde, 0xad, 0xbe, 0xef, // descriptor
+    };
+    size_t desc_size = 0;
+    const uint8_t *desc = sentry__elf_find_note(
+        note4, sizeof(note4), 4, 0x1234, "TEST!", 5, &desc_size);
+
+    TEST_CHECK(desc == note4 + 20);
+    TEST_CHECK(desc_size == 4);
+    TEST_CHECK(memcmp(desc, "\xca\xfe\xba\xbe", desc_size) == 0);
+
+    desc = sentry__elf_find_note(
+        note8, sizeof(note8), 8, 0x1234, "TEST!", 5, &desc_size);
+
+    TEST_CHECK(desc == note8 + 24);
+    TEST_CHECK(desc_size == 4);
+    TEST_CHECK(memcmp(desc, "\xde\xad\xbe\xef", desc_size) == 0);
 #endif
 }
 

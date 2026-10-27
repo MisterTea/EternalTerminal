@@ -25,6 +25,9 @@ namespace Catch {
     // Returns double formatted as %.3f (format expected on output)
     std::string getFormattedDuration( double duration );
 
+    //! Should the reporter show
+    bool shouldShowDuration( IConfig const& config, double duration );
+
     std::string serializeFilters( std::vector<std::string> const& container );
 
     template<typename DerivedT>
@@ -50,6 +53,8 @@ namespace Catch {
         ~StreamingReporterBase() override = default;
 
         void noMatchingTestCases(std::string const&) override {}
+
+        void reportInvalidArguments(std::string const&) override {}
 
         void testRunStarting(TestRunInfo const& _testRunInfo) override {
             currentTestRunInfo = _testRunInfo;

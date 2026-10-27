@@ -2,9 +2,8 @@
 name: Bug report
 about: Create a report to help us improve
 title: ""
-labels: "Platform: Native"
+labels: "Native, Bug"
 assignees: ""
-type: Bug
 ---
 
 **Description**

@@ -10,13 +10,40 @@ typedef struct {
     sentry_stringbuilder_t serialized_envelope;
 } sentry_attachments_testdata_t;
 
+SENTRY_TEST(attachment_placeholder)
+{
+    SENTRY_TEST_OPTIONS_NEW(options);
+
+    char data[] = "x";
+    sentry_attachment_t attachment = { 0 };
+    attachment.buf = data;
+    attachment.buf_len = SENTRY_LARGE_ATTACHMENT_SIZE;
+
+    TEST_CHECK(!sentry__attachment_is_placeholder(&attachment, options));
+
+    sentry_options_set_enable_large_attachments(options, 1);
+    attachment.buf_len = SENTRY_LARGE_ATTACHMENT_SIZE - 1;
+    TEST_CHECK(!sentry__attachment_is_placeholder(&attachment, options));
+
+    attachment.buf_len = SENTRY_LARGE_ATTACHMENT_SIZE;
+    TEST_CHECK(sentry__attachment_is_placeholder(&attachment, options));
+
+    sentry_attachment_set_type(&attachment, SENTRY_ATTACHMENT_TYPE_MINIDUMP);
+    TEST_CHECK(sentry__attachment_is_placeholder(&attachment, options));
+
+    sentry_free(attachment.type);
+    sentry_free(attachment.content_type);
+    sentry_options_free(options);
+}
+
 static void
-send_envelope_test_attachments(const sentry_envelope_t *envelope, void *_data)
+send_envelope_test_attachments(sentry_envelope_t *envelope, void *_data)
 {
     sentry_attachments_testdata_t *data = _data;
     data->called += 1;
     sentry__envelope_serialize_into_stringbuilder(
         envelope, &data->serialized_envelope);
+    sentry_envelope_free(envelope);
 }
 
 SENTRY_TEST(lazy_attachments)
@@ -28,9 +55,10 @@ SENTRY_TEST(lazy_attachments)
     SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_auto_session_tracking(options, false);
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
-    sentry_options_set_transport(options,
-        sentry_new_function_transport(
-            send_envelope_test_attachments, &testdata));
+    sentry_transport_t *transport
+        = sentry_transport_new(send_envelope_test_attachments);
+    sentry_transport_set_state(transport, &testdata);
+    sentry_options_set_transport(options, transport);
     char rel[] = { 't', 'e', 's', 't' };
     sentry_options_set_release_n(options, rel, sizeof(rel));
 
@@ -103,9 +131,9 @@ SENTRY_TEST(attachments_add_dedupe)
     sentry_attach_file(SENTRY_TEST_PATH_PREFIX ".b.txt");
     sentry_attach_file(SENTRY_TEST_PATH_PREFIX ".c.txt");
 #ifdef SENTRY_PLATFORM_WINDOWS
-    sentry_attach_filew(L".a.txt");
-    sentry_attach_filew(L".b.txt");
-    sentry_attach_filew(L".c.txt");
+    sentry_attach_filew(SENTRY_TEST_PATH_PREFIX L".a.txt");
+    sentry_attach_filew(SENTRY_TEST_PATH_PREFIX L".b.txt");
+    sentry_attach_filew(SENTRY_TEST_PATH_PREFIX L".c.txt");
 #endif
 
     sentry_path_t *path_a
@@ -121,7 +149,7 @@ SENTRY_TEST(attachments_add_dedupe)
 
     sentry_envelope_t *envelope = sentry__envelope_new();
     SENTRY_WITH_SCOPE (scope) {
-        sentry__envelope_add_attachments(envelope, scope->attachments);
+        sentry__envelope_add_attachments(envelope, scope->attachments, NULL);
     }
     char *serialized = sentry_envelope_serialize(envelope, NULL);
     sentry_envelope_free(envelope);
@@ -160,7 +188,8 @@ SENTRY_TEST(attachments_add_remove)
     sentry_attachment_t *attachment_d
         = sentry_attach_file(SENTRY_TEST_PATH_PREFIX ".d.txt");
 #ifdef SENTRY_PLATFORM_WINDOWS
-    sentry_attachment_t *attachment_ew = sentry_attach_filew(L".e.txt");
+    sentry_attachment_t *attachment_ew
+        = sentry_attach_filew(SENTRY_TEST_PATH_PREFIX L".e.txt");
 #endif
 
     sentry_remove_attachment(attachment_c);
@@ -185,7 +214,7 @@ SENTRY_TEST(attachments_add_remove)
 
     envelope = sentry__envelope_new();
     SENTRY_WITH_SCOPE (scope) {
-        sentry__envelope_add_attachments(envelope, scope->attachments);
+        sentry__envelope_add_attachments(envelope, scope->attachments, NULL);
     }
     serialized = sentry_envelope_serialize(envelope, NULL);
     sentry_envelope_free(envelope);
@@ -196,6 +225,17 @@ SENTRY_TEST(attachments_add_remove)
         "{\"type\":\"attachment\",\"length\":3,\"filename\":\".b.txt\"}"
         "\nbbb");
 
+    sentry_free(serialized);
+
+    sentry_clear_attachments();
+
+    envelope = sentry__envelope_new();
+    SENTRY_WITH_SCOPE (scope) {
+        sentry__envelope_add_attachments(envelope, scope->attachments, NULL);
+    }
+    serialized = sentry_envelope_serialize(envelope, NULL);
+    sentry_envelope_free(envelope);
+    TEST_CHECK_STRING_EQUAL(serialized, "{}");
     sentry_free(serialized);
 
     sentry_close();
@@ -230,27 +270,27 @@ SENTRY_TEST(attachments_extend)
 
     sentry_attachment_t *attachments_abc = NULL;
     sentry__attachments_add_path(
-        &attachments_abc, sentry__path_clone(path_a), ATTACHMENT, NULL);
+        &attachments_abc, sentry__path_clone(path_a), NULL, NULL);
     sentry__attachments_add_path(
-        &attachments_abc, sentry__path_clone(path_b), ATTACHMENT, NULL);
+        &attachments_abc, sentry__path_clone(path_b), NULL, NULL);
     sentry__attachments_add_path(
-        &attachments_abc, sentry__path_clone(path_c), ATTACHMENT, NULL);
+        &attachments_abc, sentry__path_clone(path_c), NULL, NULL);
 
     sentry_attachment_t *attachments_bcd = NULL;
     sentry__attachments_add_path(
-        &attachments_bcd, sentry__path_clone(path_b), ATTACHMENT, NULL);
+        &attachments_bcd, sentry__path_clone(path_b), NULL, NULL);
     sentry__attachments_add_path(
-        &attachments_bcd, sentry__path_clone(path_c), ATTACHMENT, NULL);
+        &attachments_bcd, sentry__path_clone(path_c), NULL, NULL);
     sentry__attachments_add_path(
-        &attachments_bcd, sentry__path_clone(path_d), ATTACHMENT, NULL);
+        &attachments_bcd, sentry__path_clone(path_d), NULL, NULL);
 
     sentry_attachment_t *all_attachments = NULL;
     sentry__attachments_extend(&all_attachments, attachments_abc);
     TEST_CHECK(all_attachments != NULL);
 
-    SENTRY_WITH_SCOPE (scope) {
+    {
         sentry_envelope_t *envelope = sentry__envelope_new();
-        sentry__envelope_add_attachments(envelope, all_attachments);
+        sentry__envelope_add_attachments(envelope, all_attachments, NULL);
 
         char *serialized = sentry_envelope_serialize(envelope, NULL);
 
@@ -270,9 +310,9 @@ SENTRY_TEST(attachments_extend)
     sentry__attachments_extend(&all_attachments, attachments_bcd);
     TEST_CHECK(all_attachments != NULL);
 
-    SENTRY_WITH_SCOPE (scope) {
+    {
         sentry_envelope_t *envelope = sentry__envelope_new();
-        sentry__envelope_add_attachments(envelope, all_attachments);
+        sentry__envelope_add_attachments(envelope, all_attachments, NULL);
 
         char *serialized = sentry_envelope_serialize(envelope, NULL);
 
@@ -313,6 +353,21 @@ SENTRY_TEST(attachment_properties)
     SENTRY_TEST_OPTIONS_NEW(options);
     sentry_init(options);
 
+    sentry_attachment_t attachment = { 0 };
+    sentry_attachment_set_type(&attachment, SENTRY_ATTACHMENT_TYPE_MINIDUMP);
+    TEST_CHECK_STRING_EQUAL(
+        attachment.content_type, "application/octet-stream");
+    sentry_attachment_set_content_type(&attachment, "application/x-dmp");
+    sentry_attachment_set_type(
+        &attachment, SENTRY_ATTACHMENT_TYPE_VIEW_HIERARCHY);
+    TEST_CHECK_STRING_EQUAL(attachment.content_type, "application/x-dmp");
+    sentry_attachment_set_content_type(&attachment, NULL);
+    sentry_attachment_set_type(
+        &attachment, SENTRY_ATTACHMENT_TYPE_VIEW_HIERARCHY);
+    TEST_CHECK_STRING_EQUAL(attachment.content_type, "application/json");
+    sentry_free(attachment.type);
+    sentry_free(attachment.content_type);
+
     sentry_path_t *path_txt
         = sentry__path_from_str(SENTRY_TEST_PATH_PREFIX ".a.txt");
     sentry_path_t *path_html
@@ -337,9 +392,12 @@ SENTRY_TEST(attachment_properties)
         = sentry_attach_file(SENTRY_TEST_PATH_PREFIX ".c");
     sentry_attachment_set_content_type(attachment_c, NULL);
 
-    SENTRY_WITH_SCOPE (scope) {
+    {
         sentry_envelope_t *envelope = sentry__envelope_new();
-        sentry__envelope_add_attachments(envelope, scope->attachments);
+        SENTRY_WITH_SCOPE (scope) {
+            sentry__envelope_add_attachments(
+                envelope, scope->attachments, NULL);
+        }
 
         char *serialized = sentry_envelope_serialize(envelope, NULL);
         TEST_CHECK_STRING_EQUAL(serialized,
@@ -355,7 +413,6 @@ SENTRY_TEST(attachment_properties)
         sentry_free(serialized);
         sentry_envelope_free(envelope);
     }
-
     sentry_close();
 
     sentry__path_remove(path_txt);
@@ -380,10 +437,12 @@ SENTRY_TEST(attachments_bytes)
     sentry_attachment_t *attachment_dupe
         = sentry_attach_bytes("dupe", 4, ".c.txt");
 
-    SENTRY_WITH_SCOPE (scope) {
+    {
         sentry_envelope_t *envelope = sentry__envelope_new();
-        sentry__envelope_add_attachments(envelope, scope->attachments);
-
+        SENTRY_WITH_SCOPE (scope) {
+            sentry__envelope_add_attachments(
+                envelope, scope->attachments, NULL);
+        }
         char *serialized = sentry_envelope_serialize(envelope, NULL);
         TEST_CHECK_STRING_EQUAL(serialized,
             "{}\n"
@@ -403,9 +462,12 @@ SENTRY_TEST(attachments_bytes)
     sentry_remove_attachment(attachment_b);
     sentry_remove_attachment(attachment_dupe);
 
-    SENTRY_WITH_SCOPE (scope) {
+    {
         sentry_envelope_t *envelope = sentry__envelope_new();
-        sentry__envelope_add_attachments(envelope, scope->attachments);
+        SENTRY_WITH_SCOPE (scope) {
+            sentry__envelope_add_attachments(
+                envelope, scope->attachments, NULL);
+        }
 
         char *serialized = sentry_envelope_serialize(envelope, NULL);
         TEST_CHECK_STRING_EQUAL(serialized,
@@ -422,10 +484,12 @@ SENTRY_TEST(attachments_bytes)
     sentry_remove_attachment(attachment_a);
     sentry_remove_attachment(attachment_c);
 
-    SENTRY_WITH_SCOPE (scope) {
+    {
         sentry_envelope_t *envelope = sentry__envelope_new();
-        sentry__envelope_add_attachments(envelope, scope->attachments);
-
+        SENTRY_WITH_SCOPE (scope) {
+            sentry__envelope_add_attachments(
+                envelope, scope->attachments, NULL);
+        }
         char *serialized = sentry_envelope_serialize(envelope, NULL);
         TEST_CHECK_STRING_EQUAL(serialized, "{}");
         sentry_free(serialized);
@@ -434,4 +498,73 @@ SENTRY_TEST(attachments_bytes)
     }
 
     sentry_close();
+}
+
+#define ATTACHMENT_COUNT 15
+
+SENTRY_TEST(attachments_more_than_ten)
+{
+    sentry_attachments_testdata_t testdata;
+    testdata.called = 0;
+    sentry__stringbuilder_init(&testdata.serialized_envelope);
+
+    SENTRY_TEST_OPTIONS_NEW(options);
+    sentry_options_set_auto_session_tracking(options, false);
+    sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
+    sentry_transport_t *transport
+        = sentry_transport_new(send_envelope_test_attachments);
+    sentry_transport_set_state(transport, &testdata);
+    sentry_options_set_transport(options, transport);
+
+    sentry_init(options);
+
+    // Create 15 unique attachment files (more than the old
+    // SENTRY_MAX_ENVELOPE_ITEMS of 10) to verify that the limit has been
+    // removed for attachments
+    sentry_path_t *attachment_paths[ATTACHMENT_COUNT];
+    for (int i = 0; i < ATTACHMENT_COUNT; i++) {
+        char filename[64];
+        snprintf(filename, sizeof(filename),
+            SENTRY_TEST_PATH_PREFIX ".attachment%d.txt", i);
+        attachment_paths[i] = sentry__path_from_str(filename);
+        sentry__path_write_buffer(attachment_paths[i], "content", 7);
+        sentry_attach_file(filename);
+    }
+
+    char message[128];
+    snprintf(message, sizeof(message), "Event with %d attachments",
+        ATTACHMENT_COUNT);
+    sentry_capture_event(
+        sentry_value_new_message_event(SENTRY_LEVEL_INFO, "root", message));
+
+    char *serialized
+        = sentry_stringbuilder_take_string(&testdata.serialized_envelope);
+
+    // Count the number of attachment items in the envelope
+    // Each attachment appears as: {"type":"attachment",...}
+    int attachment_count = 0;
+    const char *search_pos = serialized;
+    const char *pattern = "\"type\":\"attachment\"";
+    while ((search_pos = strstr(search_pos, pattern)) != NULL) {
+        attachment_count++;
+        search_pos += strlen(pattern);
+    }
+
+    // Verify we have all 15 attachments in the envelope
+    TEST_CHECK_INT_EQUAL(attachment_count, ATTACHMENT_COUNT);
+    // Verify the envelope also contains the event
+    TEST_CHECK(strstr(serialized, "\"type\":\"event\"") != NULL);
+    TEST_CHECK(strstr(serialized, message) != NULL);
+
+    sentry_free(serialized);
+
+    sentry_close();
+
+    // Clean up all attachment files
+    for (int i = 0; i < ATTACHMENT_COUNT; i++) {
+        sentry__path_remove(attachment_paths[i]);
+        sentry__path_free(attachment_paths[i]);
+    }
+
+    TEST_CHECK_INT_EQUAL(testdata.called, 1);
 }

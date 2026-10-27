@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Must run before the managed runtime provider emitted by dotnet/android
+         so that sentry-native is already in the signal chain when the runtime
+         installs its own handlers. 
+         initOrder must stay higher than AppInitOrder-1 (1999999999) used by the .NET runtime:
+         https://github.com/dotnet/android/blob/3c50ff4573b5/src/Xamarin.Android.Build.Tasks/Utilities/ManifestDocument.cs#L724 -->
+    <provider
+      android:name="io.sentry.ndk.SentryNdkPreloadProvider"
+      android:authorities="${applicationId}.SentryNdkPreloadProvider"
+      android:initOrder="2000000000"
+      android:exported="false" />
+  </application>
+</manifest>

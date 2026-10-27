@@ -439,6 +439,10 @@ bool ExceptionHandlerServer::ReceiveClientMessage(Event* event) {
     case ExceptionHandlerProtocol::ClientToServerMessage::kTypeRemoveAttachment:
       delegate_->RemoveAttachment(base::FilePath(message.attachment_info.path));
       return true;
+
+    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeRequestRetry:
+      delegate_->RequestRetry();
+      return true;
   }
 
   DCHECK(false);

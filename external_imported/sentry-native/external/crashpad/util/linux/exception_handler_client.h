@@ -74,6 +74,9 @@ class ExceptionHandlerClient {
   //! \brief Removes an attachment from the crash report.
   void RemoveAttachment(const base::FilePath& attachment);
 
+  //! \brief Requests that the handler retry pending report uploads.
+  void RequestRetry();
+
  private:
   int SendCrashDumpRequest(
       const ExceptionHandlerProtocol::ClientInformation& info,

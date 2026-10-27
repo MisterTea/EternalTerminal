@@ -41,13 +41,19 @@ CrashReportExceptionHandler::CrashReportExceptionHandler(
     const std::vector<base::FilePath>* attachments,
     const base::FilePath* screenshot,
     const UserStreamDataSources* user_stream_data_sources,
-    const bool wait_for_upload)
+    const bool wait_for_upload,
+    const base::FilePath* crash_reporter,
+    const base::FilePath* crash_envelope,
+    const UUID* report_id)
     : database_(database),
       upload_thread_(upload_thread),
       process_annotations_(process_annotations),
       attachments_(*attachments),
       screenshot_(screenshot),
       wait_for_upload_(wait_for_upload),
+      crash_reporter_(crash_reporter),
+      crash_envelope_(crash_envelope),
+      report_id_(report_id),
       user_stream_data_sources_(user_stream_data_sources) {}
 
 CrashReportExceptionHandler::~CrashReportExceptionHandler() {}
@@ -95,7 +101,7 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
 
     std::unique_ptr<CrashReportDatabase::NewReport> new_report;
     CrashReportDatabase::OperationStatus database_status =
-        database_->PrepareNewCrashReport(&new_report);
+        database_->PrepareNewCrashReport(&new_report, report_id_);
     if (database_status != CrashReportDatabase::kNoError) {
       LOG(ERROR) << "PrepareNewCrashReport failed";
       Metrics::ExceptionCaptureResult(
@@ -151,6 +157,20 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       }
     }
 
+    bool has_crash_reporter = crash_reporter_ && !crash_reporter_->empty() &&
+                              crash_envelope_ && !crash_envelope_->empty();
+    if (has_crash_reporter) {
+      CrashReportDatabase::Envelope envelope(new_report->ReportID());
+      if (envelope.Initialize(*crash_envelope_)) {
+        envelope.AddAttachments(attachments_);
+        if (auto reader = new_report->Reader()) {
+          envelope.AddMinidump(reader);
+        }
+        envelope.Finish();
+        database_->LaunchCrashReporter(*crash_reporter_, *crash_envelope_);
+      }
+    }
+
     UUID uuid;
     database_status =
         database_->FinishedWritingCrashReport(std::move(new_report), &uuid);
@@ -161,7 +181,9 @@ unsigned int CrashReportExceptionHandler::ExceptionHandlerServerException(
       return termination_code;
     }
 
-    if (upload_thread_) {
+    if (has_crash_reporter) {
+      database_->DeleteReport(uuid);
+    } else if (upload_thread_) {
       if (wait_for_upload_) {
         upload_thread_->ReportPendingSync(uuid);
       }
@@ -193,6 +215,12 @@ void CrashReportExceptionHandler::ExceptionHandlerServerAttachmentRemoved(
     return;
   }
   attachments_.erase(it);
+}
+
+void CrashReportExceptionHandler::ExceptionHandlerServerRetryRequested() {
+  if (upload_thread_) {
+    upload_thread_->RetryPending();
+  }
 }
 
 }  // namespace crashpad

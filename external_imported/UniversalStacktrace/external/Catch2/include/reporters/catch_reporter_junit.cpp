@@ -12,11 +12,13 @@
 
 #include "../internal/catch_tostring.h"
 #include "../internal/catch_reporter_registrars.hpp"
+#include "../internal/catch_text.h"
 
 #include <cassert>
 #include <sstream>
 #include <ctime>
 #include <algorithm>
+#include <iomanip>
 
 namespace Catch {
 
@@ -44,7 +46,7 @@ namespace Catch {
 #else
             std::strftime(timeStamp, timeStampSize, fmt, timeInfo);
 #endif
-            return std::string(timeStamp);
+            return std::string(timeStamp, timeStampSize-1);
         }
 
         std::string fileNameTag(const std::vector<std::string> &tags) {
@@ -55,6 +57,17 @@ namespace Catch {
                 return it->substr(1);
             return std::string();
         }
+
+        // Formats the duration in seconds to 3 decimal places.
+        // This is done because some genius defined Maven Surefire schema
+        // in a way that only accepts 3 decimal places, and tools like
+        // Jenkins use that schema for validation JUnit reporter output.
+        std::string formatDuration( double seconds ) {
+            ReusableStringStream rss;
+            rss << std::fixed << std::setprecision( 3 ) << seconds;
+            return rss.str();
+        }
+
     } // anonymous namespace
 
     JunitReporter::JunitReporter( ReporterConfig const& _config )
@@ -124,7 +137,7 @@ namespace Catch {
         if( m_config->showDurations() == ShowDurations::Never )
             xml.writeAttribute( "time", "" );
         else
-            xml.writeAttribute( "time", suiteTime );
+            xml.writeAttribute( "time", formatDuration( suiteTime ) );
         xml.writeAttribute( "timestamp", getCurrentTimestamp() );
 
         // Write properties if there are any
@@ -146,8 +159,8 @@ namespace Catch {
         for( auto const& child : groupNode.children )
             writeTestCase( *child );
 
-        xml.scopedElement( "system-out" ).writeText( trim( stdOutForSuite ), false );
-        xml.scopedElement( "system-err" ).writeText( trim( stdErrForSuite ), false );
+        xml.scopedElement( "system-out" ).writeText( trim( stdOutForSuite ), XmlFormatting::Newline );
+        xml.scopedElement( "system-err" ).writeText( trim( stdErrForSuite ), XmlFormatting::Newline );
     }
 
     void JunitReporter::writeTestCase( TestCaseNode const& testCaseNode ) {
@@ -169,12 +182,13 @@ namespace Catch {
         if ( !m_config->name().empty() )
             className = m_config->name() + "." + className;
 
-        writeSection( className, "", rootSection );
+        writeSection( className, "", rootSection, stats.testInfo.okToFail() );
     }
 
-    void JunitReporter::writeSection(  std::string const& className,
-                        std::string const& rootName,
-                        SectionNode const& sectionNode ) {
+    void JunitReporter::writeSection( std::string const& className,
+                                      std::string const& rootName,
+                                      SectionNode const& sectionNode,
+                                      bool testOkToFail) {
         std::string name = trim( sectionNode.stats.sectionInfo.name );
         if( !rootName.empty() )
             name = rootName + '/' + name;
@@ -191,20 +205,31 @@ namespace Catch {
                 xml.writeAttribute( "classname", className );
                 xml.writeAttribute( "name", name );
             }
-            xml.writeAttribute( "time", ::Catch::Detail::stringify( sectionNode.stats.durationInSeconds ) );
+            xml.writeAttribute( "time", formatDuration( sectionNode.stats.durationInSeconds ) );
+            // This is not ideal, but it should be enough to mimic gtest's
+            // junit output.
+            // Ideally the JUnit reporter would also handle `skipTest`
+            // events and write those out appropriately.
+            xml.writeAttribute( "status", "run" );
+
+            if (sectionNode.stats.assertions.failedButOk) {
+                xml.scopedElement("skipped")
+                    .writeAttribute("message", "TEST_CASE tagged with !mayfail");
+            }
 
             writeAssertions( sectionNode );
 
+
             if( !sectionNode.stdOut.empty() )
-                xml.scopedElement( "system-out" ).writeText( trim( sectionNode.stdOut ), false );
+                xml.scopedElement( "system-out" ).writeText( trim( sectionNode.stdOut ), XmlFormatting::Newline );
             if( !sectionNode.stdErr.empty() )
-                xml.scopedElement( "system-err" ).writeText( trim( sectionNode.stdErr ), false );
+                xml.scopedElement( "system-err" ).writeText( trim( sectionNode.stdErr ), XmlFormatting::Newline );
         }
         for( auto const& childNode : sectionNode.childSections )
             if( className.empty() )
-                writeSection( name, "", *childNode );
+                writeSection( name, "", *childNode, testOkToFail );
             else
-                writeSection( className, name, *childNode );
+                writeSection( className, name, *childNode, testOkToFail );
     }
 
     void JunitReporter::writeAssertions( SectionNode const& sectionNode ) {
@@ -222,11 +247,7 @@ namespace Catch {
                     elementName = "error";
                     break;
                 case ResultWas::ExplicitFailure:
-                    elementName = "failure";
-                    break;
                 case ResultWas::ExpressionFailed:
-                    elementName = "failure";
-                    break;
                 case ResultWas::DidntThrowException:
                     elementName = "failure";
                     break;
@@ -244,10 +265,25 @@ namespace Catch {
 
             XmlWriter::ScopedElement e = xml.scopedElement( elementName );
 
-            xml.writeAttribute( "message", result.getExpandedExpression() );
+            xml.writeAttribute( "message", result.getExpression() );
             xml.writeAttribute( "type", result.getTestMacroName() );
 
             ReusableStringStream rss;
+            if (stats.totals.assertions.total() > 0) {
+                rss << "FAILED" << ":\n";
+                if (result.hasExpression()) {
+                    rss << "  ";
+                    rss << result.getExpressionInMacro();
+                    rss << '\n';
+                }
+                if (result.hasExpandedExpression()) {
+                    rss << "with expansion:\n";
+                    rss << Column(result.getExpandedExpression()).indent(2) << '\n';
+                }
+            } else {
+                rss << '\n';
+            }
+
             if( !result.getMessage().empty() )
                 rss << result.getMessage() << '\n';
             for( auto const& msg : stats.infoMessages )
@@ -255,7 +291,7 @@ namespace Catch {
                     rss << msg.message << '\n';
 
             rss << "at " << result.getSourceInfo();
-            xml.writeText( rss.str(), false );
+            xml.writeText( rss.str(), XmlFormatting::Newline );
         }
     }
 

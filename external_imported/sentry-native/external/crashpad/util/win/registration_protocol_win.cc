@@ -141,6 +141,81 @@ bool SendToCrashHandlerServer(const std::wstring& pipe_name,
   }
 }
 
+bool SendAttachmentToCrashHandlerServer(
+    const std::wstring& pipe_name,
+    ClientToServerMessage::Type message_type,
+    const std::wstring& path,
+    ServerToClientMessage* response) {
+  if (message_type != ClientToServerMessage::kAddAttachmentV2 &&
+      message_type != ClientToServerMessage::kRemoveAttachmentV2) {
+    LOG(ERROR) << "Invalid message type for attachment: " << message_type;
+    return false;
+  }
+
+  const size_t path_length_bytes = (path.length() + 1) * sizeof(wchar_t);
+
+  if (path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Path too long: " << path_length_bytes << " bytes";
+    return false;
+  }
+
+  // Build the message header.
+  ClientToServerMessage message = {};
+  message.type = message_type;
+  message.attachment_v2.path_length_bytes =
+      static_cast<uint32_t>(path_length_bytes);
+
+  // Retry CreateFile() in a loop (follows the logic in
+  // SendToCrashHandlerServer).
+  for (;;) {
+    ScopedFileHANDLE pipe(
+        CreateFile(pipe_name.c_str(),
+                   GENERIC_READ | GENERIC_WRITE,
+                   0,
+                   nullptr,
+                   OPEN_EXISTING,
+                   SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
+                   nullptr));
+    if (!pipe.is_valid()) {
+      if (GetLastError() != ERROR_PIPE_BUSY) {
+        PLOG(ERROR) << "CreateFile";
+        return false;
+      }
+
+      if (!WaitNamedPipe(pipe_name.c_str(), NMPWAIT_WAIT_FOREVER)) {
+        PLOG(ERROR) << "WaitNamedPipe";
+        return false;
+      }
+
+      continue;
+    }
+
+    DWORD mode = PIPE_READMODE_MESSAGE;
+    if (!SetNamedPipeHandleState(pipe.get(), &mode, nullptr, nullptr)) {
+      PLOG(ERROR) << "SetNamedPipeHandleState";
+      return false;
+    }
+
+    if (!WriteFile(pipe.get(), &message, sizeof(message))) {
+      PLOG(ERROR) << "WriteFile (header)";
+      return false;
+    }
+
+    if (!WriteFile(
+            pipe.get(), path.c_str(), static_cast<DWORD>(path_length_bytes))) {
+      PLOG(ERROR) << "WriteFile (path)";
+      return false;
+    }
+
+    if (!ReadFile(pipe.get(), response, sizeof(*response))) {
+      PLOG(ERROR) << "ReadFile (response)";
+      return false;
+    }
+
+    return true;
+  }
+}
+
 HANDLE CreateNamedPipeInstance(const std::wstring& pipe_name,
                                bool first_instance) {
   SECURITY_ATTRIBUTES security_attributes;

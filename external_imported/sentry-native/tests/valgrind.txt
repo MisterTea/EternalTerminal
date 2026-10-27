@@ -27,3 +27,21 @@
     ...
     fun:sentry__procmaps_read_ids_from_elf
 }
+{
+    pthread stack possibly lost in test_task_queue
+    Memcheck:Leak
+    fun:calloc
+    ...
+    fun:pthread_create*
+    ...
+    fun:sentry__bgworker_start
+    fun:test_sentry_task_queue
+}
+{
+    # writes of uninit buffers with padding or foreign-stack pointers lead to false-positive during stack unwinding
+   libunwind writes buffers we do not manage
+   Memcheck:Param
+   write(buf)
+   ...
+   obj:*/libunwind.so*
+}

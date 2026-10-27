@@ -9,7 +9,6 @@
 #define CATCH_SHARDING_HPP_INCLUDED
 
 #include <cassert>
-#include <cmath>
 #include <algorithm>
 
 namespace Catch {

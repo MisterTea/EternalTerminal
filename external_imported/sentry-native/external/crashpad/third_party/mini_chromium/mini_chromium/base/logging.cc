@@ -7,7 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <atomic>
 #include <iomanip>
+#include <memory>
 #include <ostream>
 
 #if BUILDFLAG(IS_POSIX)
@@ -19,29 +21,9 @@
 #endif  // BUILDFLAG(IS_POSIX)
 
 #if BUILDFLAG(IS_APPLE)
-// In macOS 10.12 and iOS 10.0 and later ASL (Apple System Log) was deprecated
-// in favor of OS_LOG (Unified Logging).
-#include <AvailabilityMacros.h>
-#if BUILDFLAG(IS_IOS)
-#if !defined(__IPHONE_10_0) || __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_10_0
-#define USE_ASL
-#endif
-#else  // !BUILDFLAG(IS_IOS)
-#if !defined(MAC_OS_X_VERSION_10_12) || \
-    MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_12
-#define USE_ASL
-#endif
-#endif  // BUILDFLAG(IS_IOS)
-
-#if defined(USE_ASL)
-#include <asl.h>
-#else
-#include <os/log.h>
-#endif  // USE_ASL
-
 #include <CoreFoundation/CoreFoundation.h>
+#include <os/log.h>
 #include <pthread.h>
-
 #elif BUILDFLAG(IS_LINUX)
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -50,14 +32,16 @@
 #elif BUILDFLAG(IS_ANDROID)
 #include <android/log.h>
 #elif BUILDFLAG(IS_FUCHSIA)
-#include <lib/syslog/global.h>
+#include <lib/syslog/cpp/log_message_impl.h>
 #endif
 
 #include "base/check_op.h"
+#include "base/files/file_util.h"
 #include "base/immediate_crash.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/synchronization/lock.h"
 
 namespace logging {
 
@@ -73,14 +57,56 @@ const char* const log_severity_names[] = {
 
 LogMessageHandlerFunction g_log_message_handler = nullptr;
 
-LoggingDestination g_logging_destination = LOG_DEFAULT;
+std::atomic<LoggingDestination> g_logging_destination{LOG_DEFAULT};
+
+std::atomic<int> g_min_log_level{LOG_INFO};
+
+// Closes a log file silently on destruction. Unlike base::ScopedFILECloser,
+// LogFileCloser does not PLOG on fclose failure. We may be inside static
+// destruction where a re-entrant Flush() would access the log file while it
+// is being torn down.
+struct LogFileCloser {
+  void operator()(FILE* file) const {
+    if (file) {
+      fclose(file);
+    }
+  }
+};
+
+// File-bound logging state. All fields are protected by `lock`. The handle
+// is opened lazily on the first emitted message; `enabled` is cleared when
+// the open fails or the path is empty, and reset by InitLogging.
+struct LogFile {
+  base::Lock lock;
+  base::FilePath path;
+  std::unique_ptr<FILE, LogFileCloser> handle;
+  bool enabled = true;
+};
+LogFile g_log_file;
 
 }  // namespace
 
-bool InitLogging(const LoggingSettings& settings) {
-  DCHECK_EQ(settings.logging_dest & LOG_TO_FILE, 0u);
+int GetMinLogLevel() {
+  return g_min_log_level.load(std::memory_order_relaxed);
+}
 
-  g_logging_destination = settings.logging_dest;
+void SetMinLogLevel(int level) {
+  g_min_log_level.store(level, std::memory_order_relaxed);
+}
+
+bool InitLogging(const LoggingSettings& settings) {
+  // Close any previously opened file; the new path is opened lazily on the
+  // first emitted message. The old handle is moved out of the critical
+  // section so its destructor runs after the lock is released.
+  std::unique_ptr<FILE, LogFileCloser> old_handle;
+  {
+    base::AutoLock lock(g_log_file.lock);
+    old_handle = std::move(g_log_file.handle);
+    g_log_file.path = settings.log_file_path;
+    g_log_file.enabled = true;
+  }
+  g_logging_destination.store(settings.logging_dest, std::memory_order_relaxed);
+  g_min_log_level.store(settings.min_log_level, std::memory_order_relaxed);
   return true;
 }
 
@@ -110,10 +136,10 @@ std::string SystemErrorCodeToString(unsigned long error_code) {
     if (len >= 1 && msgbuf[len - 1] == ' ') {
       msgbuf[len - 1] = '\0';
     }
-    return base::StringPrintf("%s (%u)",
+    return base::StringPrintf("%s (%lu)",
                               base::WideToUTF8(msgbuf).c_str(), error_code);
   }
-  return base::StringPrintf("Error %u while retrieving error %u",
+  return base::StringPrintf("Error %lu while retrieving error %lu",
                             GetLastError(),
                             error_code);
 }
@@ -159,12 +185,33 @@ void LogMessage::Flush() {
     return;
   }
 
-  if ((g_logging_destination & LOG_TO_STDERR)) {
+  const LoggingDestination destination =
+      g_logging_destination.load(std::memory_order_relaxed);
+
+  if ((destination & LOG_TO_STDERR)) {
     fprintf(stderr, "%s", str_newline.c_str());
     fflush(stderr);
   }
 
-  if ((g_logging_destination & LOG_TO_SYSTEM_DEBUG_LOG) != 0) {
+  if ((destination & LOG_TO_FILE)) {
+    base::AutoLock lock(g_log_file.lock);
+    if (g_log_file.enabled && !g_log_file.handle) {
+      if (g_log_file.path.empty()) {
+        g_log_file.enabled = false;
+      } else {
+        g_log_file.handle.reset(base::OpenFile(g_log_file.path, "a"));
+        if (!g_log_file.handle) {
+          g_log_file.enabled = false;
+        }
+      }
+    }
+    if (FILE* f = g_log_file.handle.get()) {
+      fwrite(str_newline.data(), 1, str_newline.size(), f);
+      fflush(f);
+    }
+  }
+
+  if ((destination & LOG_TO_SYSTEM_DEBUG_LOG) != 0) {
 #if BUILDFLAG(IS_APPLE)
     const bool log_to_system = []() {
       struct stat stderr_stat;
@@ -210,76 +257,6 @@ void LogMessage::Flush() {
         }
       }
 
-#if defined(USE_ASL)
-      // Use ASL when this might run on pre-10.12 systems. Unified Logging
-      // (os_log) was introduced in 10.12.
-
-      const class ASLClient {
-       public:
-        explicit ASLClient(const char* asl_facility)
-            : client_(asl_open(nullptr, asl_facility, ASL_OPT_NO_DELAY)) {}
-
-        ASLClient(const ASLClient&) = delete;
-        ASLClient& operator=(const ASLClient&) = delete;
-
-        ~ASLClient() { asl_close(client_); }
-
-        aslclient get() const { return client_; }
-
-       private:
-        aslclient client_;
-      } asl_client(main_bundle_id ? main_bundle_id : "com.apple.console");
-
-      const class ASLMessage {
-       public:
-        ASLMessage() : message_(asl_new(ASL_TYPE_MSG)) {}
-
-        ASLMessage(const ASLMessage&) = delete;
-        ASLMessage& operator=(const ASLMessage&) = delete;
-
-        ~ASLMessage() { asl_free(message_); }
-
-        aslmsg get() const { return message_; }
-
-       private:
-        aslmsg message_;
-      } asl_message;
-
-      // By default, messages are only readable by the admin group. Explicitly
-      // make them readable by the user generating the messages.
-      char euid_string[12];
-      snprintf(euid_string, std::size(euid_string), "%d", geteuid());
-      asl_set(asl_message.get(), ASL_KEY_READ_UID, euid_string);
-
-      // Map Chrome log severities to ASL log levels.
-      const char* const asl_level_string = [](LogSeverity severity) {
-#define ASL_LEVEL_STR(level) ASL_LEVEL_STR_X(level)
-#define ASL_LEVEL_STR_X(level) #level
-        switch (severity) {
-          case LOG_INFO:
-            return ASL_LEVEL_STR(ASL_LEVEL_INFO);
-          case LOG_WARNING:
-            return ASL_LEVEL_STR(ASL_LEVEL_WARNING);
-          case LOG_ERROR:
-            return ASL_LEVEL_STR(ASL_LEVEL_ERR);
-          case LOG_FATAL:
-            return ASL_LEVEL_STR(ASL_LEVEL_CRIT);
-          default:
-            return severity < 0 ? ASL_LEVEL_STR(ASL_LEVEL_DEBUG)
-                                : ASL_LEVEL_STR(ASL_LEVEL_NOTICE);
-        }
-#undef ASL_LEVEL_STR
-#undef ASL_LEVEL_STR_X
-      }(severity_);
-      asl_set(asl_message.get(), ASL_KEY_LEVEL, asl_level_string);
-
-      asl_set(asl_message.get(), ASL_KEY_MSG, str_newline.c_str());
-
-      asl_send(asl_client.get(), asl_message.get());
-#else
-      // Use Unified Logging (os_log) when this will only run on 10.12 and
-      // later. ASL is deprecated in 10.12.
-
       const class OSLog {
        public:
         explicit OSLog(const char* subsystem)
@@ -318,7 +295,6 @@ void LogMessage::Flush() {
 
       os_log_with_type(
           log.get(), os_log_type, "%{public}s", str_newline.c_str());
-#endif
     }
 #elif BUILDFLAG(IS_WIN)
     OutputDebugString(base::UTF8ToWide(str_newline).c_str());
@@ -342,36 +318,34 @@ void LogMessage::Flush() {
     // The Android system may truncate the string if it's too long.
     __android_log_write(priority, "chromium", str_newline.c_str());
 #elif BUILDFLAG(IS_FUCHSIA)
-    fx_log_severity_t fx_severity;
+    fuchsia_logging::LogSeverity fx_severity;
     switch (severity_) {
       case LOG_INFO:
-        fx_severity = FX_LOG_INFO;
+        fx_severity = fuchsia_logging::LogSeverity::Info;
         break;
       case LOG_WARNING:
-        fx_severity = FX_LOG_WARNING;
+        fx_severity = fuchsia_logging::LogSeverity::Warn;
         break;
       case LOG_ERROR:
-        fx_severity = FX_LOG_ERROR;
+        fx_severity = fuchsia_logging::LogSeverity::Error;
         break;
       case LOG_FATAL:
-        fx_severity = FX_LOG_FATAL;
+        fx_severity = fuchsia_logging::LogSeverity::Fatal;
         break;
       default:
-        fx_severity = FX_LOG_INFO;
+        fx_severity = fuchsia_logging::LogSeverity::Info;
         break;
     }
-    // Temporarily remove the trailing newline from |str_newline|'s C-string
-    // representation, since fx_logger will add a newline of its own.
-    str_newline.pop_back();
+    // Fuchsia's logger doesn't want the trailing newline.
+    std::string_view message(str_newline);
+    message.remove_suffix(1);
+    message.remove_prefix(message_start_);
     // Ideally the tag would be the same as the caller, but this is not
     // supported right now.
-    fx_logger_log_with_source(fx_log_get_logger(),
-                              fx_severity,
-                              /*tag=*/nullptr,
-                              file_path_,
-                              line_,
-                              str_newline.c_str() + message_start_);
-    str_newline.push_back('\n');
+    fuchsia_logging::LogMessage(
+        fx_severity, file_path_, line_, nullptr, nullptr)
+            .stream()
+        << message;
 #endif  // BUILDFLAG(IS_*)
   }
 
@@ -476,6 +450,22 @@ void LogMessage::Init(const char* function) {
   message_start_ = stream_.str().size();
 }
 
+// We intentionally don't return from these destructors. Disable MSVC's warning
+// about the destructor never returning as we do so intentionally here.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 4722)
+#endif
+
+LogMessageFatal::~LogMessageFatal() {
+  Flush();
+  base::ImmediateCrash();
+}
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
+
 #if BUILDFLAG(IS_WIN)
 
 unsigned long GetLastSystemErrorCode() {
@@ -491,8 +481,29 @@ Win32ErrorLogMessage::Win32ErrorLogMessage(const char* function,
 }
 
 Win32ErrorLogMessage::~Win32ErrorLogMessage() {
+  AppendError();
+}
+
+void Win32ErrorLogMessage::AppendError() {
   stream() << ": " << SystemErrorCodeToString(err_);
 }
+
+// We intentionally don't return from these destructors. Disable MSVC's warning
+// about the destructor never returning as we do so intentionally here.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+#pragma warning(disable : 4722)
+#endif
+
+Win32ErrorLogMessageFatal::~Win32ErrorLogMessageFatal() {
+  AppendError();
+  Flush();
+  base::ImmediateCrash();
+}
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 #elif BUILDFLAG(IS_POSIX)
 
@@ -506,11 +517,21 @@ ErrnoLogMessage::ErrnoLogMessage(const char* function,
 }
 
 ErrnoLogMessage::~ErrnoLogMessage() {
+  AppendError();
+}
+
+void ErrnoLogMessage::AppendError() {
   stream() << ": "
            << base::safe_strerror(err_)
            << " ("
            << err_
            << ")";
+}
+
+ErrnoLogMessageFatal::~ErrnoLogMessageFatal() {
+  AppendError();
+  Flush();
+  base::ImmediateCrash();
 }
 
 #endif  // BUILDFLAG(IS_POSIX)

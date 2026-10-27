@@ -8,4 +8,6 @@ public class NdkTestHelper {
   public static native void message();
 
   public static native void transaction();
+
+  public static native long sentryGetModulesListAddress();
 }

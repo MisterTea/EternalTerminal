@@ -59,10 +59,10 @@ namespace Catch {
         // To avoid having to handle TFE explicitly everywhere, we just
         // rethrow it so that it goes back up the caller.
         catch( TestFailureException& ) {
-            std::rethrow_exception(std::current_exception());
+            return "{ nested assertion failed }";
         }
         catch( TestSkipException& ) {
-            std::rethrow_exception(std::current_exception());
+            return "{ nested SKIP() called }";
         }
         catch( std::exception const& ex ) {
             return ex.what();

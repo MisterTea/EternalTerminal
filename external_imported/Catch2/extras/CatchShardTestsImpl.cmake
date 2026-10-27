@@ -25,10 +25,10 @@ if(NOT EXISTS "${TEST_BINARY}")
 endif()
 
 set(other_args "")
-if (TEST_SPEC)
+if(TEST_SPEC)
   set(other_args "${other_args} ${TEST_SPEC}")
 endif()
-if (REPORTER_SPEC)
+if(REPORTER_SPEC)
   set(other_args "${other_args} --reporter ${REPORTER_SPEC}")
 endif()
 

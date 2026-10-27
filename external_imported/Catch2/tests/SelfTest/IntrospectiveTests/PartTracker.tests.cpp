@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/internal/catch_test_case_tracker.hpp>
+#include <catch2/internal/catch_path_filter.hpp>
 
 
 using namespace Catch;
@@ -22,7 +23,9 @@ Catch::TestCaseTracking::NameAndLocationRef makeNAL( StringRef name ) {
 TEST_CASE( "Tracker" ) {
 
     TrackerContext ctx;
-    ctx.startRun();
+    ITracker& root = ctx.startRun();
+    std::vector<PathFilter> dummyFilters;
+    root.setFilters( &dummyFilters, false );
     ctx.startCycle();
 
 

@@ -2,11 +2,8 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO fmtlib/fmt
     REF "${VERSION}"
-    SHA512 47ff6d289dcc22681eea6da465b0348172921e7cafff8fd57a1540d3232cc6b53250a4625c954ee0944c87963b17680ecbc3ea123e43c2c822efe0dc6fa6cef3
+    SHA512 5ac2ba0f54a484999ed5407d82b77aad170cea49a267decd2c0eedadf3b14413e2a83fcc8e9ca9c16640595e019b8636e160f72314d8be50653324e82ac745eb
     HEAD_REF master
-    PATCHES
-        fix-write-batch.patch
-        fix-pass-utf-8-only-if-the-compiler-is-MSVC-at-build.patch # remove in next release
 )
 
 vcpkg_cmake_configure(
@@ -21,13 +18,6 @@ vcpkg_cmake_install()
 vcpkg_cmake_config_fixup()
 vcpkg_fixup_pkgconfig()
 vcpkg_copy_pdbs()
-
-if(VCPKG_LIBRARY_LINKAGE STREQUAL dynamic)
-    vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/fmt/base.h"
-        "defined(FMT_SHARED)"
-        "1"
-    )
-endif()
 
 file(REMOVE_RECURSE
     "${CURRENT_PACKAGES_DIR}/debug/include"

@@ -3,6 +3,14 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+docs
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+dist/
+build*/
+
+
 # User-specific files
 *.rsuser
 *.suo
@@ -31,6 +39,8 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+build/
+build-system-gtest/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

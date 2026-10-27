@@ -19,9 +19,11 @@ namespace Catch {
     public:
         // GCC5 compat: we cannot use inherited constructor, because it
         //              doesn't implement backport of P0136
-        AutomakeReporter(ReporterConfig&& _config):
-            StreamingReporterBase(CATCH_MOVE(_config))
-        {}
+        AutomakeReporter( ReporterConfig&& _config ):
+            StreamingReporterBase( CATCH_MOVE( _config ) ) {
+            m_preferences.shouldReportAllAssertionStarts = false;
+        }
+
         ~AutomakeReporter() override;
 
         static std::string getDescription() {

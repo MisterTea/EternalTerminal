@@ -17,7 +17,7 @@
 namespace Catch {
     struct SourceLineInfo;
 
-    class TagAliasRegistry : public ITagAliasRegistry {
+    class TagAliasRegistry final : public ITagAliasRegistry {
     public:
         ~TagAliasRegistry() override;
         TagAlias const* find( std::string const& alias ) const override;

@@ -26,6 +26,7 @@ namespace Catch {
         :   StreamingReporterBase( CATCH_MOVE(_config) )
         {
             m_preferences.shouldRedirectStdOut = true;
+            m_preferences.shouldReportAllAssertionStarts = false;
         }
 
         ~TeamCityReporter() override;

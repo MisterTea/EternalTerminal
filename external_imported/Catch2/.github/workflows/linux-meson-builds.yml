@@ -1,12 +1,17 @@
-name: Linux builds (meson)
+name: Linux Builds (Meson)
 
 on: [push, pull_request]
+
+env:
+  CTEST_OUTPUT_ON_FAILURE: 1
+  CTEST_NO_TESTS_ACTION: error
 
 jobs:
   build:
     name: meson ${{matrix.cxx}}, C++${{matrix.std}}, ${{matrix.build_type}}
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         cxx:
           - g++-11
@@ -18,14 +23,14 @@ jobs:
             other_pkgs: clang-11
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Prepare environment
       run: |
         sudo apt-get update
         sudo apt-get install -y meson ninja-build ${{matrix.other_pkgs}}
 
-    - name: Configure build
+    - name: Configure
       env:
         CXX: ${{matrix.cxx}}
         CXXFLAGS: -std=c++${{matrix.std}} ${{matrix.cxxflags}}
@@ -34,11 +39,10 @@ jobs:
       run: |
         meson -Dbuildtype=${{matrix.build_type}} ${{runner.workspace}}/meson-build
 
-    - name: Build tests + lib
+    - name: Build
       working-directory: ${{runner.workspace}}/meson-build
       run: ninja
 
-    - name: Run tests
+    - name: Test
       working-directory: ${{runner.workspace}}/meson-build
-      run: |
-        meson test --verbose
+      run: meson test --verbose

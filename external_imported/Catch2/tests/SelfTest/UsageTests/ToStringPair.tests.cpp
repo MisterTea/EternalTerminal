@@ -27,8 +27,8 @@ TEST_CASE( "std::vector<std::pair<std::string,int> > -> toString", "[toString][p
 
 // This is pretty contrived - I figure if this works, anything will...
 TEST_CASE( "pair<pair<int,const char *,pair<std::string,int> > -> toString", "[toString][pair]" ) {
-    typedef std::pair<int,const char *> left_t;
-    typedef std::pair<std::string,int> right_t;
+    using left_t = std::pair<int,const char *>;
+    using right_t = std::pair<std::string,int>;
 
     left_t  left( 42, "Arthur" );
     right_t right( "Ford", 24 );

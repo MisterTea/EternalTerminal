@@ -3,7 +3,6 @@
 
 #include "sentry_boot.h"
 #include "sentry_database.h"
-#include "sentry_ratelimiter.h"
 #include "sentry_utils.h"
 
 /**
@@ -56,36 +55,27 @@ sentry_transport_t *sentry__transport_new_default(void);
 size_t sentry__transport_dump_queue(
     sentry_transport_t *transport, sentry_run_t *run);
 
-typedef struct sentry_prepared_http_header_s {
-    const char *key;
-    char *value;
-} sentry_prepared_http_header_t;
+void *sentry__transport_get_state(sentry_transport_t *transport);
+
+void sentry__transport_set_retry_func(
+    sentry_transport_t *transport, void (*retry_func)(void *state));
 
 /**
- * This represents a HTTP request, with method, url, headers and a body.
+ * Sets the cleanup function of the transport.
+ *
+ * This function submits cache cleanup as a task on the transport's background
+ * worker, so it runs after any pending send tasks from process_old_runs.
  */
-typedef struct sentry_prepared_http_request_s {
-    const char *method;
-    char *url;
-    sentry_prepared_http_header_t *headers;
-    size_t headers_len;
-    char *body;
-    size_t body_len;
-    bool body_owned;
-} sentry_prepared_http_request_t;
+void sentry__transport_set_cleanup_func(sentry_transport_t *transport,
+    void (*cleanup_func)(const sentry_options_t *options, void *state));
 
 /**
- * Consumes the given envelope and transforms it into into a prepared http
- * request. This can return NULL when all the items in the envelope have been
- * rate limited.
+ * Submits cache cleanup to the transport's background worker.
+ *
+ * Returns true if cleanup was submitted, false if the transport does not
+ * support async cleanup (caller should run cleanup synchronously).
  */
-sentry_prepared_http_request_t *sentry__prepare_http_request(
-    sentry_envelope_t *envelope, const sentry_dsn_t *dsn,
-    const sentry_rate_limiter_t *rl, const char *user_agent);
-
-/**
- * Free a previously allocated HTTP request.
- */
-void sentry__prepared_http_request_free(sentry_prepared_http_request_t *req);
+bool sentry__transport_submit_cleanup(
+    sentry_transport_t *transport, const sentry_options_t *options);
 
 #endif

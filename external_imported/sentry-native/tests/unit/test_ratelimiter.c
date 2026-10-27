@@ -35,3 +35,33 @@ SENTRY_TEST(rate_limit_parsing)
 
     sentry__rate_limiter_free(rl);
 }
+
+SENTRY_TEST(rate_limit_retry_after)
+{
+    const uint64_t max_retry_after = 24 * 60 * 60 * 1000;
+
+    sentry_rate_limiter_t *rl = sentry__rate_limiter_new();
+    TEST_ASSERT(!!rl);
+
+    uint64_t before = sentry__monotonic_time();
+    TEST_CHECK(
+        sentry__rate_limiter_update_from_header(rl, "999999999999999:error::"));
+    uint64_t after = sentry__monotonic_time();
+
+    uint64_t disabled_until
+        = sentry__rate_limiter_get_disabled_until(rl, SENTRY_RL_CATEGORY_ERROR);
+    TEST_CHECK(disabled_until >= before + max_retry_after);
+    TEST_CHECK(disabled_until <= after + max_retry_after);
+
+    before = sentry__monotonic_time();
+    TEST_CHECK(sentry__rate_limiter_update_from_http_retry_after(
+        rl, "999999999999999"));
+    after = sentry__monotonic_time();
+
+    disabled_until
+        = sentry__rate_limiter_get_disabled_until(rl, SENTRY_RL_CATEGORY_ANY);
+    TEST_CHECK(disabled_until >= before + max_retry_after);
+    TEST_CHECK(disabled_until <= after + max_retry_after);
+
+    sentry__rate_limiter_free(rl);
+}

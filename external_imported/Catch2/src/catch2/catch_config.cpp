@@ -92,6 +92,10 @@ namespace Catch {
                lhs.customOptions == rhs.customOptions;
     }
 
+    bool operator==( PathFilter const& lhs, PathFilter const& rhs ) {
+        return lhs.type == rhs.type && lhs.filter == rhs.filter;
+    }
+
     Config::Config( ConfigData const& data ):
         m_data( data ) {
         // We need to trim filter specs to avoid trouble with superfluous
@@ -99,9 +103,6 @@ namespace Catch {
         // aligned with whitespace).
 
         for (auto& elem : m_data.testsOrTags) {
-            elem = trim(elem);
-        }
-        for (auto& elem : m_data.sectionsToRun) {
             elem = trim(elem);
         }
 
@@ -119,6 +120,8 @@ namespace Catch {
             m_data.reporterSpecifications.push_back( std::move( *parsed ) );
         }
 
+        // Reading bazel env vars can change some parts of the config data,
+        // so we have to process the bazel env before acting on the config.
         if ( enableBazelEnvSupport() ) {
             readBazelEnvVars();
         }
@@ -167,7 +170,8 @@ namespace Catch {
     bool Config::listListeners() const      { return m_data.listListeners; }
 
     std::vector<std::string> const& Config::getTestsOrTags() const { return m_data.testsOrTags; }
-    std::vector<std::string> const& Config::getSectionsToRun() const { return m_data.sectionsToRun; }
+    std::vector<PathFilter> const& Config::getPathFilters() const { return m_data.pathFilters; }
+    bool Config::useNewFilterBehaviour() const { return m_data.useNewPathFilteringBehaviour; }
 
     std::vector<ReporterSpec> const& Config::getReporterSpecs() const {
         return m_data.reporterSpecifications;
@@ -183,6 +187,8 @@ namespace Catch {
 
     bool Config::showHelp() const { return m_data.showHelp; }
 
+    std::string const& Config::getExitGuardFilePath() const { return m_data.prematureExitGuardFilePath; }
+
     // IConfig interface
     bool Config::allowThrows() const                   { return !m_data.noThrow; }
     StringRef Config::name() const { return m_data.name.empty() ? m_data.processName : m_data.name; }
@@ -192,6 +198,9 @@ namespace Catch {
     }
     bool Config::warnAboutUnmatchedTestSpecs() const {
         return !!( m_data.warnings & WarnAbout::UnmatchedTestSpec );
+    }
+    bool Config::warnAboutInfiniteGenerators() const {
+        return !!( m_data.warnings & WarnAbout::InfiniteGenerator );
     }
     bool Config::zeroTestsCountAsSuccess() const       { return m_data.allowZeroTests; }
     ShowDurations Config::showDurations() const        { return m_data.showDurations; }
@@ -242,6 +251,26 @@ namespace Catch {
                 f << "";
                 m_data.shardIndex = bazelShardOptions->shardIndex;
                 m_data.shardCount = bazelShardOptions->shardCount;
+            }
+        }
+
+        const auto bazelExitGuardFile = Detail::getEnv( "TEST_PREMATURE_EXIT_FILE" );
+        if (bazelExitGuardFile) {
+            m_data.prematureExitGuardFilePath = bazelExitGuardFile;
+        }
+
+        const auto bazelRandomSeed = Detail::getEnv( "TEST_RANDOM_SEED" );
+        if ( bazelRandomSeed ) {
+            auto parsedSeed = parseUInt( bazelRandomSeed, 0 );
+            if ( !parsedSeed ) {
+                // Currently we handle issues with parsing other Bazel Env
+                // options by warning and ignoring the issue. So we do the
+                // same for random seed option.
+                Catch::cerr()
+                    << "Warning: could not parse 'TEST_RANDOM_SEED' ('"
+                    << bazelRandomSeed << "') as proper seed.\n";
+            } else {
+                m_data.rngSeed = *parsedSeed;
             }
         }
     }

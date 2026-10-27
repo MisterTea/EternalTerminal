@@ -30,6 +30,7 @@ namespace Catch {
     {
         m_preferences.shouldRedirectStdOut = true;
         m_preferences.shouldReportAllAssertions = true;
+        m_preferences.shouldReportAllAssertionStarts = false;
     }
 
     XmlReporter::~XmlReporter() = default;
@@ -85,8 +86,6 @@ namespace Catch {
             m_xml.ensureTagClosed();
         }
     }
-
-    void XmlReporter::assertionStarting( AssertionInfo const& ) { }
 
     void XmlReporter::assertionEnded( AssertionStats const& assertionStats ) {
 

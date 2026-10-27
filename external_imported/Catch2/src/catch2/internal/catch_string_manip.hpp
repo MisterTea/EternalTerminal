@@ -8,6 +8,7 @@
 #ifndef CATCH_STRING_MANIP_HPP_INCLUDED
 #define CATCH_STRING_MANIP_HPP_INCLUDED
 
+#include <catch2/internal/catch_lifetimebound.hpp>
 #include <catch2/internal/catch_stringref.hpp>
 
 #include <cstdint>
@@ -28,10 +29,10 @@ namespace Catch {
     //! Returns a new string without whitespace at the start/end
     std::string trim( std::string const& str );
     //! Returns a substring of the original ref without whitespace. Beware lifetimes!
-    StringRef trim(StringRef ref);
+    StringRef trim( StringRef ref CATCH_ATTR_LIFETIMEBOUND );
 
     // !!! Be aware, returns refs into original string - make sure original string outlives them
-    std::vector<StringRef> splitStringRef( StringRef str, char delimiter );
+    std::vector<StringRef> splitStringRef( StringRef str CATCH_ATTR_LIFETIMEBOUND, char delimiter );
     bool replaceInPlace( std::string& str, std::string const& replaceThis, std::string const& withThis );
 
     /**
@@ -49,7 +50,7 @@ namespace Catch {
         StringRef m_label;
 
     public:
-        constexpr pluralise(std::uint64_t count, StringRef label):
+        constexpr pluralise(std::uint64_t count, StringRef label CATCH_ATTR_LIFETIMEBOUND):
             m_count(count),
             m_label(label)
         {}

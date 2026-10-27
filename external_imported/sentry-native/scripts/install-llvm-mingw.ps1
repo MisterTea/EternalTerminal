@@ -1,9 +1,9 @@
 Start-Sleep -Milliseconds 1 # See: https://stackoverflow.com/a/49859001
 
-$LLVM_MINGW_RELEASE = "20240518";
+$LLVM_MINGW_RELEASE = "20251202";
 $LLVM_MINGW_PKG = "llvm-mingw-${LLVM_MINGW_RELEASE}-ucrt-x86_64"
 $LLVM_MINGW_DL_URL = "https://github.com/mstorsjo/llvm-mingw/releases/download/${LLVM_MINGW_RELEASE}/${LLVM_MINGW_PKG}.zip"
-$LLVM_MINGW_DL_SHA512 = "4758b41533930f9b4d646f60406f37a644dedd662d0adb8586f544c1b875fc86ece51ce2bb7b060075c3d081533f1a7aafa816ccdee2101e507aa047024d8d3f"
+$LLVM_MINGW_DL_SHA256 = "f2adfc859287f4051abf5c23c7476b16a982d0f8e6c32aa2f929a06535454f4b"
 $DL_BASEDIR = "$env:GITHUB_WORKSPACE\dl"
 $LLVM_MINGW_DL_PATH = "${DL_BASEDIR}\llvm-mingw.zip"
 if (!(Test-Path -Path "$DL_BASEDIR")) { New-Item -ItemType Directory -Force -Path "$DL_BASEDIR" }
@@ -11,12 +11,12 @@ if (!(Test-Path -Path "$DL_BASEDIR")) { New-Item -ItemType Directory -Force -Pat
 # Download LLVM-mingw
 $CurlArguments = '-s', '-Lf', '-o', "${LLVM_MINGW_DL_PATH}", "${LLVM_MINGW_DL_URL}"
 & curl.exe @CurlArguments
-$dl_zip_hash = Get-FileHash -LiteralPath "${LLVM_MINGW_DL_PATH}" -Algorithm SHA512
-if ($dl_zip_hash.Hash -eq $LLVM_MINGW_DL_SHA512) {
+$dl_zip_hash = Get-FileHash -LiteralPath "${LLVM_MINGW_DL_PATH}" -Algorithm SHA256
+if ($dl_zip_hash.Hash -eq $LLVM_MINGW_DL_SHA256) {
 	Write-Host "Successfully downloaded LLVM-mingw .zip"
 }
 Else {
-	Write-Error "The downloaded LLVM-mingw zip hash '$($dl_zip_hash.Hash)' does not match the expected hash: '$LLVM_MINGW_DL_SHA512'"
+	Write-Error "The downloaded LLVM-mingw zip hash '$($dl_zip_hash.Hash)' does not match the expected hash: '$LLVM_MINGW_DL_SHA256'"
 }
 
 # Extract LLVM-mingw
@@ -55,4 +55,20 @@ Expand-Archive -LiteralPath "${NINJA_DL_PATH}" -DestinationPath "${NINJA_INSTALL
 "PATH=${NINJA_INSTALL_PATH}; $env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
 # export CMAKE_DEFINES to the runner environment
-"CMAKE_DEFINES=${env:CMAKE_DEFINES} -DCMAKE_C_COMPILER=${env:MINGW_PKG_PREFIX}-gcc -DCMAKE_CXX_COMPILER=${env:MINGW_PKG_PREFIX}-g++ -DCMAKE_RC_COMPILER=${env:MINGW_PKG_PREFIX}-windres -DCMAKE_ASM_MASM_COMPILER=${env:MINGW_ASM_MASM_COMPILER}" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+$cmakeDefines = @()
+
+if ($env:CMAKE_DEFINES) {
+  $cmakeDefines += $env:CMAKE_DEFINES
+}
+
+$cmakeDefines += @(
+  "-DCMAKE_C_COMPILER=$($env:MINGW_PKG_PREFIX)-gcc"
+  "-DCMAKE_CXX_COMPILER=$($env:MINGW_PKG_PREFIX)-g++"
+  "-DCMAKE_RC_COMPILER=$($env:MINGW_PKG_PREFIX)-windres"
+  "-DCMAKE_ASM_MASM_COMPILER:FILEPATH=$($LLVM_MINGW_INSTALL_PATH -replace '\\','/')/bin/$($env:MINGW_ASM_MASM_COMPILER).exe"
+  "-DCMAKE_ASM_MASM_FLAGS=$env:MINGW_ASM_MASM_FLAGS"
+)
+
+"CMAKE_DEFINES=$($cmakeDefines -join ' ')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+

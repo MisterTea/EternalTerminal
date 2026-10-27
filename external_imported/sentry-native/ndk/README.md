@@ -7,8 +7,8 @@
 ## Resources
 
 - [SDK Documentation](https://docs.sentry.io/platforms/native/)
-- [Discord](https://discord.gg/ez5KZN7) server for project discussions
-- Follow [@getsentry](https://twitter.com/getsentry) on Twitter for updates
+- [Discord](https://discord.gg/sentry) server for project discussions
+- Follow [@getsentry](https://x.com/sentry) on X for updates
 
 ## About
 

@@ -66,16 +66,23 @@ test execution. Specifically it understands
  * JUnit output path via `XML_OUTPUT_FILE`
  * Test filtering via `TESTBRIDGE_TEST_ONLY`
  * Test sharding via `TEST_SHARD_INDEX`, `TEST_TOTAL_SHARDS`, and `TEST_SHARD_STATUS_FILE`
+ * Creating a file to signal premature test exit via `TEST_PREMATURE_EXIT_FILE`
+ * Setting the RNG seed via `TEST_RANDOM_SEED`
 
 > Support for `XML_OUTPUT_FILE` was [introduced](https://github.com/catchorg/Catch2/pull/2399) in Catch2 3.0.1
 
 > Support for `TESTBRIDGE_TEST_ONLY` and sharding was introduced in Catch2 3.2.0
+
+> Support for `TEST_PREMATURE_EXIT_FILE` and `TEST_RANDOM_SEED` was introduced in Catch2 3.11.0
 
 This integration is enabled via either a [compile time configuration
 option](configuration.md#bazel-support), or via `BAZEL_TEST` environment
 variable set to "1".
 
 > Support for `BAZEL_TEST` was [introduced](https://github.com/catchorg/Catch2/pull/2459) in Catch2 3.1.0
+
+Note that if both the Bazel environment var and command line option for
+something are used, the environment variable wins.
 
 
 ## Low-level tools

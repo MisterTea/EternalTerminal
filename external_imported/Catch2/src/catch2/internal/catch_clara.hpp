@@ -66,15 +66,13 @@ namespace Catch {
             };
 
             template <typename F, typename = void>
-            struct is_unary_function : std::false_type {};
+            static constexpr bool is_unary_function_v = false;
 
             template <typename F>
-            struct is_unary_function<
+            static constexpr bool is_unary_function_v<
                 F,
-                Catch::Detail::void_t<decltype(
-                    std::declval<F>()( fake_arg() ) )
-                >
-            > : std::true_type {};
+                Catch::Detail::void_t<decltype( std::declval<F>()(
+                    fake_arg() ) )>> = true;
 
             // Traits for extracting arg and return type of lambdas (for single
             // argument lambdas)
@@ -507,14 +505,14 @@ namespace Catch {
 
                 template <typename T,
                           typename = typename std::enable_if_t<
-                              !Detail::is_unary_function<T>::value>>
+                              !Detail::is_unary_function_v<T>>>
                 ParserRefImpl( T& ref, StringRef hint ):
                     m_ref( std::make_shared<BoundValueRef<T>>( ref ) ),
                     m_hint( hint ) {}
 
                 template <typename LambdaT,
                           typename = typename std::enable_if_t<
-                              Detail::is_unary_function<LambdaT>::value>>
+                              Detail::is_unary_function_v<LambdaT>>>
                 ParserRefImpl( LambdaT const& ref, StringRef hint ):
                     m_ref( std::make_shared<BoundLambda<LambdaT>>( ref ) ),
                     m_hint( hint ) {}
@@ -581,7 +579,7 @@ namespace Catch {
 
             template <typename LambdaT,
                       typename = typename std::enable_if_t<
-                          Detail::is_unary_function<LambdaT>::value>>
+                          Detail::is_unary_function_v<LambdaT>>>
             Opt( LambdaT const& ref, StringRef hint ):
                 ParserRefImpl( ref, hint ) {}
 
@@ -591,7 +589,7 @@ namespace Catch {
 
             template <typename T,
                       typename = typename std::enable_if_t<
-                          !Detail::is_unary_function<T>::value>>
+                          !Detail::is_unary_function_v<T>>>
             Opt( T& ref, StringRef hint ):
                 ParserRefImpl( ref, hint ) {}
 

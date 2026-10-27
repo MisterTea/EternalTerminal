@@ -46,6 +46,14 @@ trigger_fastfail_crash()
     __fastfail(77);
 }
 
+static int
+before_screenshot_skip(sentry_value_t event, void *user_data)
+{
+    (void)event;
+    (void)user_data;
+    return 0;
+}
+
 static LRESULT CALLBACK
 wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -74,14 +82,19 @@ int WINAPI
 wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine,
     int nCmdShow)
 {
-    sentry_options_t *options = sentry_options_new();
-    sentry_options_set_release(options, "sentry-screenshot");
-    sentry_options_set_attach_screenshot(options, true);
-    sentry_options_set_debug(options, true);
-    sentry_init(options);
-
     int argc = 0;
     LPWSTR *argv = CommandLineToArgvW(lpCmdLine, &argc);
+
+    sentry_options_t *options = sentry_options_new();
+    sentry_options_set_release(options, "sentry-screenshot");
+    sentry_options_set_auto_session_tracking(options, false);
+    sentry_options_set_attach_screenshot(options, true);
+    sentry_options_set_debug(options, true);
+    if (has_arg(argc, argv, L"before-screenshot")) {
+        sentry_options_set_before_screenshot(
+            options, before_screenshot_skip, NULL);
+    }
+    sentry_init(options);
 
 #if (WINVER >= 0x0605)
     if (has_arg(argc, argv, L"dpi-unaware")) {

@@ -17,7 +17,24 @@ namespace Catch {
 
 #ifdef CATCH_PLATFORM_MAC
 
-    #define CATCH_TRAP() __asm__("int $3\n" : : ) /* NOLINT */
+    #if defined(__i386__) || defined(__x86_64__)
+        #define CATCH_TRAP() __asm__("int $3\n" : : ) /* NOLINT */
+    #elif defined(__aarch64__)
+        #define CATCH_TRAP()  __asm__(".inst 0xd43e0000")
+    #endif
+
+#elif defined(CATCH_PLATFORM_IPHONE)
+
+    // use inline assembler
+    #if defined(__i386__) || defined(__x86_64__)
+        #define CATCH_TRAP()  __asm__("int $3")
+    #elif defined(__aarch64__)
+        #define CATCH_TRAP()  __asm__(".inst 0xd4200000")
+    #elif defined(__arm__) && !defined(__thumb__)
+        #define CATCH_TRAP()  __asm__(".inst 0xe7f001f0")
+    #elif defined(__arm__) &&  defined(__thumb__)
+        #define CATCH_TRAP()  __asm__(".inst 0xde01")
+    #endif
 
 #elif defined(CATCH_PLATFORM_LINUX)
     // If we can use inline assembler, do it because this allows us to break
@@ -37,10 +54,12 @@ namespace Catch {
     #define CATCH_TRAP() DebugBreak()
 #endif
 
-#ifdef CATCH_TRAP
-    #define CATCH_BREAK_INTO_DEBUGGER() []{ if( Catch::isDebuggerActive() ) { CATCH_TRAP(); } }()
-#else
-    #define CATCH_BREAK_INTO_DEBUGGER() []{}()
+#ifndef CATCH_BREAK_INTO_DEBUGGER
+    #ifdef CATCH_TRAP
+        #define CATCH_BREAK_INTO_DEBUGGER() []{ if( Catch::isDebuggerActive() ) { CATCH_TRAP(); } }()
+    #else
+        #define CATCH_BREAK_INTO_DEBUGGER() []{}()
+    #endif
 #endif
 
 #endif // TWOBLUECUBES_CATCH_DEBUGGER_H_INCLUDED

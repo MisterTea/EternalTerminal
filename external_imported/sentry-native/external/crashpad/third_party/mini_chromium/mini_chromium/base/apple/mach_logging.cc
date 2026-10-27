@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <string>
 
+#include "base/immediate_crash.h"
 #include "base/strings/stringprintf.h"
 
 #if !BUILDFLAG(IS_IOS)
@@ -37,8 +38,18 @@ MachLogMessage::MachLogMessage(const char* function,
     : LogMessage(function, file_path, line, severity), mach_err_(mach_err) {}
 
 MachLogMessage::~MachLogMessage() {
+  AppendError();
+}
+
+void MachLogMessage::AppendError() {
   stream() << ": " << mach_error_string(mach_err_)
            << FormatMachErrorNumber(mach_err_);
+}
+
+MachLogMessageFatal::~MachLogMessageFatal() {
+  AppendError();
+  Flush();
+  base::ImmediateCrash();
 }
 
 #if !BUILDFLAG(IS_IOS)
@@ -52,6 +63,10 @@ BootstrapLogMessage::BootstrapLogMessage(const char* function,
       bootstrap_err_(bootstrap_err) {}
 
 BootstrapLogMessage::~BootstrapLogMessage() {
+  AppendError();
+}
+
+void BootstrapLogMessage::AppendError() {
   stream() << ": " << bootstrap_strerror(bootstrap_err_);
 
   switch (bootstrap_err_) {
@@ -77,6 +92,12 @@ BootstrapLogMessage::~BootstrapLogMessage() {
       break;
     }
   }
+}
+
+BootstrapLogMessageFatal::~BootstrapLogMessageFatal() {
+  AppendError();
+  Flush();
+  base::ImmediateCrash();
 }
 
 #endif  // !BUILDFLAG(IS_IOS)

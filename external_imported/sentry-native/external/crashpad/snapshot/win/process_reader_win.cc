@@ -486,8 +486,41 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
 
 #ifdef CLIENT_STACKTRACES_ENABLED
   DWORD options = SymGetOptions();
-  SymSetOptions(options | SYMOPT_UNDNAME);
-  SymInitialize(process_, NULL, TRUE);
+  SymSetOptions(options | SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS
+      | SYMOPT_FAIL_CRITICAL_ERRORS | SYMOPT_NO_PROMPTS);
+
+  // Build a dbghelp search path from every loaded module's directory so it
+  // can find each module's PDB next to its DLL and resolve symbols
+  std::wstring sym_search_path;
+  std::vector<ProcessInfo::Module> sym_modules;
+  if (process_info_.Modules(&sym_modules)) {
+    std::vector<std::wstring> dirs;
+    for (const auto& module : sym_modules) {
+      const std::wstring& module_path = module.name;
+      size_t sep = module_path.find_last_of(L"\\/");
+      if (sep == std::wstring::npos || sep == 0)
+        continue;
+      std::wstring dir = module_path.substr(0, sep);
+      bool dup = false;
+      for (const auto& existing : dirs) {
+        if (existing.size() == dir.size()
+            && _wcsicmp(existing.c_str(), dir.c_str()) == 0) {
+          dup = true;
+          break;
+        }
+      }
+      if (dup)
+        continue;
+      dirs.push_back(dir);
+      if (!sym_search_path.empty())
+        sym_search_path.push_back(L';');
+      sym_search_path.append(dir);
+    }
+  }
+
+  SymInitializeW(process_,
+      sym_search_path.empty() ? nullptr : sym_search_path.c_str(),
+      TRUE);
 #endif
 
   for (unsigned long i = 0; i < process_information->NumberOfThreads; ++i) {

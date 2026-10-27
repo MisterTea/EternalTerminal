@@ -295,9 +295,14 @@ void ExceptionHandlerServer::InitializeWithInheritedDataForInitialClient(
 
   first_pipe_instance_.reset(initial_client_data.first_pipe_instance());
 
-  // TODO(scottmg): Vista+. Might need to pass through or possibly find an Nt*.
-  auto data = base::HeapArray<uint8_t>::Uninit(sizeof(wchar_t) * _MAX_PATH +
-                                               sizeof(FILE_NAME_INFO));
+  // Allocate buffer for FILE_NAME_INFO with maximum pipe name length.
+  // According to Windows documentation, pipe name strings are limited to 256
+  // characters: https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-names
+  // FILE_NAME_INFO has a flexible array member (FileName) and provides an
+  // explicit FileNameLength field, so no null terminator is needed.
+  constexpr size_t kMaxPipeNameChars = 256;
+  auto data = base::HeapArray<uint8_t>::Uninit(
+      sizeof(FILE_NAME_INFO) + sizeof(wchar_t) * kMaxPipeNameChars);
   if (!GetFileInformationByHandleEx(first_pipe_instance_.get(),
                                     FileNameInfo,
                                     data.data(),
@@ -414,6 +419,70 @@ void ExceptionHandlerServer::Stop() {
   PostQueuedCompletionStatus(port_.get(), 0, 0, nullptr);
 }
 
+static void HandleAddAttachmentV2(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
+
+  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return;
+  }
+
+  if (path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: not aligned to wchar_t boundary";
+    return;
+  }
+
+  auto path_buffer =
+      base::HeapArray<wchar_t>::Uninit(path_length_bytes / sizeof(wchar_t));
+
+  if (!LoggingReadFileExactly(
+          service_context.pipe(), path_buffer.data(), path_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment path";
+    return;
+  }
+
+  path_buffer[path_buffer.size() - 1] = L'\0';
+
+  ServerToClientMessage response = {};
+  service_context.delegate()->ExceptionHandlerServerAttachmentAdded(
+      base::FilePath(std::wstring(path_buffer.data())));
+  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+}
+
+static void HandleRemoveAttachmentV2(
+    const internal::PipeServiceContext& service_context,
+    const ClientToServerMessage& message) {
+  const uint32_t path_length_bytes = message.attachment_v2.path_length_bytes;
+
+  if (path_length_bytes == 0 || path_length_bytes > kMaxPathBytes) {
+    LOG(ERROR) << "Invalid path length: " << path_length_bytes;
+    return;
+  }
+
+  if (path_length_bytes % sizeof(wchar_t) != 0) {
+    LOG(ERROR) << "Invalid path length: not aligned to wchar_t boundary";
+    return;
+  }
+
+  auto path_buffer =
+      base::HeapArray<wchar_t>::Uninit(path_length_bytes / sizeof(wchar_t));
+
+  if (!LoggingReadFileExactly(
+          service_context.pipe(), path_buffer.data(), path_length_bytes)) {
+    LOG(ERROR) << "Failed to read attachment path";
+    return;
+  }
+
+  path_buffer[path_buffer.size() - 1] = L'\0';
+
+  ServerToClientMessage response = {};
+  service_context.delegate()->ExceptionHandlerServerAttachmentRemoved(
+      base::FilePath(std::wstring(path_buffer.data())));
+  LoggingWriteFile(service_context.pipe(), &response, sizeof(response));
+}
+
 // This function must be called with service_context.pipe() already connected to
 // a client pipe. It exchanges data with the client and adds a ClientData record
 // to service_context->clients().
@@ -472,6 +541,24 @@ bool ExceptionHandlerServer::ServiceClientConnection(
       LoggingWriteFile(service_context.pipe(),
                        &shutdown_response,
                        sizeof(shutdown_response));
+      return false;
+    }
+
+    case ClientToServerMessage::kAddAttachmentV2: {
+      HandleAddAttachmentV2(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kRemoveAttachmentV2: {
+      HandleRemoveAttachmentV2(service_context, message);
+      return false;
+    }
+
+    case ClientToServerMessage::kRequestRetry: {
+      ServerToClientMessage response = {};
+      service_context.delegate()->ExceptionHandlerServerRetryRequested();
+      LoggingWriteFile(
+          service_context.pipe(), &response, sizeof(response));
       return false;
     }
 

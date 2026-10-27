@@ -29,7 +29,10 @@ public final class io/sentry/ndk/DebugImage {
 }
 
 public abstract interface class io/sentry/ndk/INativeScope {
+	public abstract fun addAttachment (Ljava/lang/String;)V
+	public abstract fun addAttachmentBytes ([BLjava/lang/String;)V
 	public abstract fun addBreadcrumb (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun clearAttachments ()V
 	public abstract fun removeExtra (Ljava/lang/String;)V
 	public abstract fun removeTag (Ljava/lang/String;)V
 	public abstract fun removeUser ()V
@@ -49,8 +52,14 @@ public final class io/sentry/ndk/NativeModuleListLoader {
 
 public final class io/sentry/ndk/NativeScope : io/sentry/ndk/INativeScope {
 	public fun <init> ()V
+	public fun addAttachment (Ljava/lang/String;)V
+	public fun addAttachmentBytes ([BLjava/lang/String;)V
 	public fun addBreadcrumb (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun clearAttachments ()V
+	public static fun nativeAddAttachment (Ljava/lang/String;)V
+	public static fun nativeAddAttachmentBytes ([BLjava/lang/String;)V
 	public static fun nativeAddBreadcrumb (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static fun nativeClearAttachments ()V
 	public static fun nativeRemoveExtra (Ljava/lang/String;)V
 	public static fun nativeRemoveTag (Ljava/lang/String;)V
 	public static fun nativeRemoveUser ()V
@@ -77,6 +86,7 @@ public final class io/sentry/ndk/NdkHandlerStrategy : java/lang/Enum {
 
 public final class io/sentry/ndk/NdkOptions {
 	public fun <init> (Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V
+	public fun getAppHangTimeoutMillis ()J
 	public fun getDist ()Ljava/lang/String;
 	public fun getDsn ()Ljava/lang/String;
 	public fun getEnvironment ()Ljava/lang/String;
@@ -87,6 +97,9 @@ public final class io/sentry/ndk/NdkOptions {
 	public fun getSdkName ()Ljava/lang/String;
 	public fun getTracesSampleRate ()F
 	public fun isDebug ()Z
+	public fun isEnableAppHangTracking ()Z
+	public fun setAppHangTimeoutMillis (J)V
+	public fun setEnableAppHangTracking (Z)V
 	public fun setNdkHandlerStrategy (Lio/sentry/ndk/NdkHandlerStrategy;)V
 	public fun setTracesSampleRate (F)V
 }
@@ -95,5 +108,16 @@ public final class io/sentry/ndk/SentryNdk {
 	public static fun close ()V
 	public static fun init (Lio/sentry/ndk/NdkOptions;)V
 	public static fun loadNativeLibraries ()V
+	public static fun preload ()V
+}
+
+public final class io/sentry/ndk/SentryNdkPreloadProvider : android/content/ContentProvider {
+	public fun <init> ()V
+	public fun delete (Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
+	public fun getType (Landroid/net/Uri;)Ljava/lang/String;
+	public fun insert (Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
+	public fun onCreate ()Z
+	public fun query (Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
+	public fun update (Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
 }
 

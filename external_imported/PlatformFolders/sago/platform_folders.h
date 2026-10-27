@@ -45,6 +45,9 @@ void appendExtraFoldersTokenizer(const char* envName, const char* envValue, std:
 #ifdef _WIN32
 std::string win32_utf16_to_utf8(const wchar_t* wstr);
 #endif
+#ifndef _WIN32
+std::string getHome();
+#endif
 }
 #endif  //DOXYGEN_SHOULD_SKIP_THIS
 
@@ -271,8 +274,8 @@ public:
 	 */
 	std::string getSaveGamesFolder1() const;
 private:
-	PlatformFolders(const PlatformFolders&);
-	PlatformFolders& operator=(const PlatformFolders&);
+	PlatformFolders(const PlatformFolders&) = delete;
+	PlatformFolders& operator=(const PlatformFolders&) = delete;
 #if !defined(_WIN32) && !defined(__APPLE__)
 	struct PlatformFoldersData;
 	PlatformFoldersData* data;

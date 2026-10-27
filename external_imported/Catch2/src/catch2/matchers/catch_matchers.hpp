@@ -10,6 +10,7 @@
 
 #include <catch2/matchers/internal/catch_matchers_impl.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
+#include <catch2/internal/catch_lifetimebound.hpp>
 
 #include <string>
 #include <vector>
@@ -19,10 +20,10 @@ namespace Matchers {
 
     class MatcherUntypedBase {
     public:
-        MatcherUntypedBase() = default;
+        constexpr MatcherUntypedBase() = default;
 
-        MatcherUntypedBase(MatcherUntypedBase const&) = default;
-        MatcherUntypedBase(MatcherUntypedBase&&) = default;
+        constexpr MatcherUntypedBase(MatcherUntypedBase const&) = default;
+        constexpr MatcherUntypedBase(MatcherUntypedBase&&) = default;
 
         MatcherUntypedBase& operator = (MatcherUntypedBase const&) = delete;
         MatcherUntypedBase& operator = (MatcherUntypedBase&&) = delete;
@@ -30,9 +31,9 @@ namespace Matchers {
         std::string toString() const;
 
     protected:
-        virtual ~MatcherUntypedBase(); // = default;
-        virtual std::string describe() const = 0;
-        mutable std::string m_cachedToString;
+        CATCH_DESTRUCTOR_CONSTEXPR virtual ~MatcherUntypedBase() = default;
+        //! Should be overridden, but we provide default "undescribed" impl
+        virtual std::string describe() const;
     };
 
 
@@ -79,11 +80,15 @@ namespace Matchers {
                 return description;
             }
 
-            friend MatchAllOf operator&& (MatchAllOf&& lhs, MatcherBase<ArgT> const& rhs) {
+            friend MatchAllOf operator&&( MatchAllOf&& lhs,
+                                          MatcherBase<ArgT> const& rhs
+                                              CATCH_ATTR_LIFETIMEBOUND ) {
                 lhs.m_matchers.push_back(&rhs);
                 return CATCH_MOVE(lhs);
             }
-            friend MatchAllOf operator&& (MatcherBase<ArgT> const& lhs, MatchAllOf&& rhs) {
+            friend MatchAllOf
+            operator&&( MatcherBase<ArgT> const& lhs CATCH_ATTR_LIFETIMEBOUND,
+                        MatchAllOf&& rhs ) {
                 rhs.m_matchers.insert(rhs.m_matchers.begin(), &lhs);
                 return CATCH_MOVE(rhs);
             }
@@ -131,11 +136,15 @@ namespace Matchers {
                 return description;
             }
 
-            friend MatchAnyOf operator|| (MatchAnyOf&& lhs, MatcherBase<ArgT> const& rhs) {
+            friend MatchAnyOf operator||( MatchAnyOf&& lhs,
+                                          MatcherBase<ArgT> const& rhs
+                                              CATCH_ATTR_LIFETIMEBOUND ) {
                 lhs.m_matchers.push_back(&rhs);
                 return CATCH_MOVE(lhs);
             }
-            friend MatchAnyOf operator|| (MatcherBase<ArgT> const& lhs, MatchAnyOf&& rhs) {
+            friend MatchAnyOf
+            operator||( MatcherBase<ArgT> const& lhs CATCH_ATTR_LIFETIMEBOUND,
+                        MatchAnyOf&& rhs ) {
                 rhs.m_matchers.insert(rhs.m_matchers.begin(), &lhs);
                 return CATCH_MOVE(rhs);
             }
@@ -155,7 +164,8 @@ namespace Matchers {
             MatcherBase<ArgT> const& m_underlyingMatcher;
 
         public:
-            explicit MatchNotOf( MatcherBase<ArgT> const& underlyingMatcher ):
+            explicit MatchNotOf( MatcherBase<ArgT> const& underlyingMatcher
+                                     CATCH_ATTR_LIFETIMEBOUND ):
                 m_underlyingMatcher( underlyingMatcher )
             {}
 
@@ -171,16 +181,22 @@ namespace Matchers {
     } // namespace Detail
 
     template <typename T>
-    Detail::MatchAllOf<T> operator&& (MatcherBase<T> const& lhs, MatcherBase<T> const& rhs) {
+    Detail::MatchAllOf<T>
+    operator&&( MatcherBase<T> const& lhs CATCH_ATTR_LIFETIMEBOUND,
+                MatcherBase<T> const& rhs CATCH_ATTR_LIFETIMEBOUND ) {
         return Detail::MatchAllOf<T>{} && lhs && rhs;
     }
+
     template <typename T>
-    Detail::MatchAnyOf<T> operator|| (MatcherBase<T> const& lhs, MatcherBase<T> const& rhs) {
+    Detail::MatchAnyOf<T>
+    operator||( MatcherBase<T> const& lhs CATCH_ATTR_LIFETIMEBOUND,
+                MatcherBase<T> const& rhs CATCH_ATTR_LIFETIMEBOUND ) {
         return Detail::MatchAnyOf<T>{} || lhs || rhs;
     }
 
     template <typename T>
-    Detail::MatchNotOf<T> operator! (MatcherBase<T> const& matcher) {
+    Detail::MatchNotOf<T>
+    operator!( MatcherBase<T> const& matcher CATCH_ATTR_LIFETIMEBOUND ) {
         return Detail::MatchNotOf<T>{ matcher };
     }
 
@@ -199,6 +215,19 @@ namespace Matchers {
   #define CATCH_CHECK_THAT( arg, matcher ) INTERNAL_CHECK_THAT( "CATCH_CHECK_THAT", matcher, Catch::ResultDisposition::ContinueOnFailure, arg )
   #define CATCH_REQUIRE_THAT( arg, matcher ) INTERNAL_CHECK_THAT( "CATCH_REQUIRE_THAT", matcher, Catch::ResultDisposition::Normal, arg )
 
+  #if !defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
+    #define CATCH_STATIC_REQUIRE_THAT( arg, matcher ) \
+             static_assert( ( matcher ).match( arg ), #matcher ".match( " #arg " )"); \
+             CATCH_SUCCEED( #matcher ".match( " #arg " )" )
+    #define CATCH_STATIC_CHECK_THAT( arg, matcher )   \
+             static_assert( ( matcher ).match( arg ), #matcher ".match( " #arg " )"); \
+             CATCH_SUCCEED( #matcher ".match( " #arg " )" )
+  #else
+    #define CATCH_STATIC_REQUIRE_THAT( arg, matcher ) CATCH_REQUIRE_THAT( arg, matcher )
+    #define CATCH_STATIC_CHECK_THAT( arg, matcher ) CATCH_CHECK_THAT( arg, matcher )
+  #endif
+
+
 #elif defined(CATCH_CONFIG_PREFIX_ALL) && defined(CATCH_CONFIG_DISABLE)
 
   #define CATCH_REQUIRE_THROWS_WITH( expr, matcher )                   (void)(0)
@@ -209,6 +238,9 @@ namespace Matchers {
 
   #define CATCH_CHECK_THAT( arg, matcher )                             (void)(0)
   #define CATCH_REQUIRE_THAT( arg, matcher )                           (void)(0)
+
+  #define CATCH_STATIC_REQUIRE_THAT( arg, matcher )                    (void)(0)
+  #define CATCH_STATIC_CHECK_THAT( arg, matcher )                      (void)(0)
 
 #elif !defined(CATCH_CONFIG_PREFIX_ALL) && !defined(CATCH_CONFIG_DISABLE)
 
@@ -221,6 +253,19 @@ namespace Matchers {
   #define CHECK_THAT( arg, matcher ) INTERNAL_CHECK_THAT( "CHECK_THAT", matcher, Catch::ResultDisposition::ContinueOnFailure, arg )
   #define REQUIRE_THAT( arg, matcher ) INTERNAL_CHECK_THAT( "REQUIRE_THAT", matcher, Catch::ResultDisposition::Normal, arg )
 
+  #if !defined(CATCH_CONFIG_RUNTIME_STATIC_REQUIRE)
+    #define STATIC_REQUIRE_THAT( arg, matcher ) \
+             static_assert( ( matcher ).match( arg ), #matcher ".match( " #arg " )"); \
+             SUCCEED( #matcher ".match( " #arg " )" )
+    #define STATIC_CHECK_THAT( arg, matcher )   \
+             static_assert( ( matcher ).match( arg ), #matcher ".match( " #arg " )"); \
+             SUCCEED( #matcher ".match( " #arg " )" )
+  #else
+    #define STATIC_REQUIRE_THAT( arg, matcher ) REQUIRE_THAT( arg, matcher )
+    #define STATIC_CHECK_THAT( arg, matcher ) CHECK_THAT( arg, matcher )
+  #endif
+
+
 #elif !defined(CATCH_CONFIG_PREFIX_ALL) && defined(CATCH_CONFIG_DISABLE)
 
   #define REQUIRE_THROWS_WITH( expr, matcher )                   (void)(0)
@@ -231,6 +276,9 @@ namespace Matchers {
 
   #define CHECK_THAT( arg, matcher )                             (void)(0)
   #define REQUIRE_THAT( arg, matcher )                           (void)(0)
+
+  #define STATIC_REQUIRE_THAT( arg, matcher )                    (void)(0)
+  #define STATIC_CHECK_THAT( arg, matcher )                      (void)(0)
 
 #endif // end of user facing macro declarations
 

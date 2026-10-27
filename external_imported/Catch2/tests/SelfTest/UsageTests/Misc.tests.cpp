@@ -56,7 +56,7 @@ namespace {
 
     CATCH_INTERNAL_START_WARNINGS_SUPPRESSION
     CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS
-    static AutoTestReg autoTestReg;
+    static const AutoTestReg autoTestReg;
     CATCH_INTERNAL_STOP_WARNINGS_SUPPRESSION
 
         template<typename T>
@@ -334,6 +334,10 @@ TEMPLATE_TEST_CASE( "TemplateTest: vectors can be sized and resized", "[vector][
     }
 }
 
+TEMPLATE_TEST_CASE_SIG("TemplateTestSig: compiles with a single int parameter", "[template][singleint]", ((int V), V), 1, 3, 6) {}
+
+TEMPLATE_TEST_CASE_SIG("TemplateTestSig: compiles with two type parameters", "[template][onlytypes]", ((typename U, typename V), U, V), (int,int)) {}
+
 TEMPLATE_TEST_CASE_SIG("TemplateTestSig: vectors can be sized and resized", "[vector][template][nttp]", ((typename TestType, int V), TestType, V), (int,5), (float,4), (std::string,15), ((std::tuple<int, float>), 6)) {
 
     std::vector<TestType> v(V);
@@ -558,3 +562,15 @@ TEST_CASE("Validate SEH behavior - no crash for stack unwinding", "[approvals][!
 }
 
 #endif // _MSC_VER
+
+TEST_CASE( "Comparing (and stringifying) volatile pointers works",
+           "[volatile]" ) {
+    volatile int* ptr = nullptr;
+    REQUIRE_FALSE( ptr );
+    REQUIRE( ptr == ptr );
+    REQUIRE_FALSE( ptr != ptr );
+    REQUIRE_FALSE( ptr < ptr );
+    REQUIRE( ptr <= ptr );
+    REQUIRE_FALSE( ptr > ptr );
+    REQUIRE( ptr >= ptr );
+}

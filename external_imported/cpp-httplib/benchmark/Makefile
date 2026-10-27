@@ -1,14 +1,18 @@
-CXXFLAGS = -std=c++11 -O2 -I..
+CXXFLAGS = -O2 -I..
+
+CPPHTTPLIB_CXXFLAGS = -std=c++11
+CROW_CXXFLAGS = -std=c++17
 
 CPPHTTPLIB_FLAGS = -DCPPHTTPLIB_THREAD_POOL_COUNT=16
 
 BENCH = bombardier -c 10 -d 5s localhost:8080
 MONITOR = ali http://localhost:8080
+WAIT = while ! nc -z localhost 8080 >/dev/null 2>&1; do sleep 0.05; done
 
 # cpp-httplib
 bench: server
 	@echo "--------------------\n cpp-httplib latest\n--------------------\n"
-	@./server & export PID=$$!; $(BENCH); kill $${PID}
+	@./server & export PID=$$!; $(WAIT); $(BENCH); kill $${PID}
 	@echo ""
 
 monitor: server
@@ -18,42 +22,12 @@ run : server
 	@./server
 
 server : cpp-httplib/main.cpp ../httplib.h
-	@g++ -o $@ $(CXXFLAGS) $(CPPHTTPLIB_FLAGS) cpp-httplib/main.cpp
-
-# cpp-httplib v0.19.0
-bench-v19: server-v19
-	@echo "---------------------\n cpp-httplib v0.19.0\n---------------------\n"
-	@./server-v19 & export PID=$$!; $(BENCH); kill $${PID}
-	@echo ""
-
-monitor-v19: server-v19
-	@./server-v19 & export PID=$$!; $(MONITOR); kill $${PID}
-
-run-v19 : server-v19
-	@./server-v19
-
-server-v19 : cpp-httplib-v19/main.cpp cpp-httplib-v19/httplib.h
-	@g++ -o $@ $(CXXFLAGS) $(CPPHTTPLIB_FLAGS) cpp-httplib-v19/main.cpp
-
-# cpp-httplib v0.18.0
-bench-v18: server-v18
-	@echo "---------------------\n cpp-httplib v0.18.0\n---------------------\n"
-	@./server-v18 & export PID=$$!; $(BENCH); kill $${PID}
-	@echo ""
-
-monitor-v18: server-v18
-	@./server-v18 & export PID=$$!; $(MONITOR); kill $${PID}
-
-run-v18 : server-v18
-	@./server-v18
-
-server-v18 : cpp-httplib-v18/main.cpp cpp-httplib-v18/httplib.h
-	@g++ -o $@ $(CXXFLAGS) $(CPPHTTPLIB_FLAGS) cpp-httplib-v18/main.cpp
+	@g++ -o $@ $(CXXFLAGS) $(CPPHTTPLIB_CXXFLAGS) $(CPPHTTPLIB_FLAGS) cpp-httplib/main.cpp
 
 # crow
 bench-crow: server-crow
-	@echo "-------------\n Crow v1.2.0\n-------------\n"
-	@./server-crow & export PID=$$!; $(BENCH); kill $${PID}
+	@echo "-------------\n Crow v1.3.1\n-------------\n"
+	@./server-crow & export PID=$$!; $(WAIT); $(BENCH); kill $${PID}
 	@echo ""
 
 monitor-crow: server-crow
@@ -62,13 +36,13 @@ monitor-crow: server-crow
 run-crow : server-crow
 	@./server-crow
 
-server-crow : crow/main.cpp
-	@g++ -o $@ $(CXXFLAGS) crow/main.cpp
+server-crow : crow/main.cpp crow/crow_all.h
+	@g++ -o $@ $(CXXFLAGS) $(CROW_CXXFLAGS) crow/main.cpp
 
 # misc
-build: server server-v18 server-v19 server-crow
+build: server server-crow
 
-bench-all: bench-crow bench bench-v19 bench-v18
+bench-all: bench-crow bench
 
 issue:
 	bombardier -c 10 -d 30s localhost:8080

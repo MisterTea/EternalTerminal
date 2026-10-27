@@ -12,66 +12,39 @@
 #include <type_traits>
 
 namespace Catch {
-template< typename... >
-struct TypeList {};
+    template<typename T>
+    struct always_false : std::false_type {};
 
-template< typename... >
-struct append;
-
-template< template<typename...> class L1
-    , typename...E1
-    , template<typename...> class L2
-    , typename...E2
->
-struct append< L1<E1...>, L2<E2...> > {
-    using type = L1<E1..., E2...>;
-};
-
-template< template<typename...> class L1
-    , typename...E1
-    , template<typename...> class L2
-    , typename...E2
-    , typename...Rest
->
-struct append< L1<E1...>, L2<E2...>, Rest...> {
-    using type = typename append< L1<E1..., E2...>, Rest... >::type;
-};
-
-template< template<typename...> class
-    , typename...
->
-struct rewrap;
-
-template< template<typename...> class Container
-    , template<typename...> class List
-    , typename...elems
->
-struct rewrap<Container, List<elems...>> {
-    using type = TypeList< Container< elems... > >;
-};
-
-template< template<typename...> class Container
-    , template<typename...> class List
-    , class...Elems
-    , typename...Elements>
-    struct rewrap<Container, List<Elems...>, Elements...> {
-    using type = typename append<TypeList<Container<Elems...>>, typename rewrap<Container, Elements...>::type>::type;
-};
-
-template< template<typename...> class...Containers >
-struct combine {
-    template< typename...Types >
-    struct with_types {
-        template< template <typename...> class Final >
-        struct into {
-            using type = typename append<Final<>, typename rewrap<Containers, Types...>::type...>::type;
-        };
+    template <typename> struct true_given : std::true_type {};
+    struct is_callable_tester {
+        template <typename Fun, typename... Args>
+        true_given<decltype(std::declval<Fun>()(std::declval<Args>()...))> static test(int);
+        template <typename...>
+        std::false_type static test(...);
     };
-};
 
-template<typename T>
-struct always_false : std::false_type {};
+    template <typename T>
+    struct is_callable;
+
+    template <typename Fun, typename... Args>
+    struct is_callable<Fun(Args...)> : decltype(is_callable_tester::test<Fun, Args...>(0)) {};
+
+
+#if defined(__cpp_lib_is_invocable) && __cpp_lib_is_invocable >= 201703
+    // std::result_of is deprecated in C++17 and removed in C++20. Hence, it is
+    // replaced with std::invoke_result here.
+    template <typename Func, typename... U>
+    using FunctionReturnType = std::remove_reference_t<std::remove_cv_t<std::invoke_result_t<Func, U...>>>;
+#else
+    // Keep ::type here because we still support C++11
+    template <typename Func, typename... U>
+    using FunctionReturnType = typename std::remove_reference<typename std::remove_cv<typename std::result_of<Func(U...)>::type>::type>::type;
+#endif
 
 } // namespace Catch
+
+namespace mpl_{
+    struct na;
+}
 
 #endif // TWOBLUECUBES_CATCH_META_HPP_INCLUDED

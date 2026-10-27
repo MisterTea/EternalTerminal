@@ -15,6 +15,8 @@ public final class NdkOptions {
   private NdkHandlerStrategy ndkHandlerStrategy =
       NdkHandlerStrategy.SENTRY_HANDLER_STRATEGY_DEFAULT;
   private float tracesSampleRate = 0;
+  private boolean enableAppHangTracking = false;
+  private long appHangTimeoutMillis = 5000;
 
   public NdkOptions(
       @NotNull String dsn,
@@ -87,5 +89,21 @@ public final class NdkOptions {
 
   public float getTracesSampleRate() {
     return tracesSampleRate;
+  }
+
+  public void setEnableAppHangTracking(final boolean enableAppHangTracking) {
+    this.enableAppHangTracking = enableAppHangTracking;
+  }
+
+  public boolean isEnableAppHangTracking() {
+    return enableAppHangTracking;
+  }
+
+  public void setAppHangTimeoutMillis(final long appHangTimeoutMillis) {
+    this.appHangTimeoutMillis = appHangTimeoutMillis;
+  }
+
+  public long getAppHangTimeoutMillis() {
+    return appHangTimeoutMillis;
   }
 }

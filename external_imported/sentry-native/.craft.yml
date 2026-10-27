@@ -2,6 +2,7 @@ minVersion: 0.23.1
 changelogPolicy: auto
 targets:
   - name: github
+    includeNames: /^(sentry-native).*\.zip$/
   - name: registry
     sdks:
       github:getsentry/sentry-native:
@@ -20,8 +21,8 @@ targets:
     includeNames: /^(sentry-native-ndk-).*\.zip$/
     mavenCliPath: scripts/mvnw
     mavenSettingsPath: scripts/settings.xml
-    mavenRepoId: ossrh
-    mavenRepoUrl: https://oss.sonatype.org/service/local/staging/deploy/maven2/
+    mavenRepoId: ossrh-staging-api
+    mavenRepoUrl: https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/
     android:
       distDirRegex: /^(sentry-native-ndk).*$/
       fileReplaceeRegex: /\d+\.\d+\.\d+(-\w+(\.\d+)?)?(-SNAPSHOT)?/

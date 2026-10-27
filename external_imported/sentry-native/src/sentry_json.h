@@ -4,8 +4,15 @@
 #include "sentry_boot.h"
 #include "sentry_path.h"
 #include "sentry_string.h"
+#include "sentry_writer.h"
 
 typedef struct sentry_jsonwriter_s sentry_jsonwriter_t;
+
+/**
+ * This creates a JSON writer on top of an existing generic byte writer. The
+ * JSON writer does not own `writer` and will not close or free it.
+ */
+sentry_jsonwriter_t *sentry__jsonwriter_new_writer(sentry_writer_t *writer);
 
 /**
  * This creates a new JSON writer.
@@ -28,9 +35,17 @@ sentry_jsonwriter_t *sentry__jsonwriter_new_fw(sentry_filewriter_t *fw);
 void sentry__jsonwriter_free(sentry_jsonwriter_t *jw);
 
 /**
- * Resets the internal state of a JSON writer.
+ * Resets the JSON grammar state of a JSON writer.
+ *
+ * This intentionally does not clear the sticky failure state of either the
+ * JSON writer or its underlying byte writer.
  */
 void sentry__jsonwriter_reset(sentry_jsonwriter_t *jw);
+
+/**
+ * Returns true if any write operation on this JSON writer has failed.
+ */
+bool sentry__jsonwriter_has_failed(const sentry_jsonwriter_t *jw);
 
 /**
  * This will consume and deallocate the JSON writer, returning the generated
@@ -52,6 +67,16 @@ void sentry__jsonwriter_write_bool(sentry_jsonwriter_t *jw, bool val);
  * Write a 32-bit number, which will be encoded in a JSON number.
  */
 void sentry__jsonwriter_write_int32(sentry_jsonwriter_t *jw, int32_t val);
+
+/**
+ * Write a 64-bit signed integer, encoded as JSON number.
+ */
+void sentry__jsonwriter_write_int64(sentry_jsonwriter_t *jw, int64_t val);
+
+/**
+ * Write a 64-bit unsigned integer, encoded as JSON number.
+ */
+void sentry__jsonwriter_write_uint64(sentry_jsonwriter_t *jw, uint64_t val);
 
 /**
  * Write a 64-bit float, encoded as JSON number.
@@ -107,7 +132,10 @@ void sentry__jsonwriter_write_object_end(sentry_jsonwriter_t *jw);
 
 /**
  * Parse the given JSON string into a new Value.
+ *
+ * Exported via `SENTRY_API` so the Android JNI bridge can link against.
  */
-sentry_value_t sentry__value_from_json(const char *buf, size_t buflen);
+SENTRY_API sentry_value_t sentry__value_from_json(
+    const char *buf, size_t buflen);
 
 #endif

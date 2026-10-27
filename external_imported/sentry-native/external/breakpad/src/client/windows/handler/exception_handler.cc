@@ -1051,14 +1051,27 @@ void ExceptionHandler::UpdateNextID() {
   next_minidump_id_ = GUIDString::GUIDToWString(&id);
   next_minidump_id_c_ = next_minidump_id_.c_str();
 
-  wchar_t minidump_path[MAX_PATH];
-  swprintf(minidump_path, MAX_PATH, L"%s\\%s.dmp",
-           dump_path_c_, next_minidump_id_c_);
+  const size_t dump_path_c_len = wcslen(dump_path_c_);
+  const size_t next_minidump_id_c_len = wcslen(next_minidump_id_c_);
+  // 1 for backslash + 4 for ".dmp" + 1 for NUL
+  const size_t minidump_path_len =
+    dump_path_c_len + 1 + next_minidump_id_c_len + 4 + 1;
+  std::vector<wchar_t> minidump_path(minidump_path_len);
+  const int written =
+    swprintf(minidump_path.data(), minidump_path_len, L"%s\\%s.dmp",
+             dump_path_c_, next_minidump_id_c_);
+  if (written < 0 || static_cast<size_t>(written) >= minidump_path.size()) {
+    // `swprintf` either encountered an encoding error or truncation.
+    // Let's reset the `next`-members and exit early to not cause overwriting.
+    next_minidump_path_.clear();
+    next_minidump_path_c_ = nullptr;
+    return;
+  }
 
   // remove when VC++7.1 is no longer supported
-  minidump_path[MAX_PATH - 1] = L'\0';
+  minidump_path.back() = L'\0';
 
-  next_minidump_path_ = minidump_path;
+  next_minidump_path_.assign(minidump_path.data());
   next_minidump_path_c_ = next_minidump_path_.c_str();
 }
 

@@ -1,5 +1,9 @@
 all: test
 
+GIT_COMMON_DIR := $(shell git rev-parse --git-common-dir)
+
+VENV_BIN = $(if $(filter Windows_NT,$(OS)),.venv/Scripts,.venv/bin)
+
 update-test-discovery:
 	@perl -ne 'print if s/SENTRY_TEST\(([^)]+)\).*/XX(\1)/' tests/unit/*.c | LC_ALL=C sort | grep -v define | uniq > tests/unit/tests.inc
 .PHONY: update-test-discovery
@@ -19,14 +23,15 @@ test-unit: update-test-discovery CMakeLists.txt
 	@mkdir -p unit-build
 	@cd unit-build; cmake \
 		-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$(PWD)/unit-build \
+		-DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO=$(PWD)/unit-build \
 		-DSENTRY_BACKEND=none \
 		..
-	@cmake --build unit-build --target sentry_test_unit --parallel
+	@cmake --build unit-build --target sentry_test_unit --parallel --config RelWithDebInfo
 	./unit-build/sentry_test_unit
 .PHONY: test-unit
 
 test-integration: setup-venv
-	.venv/bin/pytest tests --verbose
+	$(VENV_BIN)/pytest tests --verbose
 .PHONY: test-integration
 
 test-leaks: update-test-discovery CMakeLists.txt
@@ -44,7 +49,7 @@ test-leaks: update-test-discovery CMakeLists.txt
 .PHONY: test-leaks
 
 benchmark: setup-venv
-	.venv/bin/pytest tests/benchmark.py --verbose
+	$(VENV_BIN)/pytest tests/benchmark.py --verbose
 .PHONY: benchmark
 
 clean: build/Makefile
@@ -54,38 +59,32 @@ clean: build/Makefile
 setup: setup-git setup-venv
 .PHONY: setup
 
-setup-git: .git/hooks/pre-commit
+setup-git: $(GIT_COMMON_DIR)/hooks/pre-commit
 	git submodule update --init --recursive
 .PHONY: setup-git
 
-setup-venv: .venv/bin/python
+setup-venv: .venv/.stamp
 .PHONY: setup-venv
 
-.git/hooks/pre-commit:
-	@cd .git/hooks && ln -sf ../../scripts/git-precommit-hook.sh pre-commit
+$(GIT_COMMON_DIR)/hooks/pre-commit:
+	@cd $(GIT_COMMON_DIR)/hooks && ln -sf $(PWD)/scripts/git-precommit-hook.sh pre-commit
 
-.venv/bin/python: Makefile tests/requirements.txt
+.venv/.stamp: Makefile tests/requirements.txt
 	@rm -rf .venv
 	python3 -m venv .venv
-	.venv/bin/pip install --upgrade --requirement tests/requirements.txt
+	$(VENV_BIN)/pip install --upgrade --requirement tests/requirements.txt
+	@touch $@
 
 format: setup-venv
-	@.venv/bin/clang-format -i \
-		examples/*.c \
-		include/*.h \
-		src/*.c \
-		src/*.h \
-		src/*/*.c \
-		src/*/*.cpp \
-		src/*/*.h \
-		tests/unit/*.c \
-		tests/unit/*.h
-	@.venv/bin/black tests
+	@find examples include src tests/unit \
+		\( -name '*.c' -o -name '*.cpp' -o -name '*.h' \) -print0 \
+		| xargs -0 $(VENV_BIN)/clang-format -i
+	@$(VENV_BIN)/black tests
 .PHONY: format
 
 style: setup-venv
-	@.venv/bin/python ./scripts/check-clang-format.py \
-		--clang-format-executable .venv/bin/clang-format \
+	@$(VENV_BIN)/python ./scripts/check-clang-format.py \
+		--clang-format-executable $(VENV_BIN)/clang-format \
 		-r examples include src tests/unit
-	@.venv/bin/black --diff --check tests
+	@$(VENV_BIN)/black --diff --check tests
 .PHONY: style

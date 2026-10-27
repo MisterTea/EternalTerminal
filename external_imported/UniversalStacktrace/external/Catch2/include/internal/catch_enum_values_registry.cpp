@@ -18,13 +18,25 @@ namespace Catch {
 
     namespace Detail {
 
-        std::vector<std::string> parseEnums( StringRef enums ) {
+        namespace {
+            // Extracts the actual name part of an enum instance
+            // In other words, it returns the Blue part of Bikeshed::Colour::Blue
+            StringRef extractInstanceName(StringRef enumInstance) {
+                // Find last occurrence of ":"
+                size_t name_start = enumInstance.size();
+                while (name_start > 0 && enumInstance[name_start - 1] != ':') {
+                    --name_start;
+                }
+                return enumInstance.substr(name_start, enumInstance.size() - name_start);
+            }
+        }
+
+        std::vector<StringRef> parseEnums( StringRef enums ) {
             auto enumValues = splitStringRef( enums, ',' );
-            std::vector<std::string> parsed;
+            std::vector<StringRef> parsed;
             parsed.reserve( enumValues.size() );
             for( auto const& enumValue : enumValues ) {
-                auto identifiers = splitStringRef( enumValue, ':' );
-                parsed.push_back( Catch::trim( identifiers.back() ) );
+                parsed.push_back(trim(extractInstanceName(enumValue)));
             }
             return parsed;
         }
@@ -36,7 +48,7 @@ namespace Catch {
                 if( valueToName.first == value )
                     return valueToName.second;
             }
-            return "{** unexpected enum value **}";
+            return "{** unexpected enum value **}"_sr;
         }
 
         std::unique_ptr<EnumInfo> makeEnumInfo( StringRef enumName, StringRef allValueNames, std::vector<int> const& values ) {
@@ -48,16 +60,14 @@ namespace Catch {
             assert( valueNames.size() == values.size() );
             std::size_t i = 0;
             for( auto value : values )
-                enumInfo->m_values.push_back({ value, valueNames[i++] });
+                enumInfo->m_values.emplace_back(value, valueNames[i++]);
 
             return enumInfo;
         }
 
         EnumInfo const& EnumValuesRegistry::registerEnum( StringRef enumName, StringRef allValueNames, std::vector<int> const& values ) {
-            auto enumInfo = makeEnumInfo( enumName, allValueNames, values );
-            EnumInfo* raw = enumInfo.get();
-            m_enumInfos.push_back( std::move( enumInfo ) );
-            return *raw;
+            m_enumInfos.push_back(makeEnumInfo(enumName, allValueNames, values));
+            return *m_enumInfos.back();
         }
 
     } // Detail

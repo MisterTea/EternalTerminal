@@ -4,13 +4,13 @@
 #include "sentry_modulefinder_linux.h"
 
 #include "sentry_core.h"
+#include "sentry_elf.h"
 #include "sentry_path.h"
 #include "sentry_string.h"
 #include "sentry_sync.h"
 #include "sentry_utils.h"
 #include "sentry_value.h"
 
-#include <arpa/inet.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <string.h>
@@ -141,9 +141,12 @@ read_safely(void *dst, void *src, size_t size)
     // See https://github.com/getsentry/sentry-native/issues/578).
     // Also, the syscall is only available in Linux 3.2, meaning Android 17.
     // In that case we get an `EINVAL`.
+    // Additionally, in some seccomp-restricted environments,
+    // `process_vm_readv` may be unavailable and fail with `ENOSYS` (see
+    // https://github.com/getsentry/sentry-native/issues/1653).
     //
-    // In either of these cases, just fall back to an unsafe `memcpy`.
-    if (!rv && (errno == EPERM || errno == EINVAL)) {
+    // In any of these cases, just fall back to an unsafe `memcpy`.
+    if (!rv && (errno == EPERM || errno == EINVAL || errno == ENOSYS)) {
         memcpy(dst, src, size);
         rv = true;
     }
@@ -168,7 +171,7 @@ sentry__module_read_safely(void *dst, const sentry_module_t *module,
     return read_safely(dst, src, (size_t)size);
 }
 
-static void
+void
 sentry__module_mapping_push(
     sentry_module_t *module, const sentry_parsed_module_t *parsed)
 {
@@ -253,47 +256,6 @@ sentry__procmaps_parse_module_line(
     return consumed;
 }
 
-void
-align(size_t alignment, void **offset)
-{
-    size_t diff = (size_t)*offset % alignment;
-    if (diff != 0) {
-        *(size_t *)offset += alignment - diff;
-    }
-}
-
-static const uint8_t *
-get_code_id_from_notes(
-    size_t alignment, void *start, void *end, size_t *size_out)
-{
-    *size_out = 0;
-    if (alignment < 4) {
-        alignment = 4;
-    } else if (alignment != 4 && alignment != 8) {
-        return NULL;
-    }
-
-    const uint8_t *offset = start;
-    while (offset < (const uint8_t *)end) {
-        // The note header size is independent of the architecture, so we just
-        // use the `Elf64_Nhdr` variant.
-        const Elf64_Nhdr *note = (const Elf64_Nhdr *)offset;
-        // the headers are consecutive, and the optional `name` and `desc` are
-        // saved inline after the header.
-
-        offset += sizeof(Elf64_Nhdr);
-        offset += note->n_namesz;
-        align(alignment, (void **)&offset);
-        if (note->n_type == NT_GNU_BUILD_ID) {
-            *size_out = note->n_descsz;
-            return offset;
-        }
-        offset += note->n_descsz;
-        align(alignment, (void **)&offset);
-    }
-    return NULL;
-}
-
 static const uint8_t *
 get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
 {
@@ -319,9 +281,9 @@ get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
             void *segment_addr = sentry__module_get_addr(
                 module, header.p_offset, header.p_filesz);
             ENSURE(segment_addr);
-            const uint8_t *code_id = get_code_id_from_notes(header.p_align,
-                segment_addr,
-                (void *)((uintptr_t)segment_addr + header.p_filesz), size_out);
+            const uint8_t *code_id
+                = sentry__elf_find_note(segment_addr, header.p_filesz,
+                    header.p_align, NT_GNU_BUILD_ID, "GNU", 4, size_out);
             if (code_id) {
                 return code_id;
             }
@@ -343,9 +305,9 @@ get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
             void *segment_addr = sentry__module_get_addr(
                 module, header.p_offset, header.p_filesz);
             ENSURE(segment_addr);
-            const uint8_t *code_id = get_code_id_from_notes(header.p_align,
-                segment_addr,
-                (void *)((uintptr_t)segment_addr + header.p_filesz), size_out);
+            const uint8_t *code_id
+                = sentry__elf_find_note(segment_addr, header.p_filesz,
+                    header.p_align, NT_GNU_BUILD_ID, "GNU", 4, size_out);
             if (code_id) {
                 return code_id;
             }
@@ -416,9 +378,9 @@ get_code_id_from_note_section(const sentry_module_t *module, size_t *size_out)
             void *segment_addr = sentry__module_get_addr(
                 module, header.sh_offset, header.sh_size);
             ENSURE(segment_addr);
-            const uint8_t *code_id = get_code_id_from_notes(header.sh_addralign,
-                segment_addr,
-                (void *)((uintptr_t)segment_addr + header.sh_size), size_out);
+            const uint8_t *code_id
+                = sentry__elf_find_note(segment_addr, header.sh_size,
+                    header.sh_addralign, NT_GNU_BUILD_ID, "GNU", 4, size_out);
             if (code_id) {
                 return code_id;
             }
@@ -493,13 +455,7 @@ sentry__procmaps_read_ids_from_elf(
     // https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/#identifiers
     // in particular, the debug_id is a `little-endian GUID`, so we have
     // to do appropriate byte-flipping
-    char *uuid_bytes = uuid.bytes;
-    uint32_t *a = (uint32_t *)uuid_bytes;
-    *a = htonl(*a);
-    uint16_t *b = (uint16_t *)(uuid_bytes + 4);
-    *b = htons(*b);
-    uint16_t *c = (uint16_t *)(uuid_bytes + 6);
-    *c = htons(*c);
+    sentry__uuid_swap_guid_bytes(uuid.bytes);
 
     sentry_value_set_by_key(value, "debug_id", sentry__value_new_uuid(&uuid));
     return true;

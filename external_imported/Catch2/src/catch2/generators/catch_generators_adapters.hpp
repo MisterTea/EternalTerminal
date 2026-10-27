@@ -11,6 +11,7 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/internal/catch_meta.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
+#include <catch2/internal/catch_optional.hpp>
 
 #include <cassert>
 
@@ -22,6 +23,17 @@ namespace Generators {
         GeneratorWrapper<T> m_generator;
         size_t m_returned = 0;
         size_t m_target;
+
+        void skipToNthElementImpl( std::size_t n ) override {
+            if ( n >= m_target ) {
+                Detail::throw_generator_exception(
+                    "Coud not jump to Nth element: not enough elements" );
+            }
+
+            m_generator.skipToNthElement( n );
+            m_returned = n;
+        }
+
     public:
         TakeGenerator(size_t target, GeneratorWrapper<T>&& generator):
             m_generator(CATCH_MOVE(generator)),
@@ -46,6 +58,8 @@ namespace Generators {
             }
             return success;
         }
+
+        bool isFinite() const override { return true; }
     };
 
     template <typename T>
@@ -58,8 +72,9 @@ namespace Generators {
     class FilterGenerator final : public IGenerator<T> {
         GeneratorWrapper<T> m_generator;
         Predicate m_predicate;
+        static_assert(!std::is_reference<Predicate>::value, "This would most likely result in a dangling reference");
     public:
-        template <typename P = Predicate>
+        template <typename P>
         FilterGenerator(P&& pred, GeneratorWrapper<T>&& generator):
             m_generator(CATCH_MOVE(generator)),
             m_predicate(CATCH_FORWARD(pred))
@@ -86,12 +101,14 @@ namespace Generators {
             while (!m_predicate(m_generator.get()) && (success = m_generator.next()) == true);
             return success;
         }
+
+        bool isFinite() const override { return m_generator.isFinite(); }
     };
 
 
     template <typename T, typename Predicate>
     GeneratorWrapper<T> filter(Predicate&& pred, GeneratorWrapper<T>&& generator) {
-        return GeneratorWrapper<T>(Catch::Detail::make_unique<FilterGenerator<T, Predicate>>(CATCH_FORWARD(pred), CATCH_MOVE(generator)));
+        return GeneratorWrapper<T>(Catch::Detail::make_unique<FilterGenerator<T, typename std::remove_reference<Predicate>::type>>(CATCH_FORWARD(pred), CATCH_MOVE(generator)));
     }
 
     template <typename T>
@@ -110,6 +127,9 @@ namespace Generators {
             m_target_repeats(repeats)
         {
             assert(m_target_repeats > 0 && "Repeat generator must repeat at least once");
+            if (!m_generator.isFinite()) {
+                Detail::throw_generator_exception( "Cannot repeat infinite generator" );
+            }
         }
 
         T const& get() const override {
@@ -143,6 +163,8 @@ namespace Generators {
             }
             return m_current_repeat < m_target_repeats;
         }
+
+        bool isFinite() const override { return m_generator.isFinite(); }
     };
 
     template <typename T>
@@ -156,25 +178,30 @@ namespace Generators {
         GeneratorWrapper<U> m_generator;
         Func m_function;
         // To avoid returning dangling reference, we have to save the values
-        T m_cache;
+        mutable Optional<T> m_cache;
+
+        void skipToNthElementImpl( std::size_t n ) override {
+            m_generator.skipToNthElement( n );
+            m_cache.reset();
+        }
+
     public:
         template <typename F2 = Func>
         MapGenerator(F2&& function, GeneratorWrapper<U>&& generator) :
             m_generator(CATCH_MOVE(generator)),
-            m_function(CATCH_FORWARD(function)),
-            m_cache(m_function(m_generator.get()))
+            m_function(CATCH_FORWARD(function))
         {}
 
         T const& get() const override {
-            return m_cache;
+            if ( !m_cache ) { m_cache = m_function( m_generator.get() ); }
+            return *m_cache;
         }
         bool next() override {
-            const auto success = m_generator.next();
-            if (success) {
-                m_cache = m_function(m_generator.get());
-            }
-            return success;
+            m_cache.reset();
+            return m_generator.next();
         }
+
+        bool isFinite() const override { return m_generator.isFinite(); }
     };
 
     template <typename Func, typename U, typename T = FunctionReturnType<Func, U>>
@@ -196,7 +223,6 @@ namespace Generators {
         std::vector<T> m_chunk;
         size_t m_chunk_size;
         GeneratorWrapper<T> m_generator;
-        bool m_used_up = false;
     public:
         ChunkGenerator(size_t size, GeneratorWrapper<T> generator) :
             m_chunk_size(size), m_generator(CATCH_MOVE(generator))
@@ -225,6 +251,8 @@ namespace Generators {
             }
             return true;
         }
+
+        bool isFinite() const override { return m_generator.isFinite(); }
     };
 
     template <typename T>
@@ -233,6 +261,56 @@ namespace Generators {
             Catch::Detail::make_unique<ChunkGenerator<T>>(size, CATCH_MOVE(generator))
         );
     }
+
+    template <typename T>
+    class ConcatGenerator final : public IGenerator<T> {
+        std::vector<GeneratorWrapper<T>> m_generators;
+        size_t m_current_generator = 0;
+
+        void InsertGenerators( GeneratorWrapper<T>&& gen ) {
+            m_generators.push_back( CATCH_MOVE( gen ) );
+        }
+
+        template <typename... Generators>
+        void InsertGenerators( GeneratorWrapper<T>&& gen, Generators&&... gens ) {
+            m_generators.push_back( CATCH_MOVE( gen ) );
+            InsertGenerators( CATCH_MOVE( gens )... );
+        }
+
+    public:
+        template <typename... Generators>
+        ConcatGenerator( Generators&&... generators ) {
+            InsertGenerators( CATCH_MOVE( generators )... );
+        }
+
+        T const& get() const override {
+            return m_generators[m_current_generator].get();
+        }
+        bool next() override {
+            const bool success = m_generators[m_current_generator].next();
+            if ( success ) { return true; }
+
+            // If current generator is used up, we have to move to the next one
+            ++m_current_generator;
+            return m_current_generator < m_generators.size();
+        }
+
+        bool isFinite() const override {
+            for ( auto const& gen : m_generators ) {
+                if ( !gen.isFinite() ) { return false; }
+            }
+            return true;
+        }
+    };
+
+    template <typename T, typename... Generators>
+    GeneratorWrapper<T> cat( GeneratorWrapper<T>&& generator,
+                             Generators&&... generators ) {
+        return GeneratorWrapper<T>(
+            Catch::Detail::make_unique<ConcatGenerator<T>>(
+            CATCH_MOVE( generator ), CATCH_MOVE( generators )... ) );
+    }
+
 
 } // namespace Generators
 } // namespace Catch

@@ -11,12 +11,11 @@
 #include <catch2/interfaces/catch_interfaces_exception.hpp>
 #include <catch2/internal/catch_unique_ptr.hpp>
 
-#include <vector>
 #include <string>
 
 namespace Catch {
 
-    class ExceptionTranslatorRegistry : public IExceptionTranslatorRegistry {
+    class ExceptionTranslatorRegistry final : public IExceptionTranslatorRegistry {
     public:
         ~ExceptionTranslatorRegistry() override;
         void registerTranslator( Detail::unique_ptr<IExceptionTranslator>&& translator );

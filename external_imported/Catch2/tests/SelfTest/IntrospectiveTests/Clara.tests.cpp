@@ -25,19 +25,19 @@ TEST_CASE("is_unary_function", "[clara][compilation]") {
     auto nullary1 = []() {};
     auto nullary2 = []() {return 42;};
 
-    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function<decltype(unary1)>::value);
-    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function<decltype(unary2)>::value);
-    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function<decltype(unary3)>::value);
-    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function<decltype(unary4)>::value);
-    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function<decltype(unary5)>::value);
-    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function<decltype(unary6)>::value);
+    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function_v<decltype(unary1)>);
+    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function_v<decltype(unary2)>);
+    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function_v<decltype(unary3)>);
+    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function_v<decltype(unary4)>);
+    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function_v<decltype(unary5)>);
+    STATIC_REQUIRE(Catch::Clara::Detail::is_unary_function_v<decltype(unary6)>);
 
-    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function<decltype(binary1)>::value);
-    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function<decltype(binary2)>::value);
-    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function<decltype(nullary1)>::value);
-    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function<decltype(nullary2)>::value);
-    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function<int>::value);
-    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function<std::string const&>::value);
+    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function_v<decltype(binary1)>);
+    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function_v<decltype(binary2)>);
+    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function_v<decltype(nullary1)>);
+    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function_v<decltype(nullary2)>);
+    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function_v<int>);
+    STATIC_REQUIRE_FALSE(Catch::Clara::Detail::is_unary_function_v<std::string const&>);
 }
 
 

@@ -28,8 +28,17 @@ class ZxLogMessage : public logging::LogMessage {
 
   ~ZxLogMessage();
 
+ protected:
+  void AppendError();
+
  private:
   zx_status_t zx_err_;
+};
+
+class ZxLogMessageFatal final : public ZxLogMessage {
+ public:
+  using ZxLogMessage::ZxLogMessage;
+  [[noreturn]] ~ZxLogMessageFatal() override;
 };
 
 }  // namespace logging

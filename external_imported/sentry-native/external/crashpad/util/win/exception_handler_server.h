@@ -72,6 +72,10 @@ class ExceptionHandlerServer {
     virtual void ExceptionHandlerServerAttachmentRemoved(
         const base::FilePath& attachment) = 0;
 
+    //! \brief Called when the server has received a request to retry pending
+    //!     report uploads.
+    virtual void ExceptionHandlerServerRetryRequested() = 0;
+
    protected:
     ~Delegate();
   };

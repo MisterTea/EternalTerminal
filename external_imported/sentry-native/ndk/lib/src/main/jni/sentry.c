@@ -1,20 +1,22 @@
-#include <string.h>
+#include <jni.h>
+#include <sentry.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <sentry.h>
-#include <jni.h>
+#include <string.h>
 
-#define ENSURE(Expr) \
-    if (!(Expr))     \
-        return
+#define ENSURE(Expr)                                                           \
+    if (!(Expr))                                                               \
+    return
 
-#define ENSURE_OR_FAIL(Expr) \
-    if (!(Expr))          \
-        goto fail
+#define ENSURE_OR_FAIL(Expr)                                                   \
+    if (!(Expr))                                                               \
+    goto fail
 
-static bool get_string_into(JNIEnv *env, jstring jstr, char *buf, size_t buf_len) {
+static bool
+get_string_into(JNIEnv *env, jstring jstr, char *buf, size_t buf_len)
+{
     jsize utf_len = (*env)->GetStringUTFLength(env, jstr);
-    if ((size_t) utf_len >= buf_len) {
+    if ((size_t)utf_len >= buf_len) {
         return false;
     }
 
@@ -29,11 +31,13 @@ static bool get_string_into(JNIEnv *env, jstring jstr, char *buf, size_t buf_len
     return true;
 }
 
-static char *get_string(JNIEnv *env, jstring jstr) {
+static char *
+get_string(JNIEnv *env, jstring jstr)
+{
     char *buf = NULL;
 
     jsize utf_len = (*env)->GetStringUTFLength(env, jstr);
-    size_t buf_len = (size_t) utf_len + 1;
+    size_t buf_len = (size_t)utf_len + 1;
     buf = sentry_malloc(buf_len);
     ENSURE_OR_FAIL(buf);
 
@@ -41,30 +45,30 @@ static char *get_string(JNIEnv *env, jstring jstr) {
 
     return buf;
 
-    fail:
+fail:
     sentry_free(buf);
 
     return NULL;
 }
 
-static char *call_get_string(JNIEnv *env, jobject obj, jmethodID mid) {
-    jstring j_str = (jstring) (*env)->CallObjectMethod(env, obj, mid);
+static char *
+call_get_string(JNIEnv *env, jobject obj, jmethodID mid)
+{
+    jstring j_str = (jstring)(*env)->CallObjectMethod(env, obj, mid);
     ENSURE_OR_FAIL(j_str);
     char *str = get_string(env, j_str);
     (*env)->DeleteLocalRef(env, j_str);
 
     return str;
 
-    fail:
+fail:
     return NULL;
 }
 
 JNIEXPORT void JNICALL
 Java_io_sentry_ndk_NativeScope_nativeSetTag(
-        JNIEnv *env,
-        jclass cls,
-        jstring key,
-        jstring value) {
+    JNIEnv *env, jclass cls, jstring key, jstring value)
+{
     const char *charKey = (*env)->GetStringUTFChars(env, key, 0);
     const char *charValue = (*env)->GetStringUTFChars(env, value, 0);
 
@@ -75,7 +79,9 @@ Java_io_sentry_ndk_NativeScope_nativeSetTag(
 }
 
 JNIEXPORT void JNICALL
-Java_io_sentry_ndk_NativeScope_nativeRemoveTag(JNIEnv *env, jclass cls, jstring key) {
+Java_io_sentry_ndk_NativeScope_nativeRemoveTag(
+    JNIEnv *env, jclass cls, jstring key)
+{
     const char *charKey = (*env)->GetStringUTFChars(env, key, 0);
 
     sentry_remove_tag(charKey);
@@ -85,10 +91,8 @@ Java_io_sentry_ndk_NativeScope_nativeRemoveTag(JNIEnv *env, jclass cls, jstring 
 
 JNIEXPORT void JNICALL
 Java_io_sentry_ndk_NativeScope_nativeSetExtra(
-        JNIEnv *env,
-        jclass cls,
-        jstring key,
-        jstring value) {
+    JNIEnv *env, jclass cls, jstring key, jstring value)
+{
     const char *charKey = (*env)->GetStringUTFChars(env, key, 0);
     const char *charValue = (*env)->GetStringUTFChars(env, value, 0);
 
@@ -100,7 +104,9 @@ Java_io_sentry_ndk_NativeScope_nativeSetExtra(
 }
 
 JNIEXPORT void JNICALL
-Java_io_sentry_ndk_NativeScope_nativeRemoveExtra(JNIEnv *env, jclass cls, jstring key) {
+Java_io_sentry_ndk_NativeScope_nativeRemoveExtra(
+    JNIEnv *env, jclass cls, jstring key)
+{
     const char *charKey = (*env)->GetStringUTFChars(env, key, 0);
 
     sentry_remove_extra(charKey);
@@ -109,13 +115,9 @@ Java_io_sentry_ndk_NativeScope_nativeRemoveExtra(JNIEnv *env, jclass cls, jstrin
 }
 
 JNIEXPORT void JNICALL
-Java_io_sentry_ndk_NativeScope_nativeSetUser(
-        JNIEnv *env,
-        jclass cls,
-        jstring id,
-        jstring email,
-        jstring ipAddress,
-        jstring username) {
+Java_io_sentry_ndk_NativeScope_nativeSetUser(JNIEnv *env, jclass cls,
+    jstring id, jstring email, jstring ipAddress, jstring username)
+{
     sentry_value_t user = sentry_value_new_object();
     if (id) {
         const char *charId = (*env)->GetStringUTFChars(env, id, 0);
@@ -125,32 +127,35 @@ Java_io_sentry_ndk_NativeScope_nativeSetUser(
     if (email) {
         const char *charEmail = (*env)->GetStringUTFChars(env, email, 0);
         sentry_value_set_by_key(
-                user, "email", sentry_value_new_string(charEmail));
+            user, "email", sentry_value_new_string(charEmail));
         (*env)->ReleaseStringUTFChars(env, email, charEmail);
     }
     if (ipAddress) {
-        const char *charIpAddress = (*env)->GetStringUTFChars(env, ipAddress, 0);
+        const char *charIpAddress
+            = (*env)->GetStringUTFChars(env, ipAddress, 0);
         sentry_value_set_by_key(
-                user, "ip_address", sentry_value_new_string(charIpAddress));
+            user, "ip_address", sentry_value_new_string(charIpAddress));
         (*env)->ReleaseStringUTFChars(env, ipAddress, charIpAddress);
     }
     if (username) {
         const char *charUsername = (*env)->GetStringUTFChars(env, username, 0);
         sentry_value_set_by_key(
-                user, "username", sentry_value_new_string(charUsername));
+            user, "username", sentry_value_new_string(charUsername));
         (*env)->ReleaseStringUTFChars(env, username, charUsername);
     }
     sentry_set_user(user);
 }
 
 JNIEXPORT void JNICALL
-Java_io_sentry_ndk_NativeScope_nativeRemoveUser(JNIEnv *env, jclass cls) {
+Java_io_sentry_ndk_NativeScope_nativeRemoveUser(JNIEnv *env, jclass cls)
+{
     sentry_remove_user();
 }
 
 JNIEXPORT void JNICALL
 Java_io_sentry_ndk_NativeScope_nativeSetTrace(
-    JNIEnv *env, jclass cls, jstring trace_id, jstring parent_span_id) {
+    JNIEnv *env, jclass cls, jstring trace_id, jstring parent_span_id)
+{
     const char *charTraceId = (*env)->GetStringUTFChars(env, trace_id, 0);
     const char *charParentSpanId
         = (*env)->GetStringUTFChars(env, parent_span_id, 0);
@@ -161,16 +166,14 @@ Java_io_sentry_ndk_NativeScope_nativeSetTrace(
     (*env)->ReleaseStringUTFChars(env, parent_span_id, charParentSpanId);
 }
 
+// sentry_json.h
+extern sentry_value_t sentry__value_from_json(const char *buf, size_t buflen);
+
 JNIEXPORT void JNICALL
-Java_io_sentry_ndk_NativeScope_nativeAddBreadcrumb(
-        JNIEnv *env,
-        jclass cls,
-        jstring level,
-        jstring message,
-        jstring category,
-        jstring type,
-        jstring timestamp,
-        jstring data) {
+Java_io_sentry_ndk_NativeScope_nativeAddBreadcrumb(JNIEnv *env, jclass cls,
+    jstring level, jstring message, jstring category, jstring type,
+    jstring timestamp, jstring data)
+{
     if (!level && !message && !category && !type) {
         return;
     }
@@ -194,32 +197,37 @@ Java_io_sentry_ndk_NativeScope_nativeAddBreadcrumb(
     if (category) {
         const char *charCategory = (*env)->GetStringUTFChars(env, category, 0);
         sentry_value_set_by_key(
-                crumb, "category", sentry_value_new_string(charCategory));
+            crumb, "category", sentry_value_new_string(charCategory));
         (*env)->ReleaseStringUTFChars(env, category, charCategory);
     }
     if (level) {
         const char *charLevel = (*env)->GetStringUTFChars(env, level, 0);
         sentry_value_set_by_key(
-                crumb, "level", sentry_value_new_string(charLevel));
+            crumb, "level", sentry_value_new_string(charLevel));
         (*env)->ReleaseStringUTFChars(env, level, charLevel);
     }
 
     if (timestamp) {
-        // overwrite timestamp that is already created on sentry_value_new_breadcrumb
-        const char *charTimestamp = (*env)->GetStringUTFChars(env, timestamp, 0);
+        // overwrite timestamp that is already created on
+        // sentry_value_new_breadcrumb
+        const char *charTimestamp
+            = (*env)->GetStringUTFChars(env, timestamp, 0);
         sentry_value_set_by_key(
-                crumb, "timestamp", sentry_value_new_string(charTimestamp));
+            crumb, "timestamp", sentry_value_new_string(charTimestamp));
         (*env)->ReleaseStringUTFChars(env, timestamp, charTimestamp);
     }
 
     if (data) {
         const char *charData = (*env)->GetStringUTFChars(env, data, 0);
 
-        // we create an object because the Java layer parses it as a Map
-        sentry_value_t dataObject = sentry_value_new_object();
-        sentry_value_set_by_key(dataObject, "data", sentry_value_new_string(charData));
-
-        sentry_value_set_by_key(crumb, "data", dataObject);
+        // The Java layer hands the breadcrumb's data map over as a serialized
+        // JSON object string. Parse it back into a value so it's not a raw
+        // string.
+        sentry_value_t dataObject
+            = sentry__value_from_json(charData, strlen(charData));
+        if (!sentry_value_is_null(dataObject)) {
+            sentry_value_set_by_key(crumb, "data", dataObject);
+        }
 
         (*env)->ReleaseStringUTFChars(env, data, charData);
     }
@@ -227,8 +235,63 @@ Java_io_sentry_ndk_NativeScope_nativeAddBreadcrumb(
     sentry_add_breadcrumb(crumb);
 }
 
-static void send_envelope(sentry_envelope_t *envelope, void *data) {
-    const char *outbox_path = (const char *) data;
+JNIEXPORT void JNICALL
+Java_io_sentry_ndk_NativeScope_nativeAddAttachment(
+    JNIEnv *env, jclass cls, jstring path)
+{
+    if (!path) {
+        return;
+    }
+    const char *charPath = (*env)->GetStringUTFChars(env, path, 0);
+    if (!charPath) {
+        return;
+    }
+
+    // The returned sentry_attachment_t* is intentionally discarded.
+    // We are not tracking it across the JNI boundary for individual removals.
+    // Use sentry_clear_attachments() for bulk removal.
+    sentry_attach_file(charPath);
+
+    (*env)->ReleaseStringUTFChars(env, path, charPath);
+}
+
+JNIEXPORT void JNICALL
+Java_io_sentry_ndk_NativeScope_nativeAddAttachmentBytes(
+    JNIEnv *env, jclass cls, jbyteArray data, jstring filename)
+{
+    if (!data || !filename) {
+        return;
+    }
+    jsize bufLen = (*env)->GetArrayLength(env, data);
+    jbyte *buf = (*env)->GetByteArrayElements(env, data, 0);
+    if (!buf) {
+        return;
+    }
+    const char *charFilename = (*env)->GetStringUTFChars(env, filename, 0);
+    if (!charFilename) {
+        (*env)->ReleaseByteArrayElements(env, data, buf, JNI_ABORT);
+        return;
+    }
+
+    // The returned sentry_attachment_t* is intentionally discarded.
+    // We are not tracking it across the JNI boundary for individual removals.
+    // Use sentry_clear_attachments() for bulk removal.
+    sentry_attach_bytes((const char *)buf, (size_t)bufLen, charFilename);
+
+    (*env)->ReleaseStringUTFChars(env, filename, charFilename);
+    (*env)->ReleaseByteArrayElements(env, data, buf, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL
+Java_io_sentry_ndk_NativeScope_nativeClearAttachments(JNIEnv *env, jclass cls)
+{
+    sentry_clear_attachments();
+}
+
+static void
+send_envelope(sentry_envelope_t *envelope, void *data)
+{
+    const char *outbox_path = (const char *)data;
     char envelope_id_str[40];
 
     sentry_uuid_t envelope_id = sentry_uuid_new_v4();
@@ -238,7 +301,8 @@ static void send_envelope(sentry_envelope_t *envelope, void *data) {
     size_t final_len = outbox_len + 42; // "/" + envelope_id_str + "\0" = 42
     char *envelope_path = sentry_malloc(final_len);
     ENSURE(envelope_path);
-    int written = snprintf(envelope_path, final_len, "%s/%s", outbox_path, envelope_id_str);
+    int written = snprintf(
+        envelope_path, final_len, "%s/%s", outbox_path, envelope_id_str);
     if (written > outbox_len && written < final_len) {
         sentry_envelope_write_to_file(envelope, envelope_path);
     }
@@ -247,28 +311,48 @@ static void send_envelope(sentry_envelope_t *envelope, void *data) {
     sentry_envelope_free(envelope);
 }
 
+// sentry_backend.h
+extern void sentry__backend_preload(void);
+
 JNIEXPORT void JNICALL
+Java_io_sentry_ndk_SentryNdk_preloadSentryNative(JNIEnv *env, jclass cls)
+{
+    sentry__backend_preload();
+}
+
+JNIEXPORT jint JNICALL
 Java_io_sentry_ndk_SentryNdk_initSentryNative(
-        JNIEnv *env,
-        jclass cls,
-        jobject sentry_ndk_options) {
+    JNIEnv *env, jclass cls, jobject sentry_ndk_options)
+{
     jclass options_cls = (*env)->GetObjectClass(env, sentry_ndk_options);
-    jmethodID outbox_path_mid = (*env)->GetMethodID(env, options_cls, "getOutboxPath",
-                                                    "()Ljava/lang/String;");
-    jmethodID dsn_mid = (*env)->GetMethodID(env, options_cls, "getDsn", "()Ljava/lang/String;");
-    jmethodID is_debug_mid = (*env)->GetMethodID(env, options_cls, "isDebug", "()Z");
-    jmethodID release_mid = (*env)->GetMethodID(env, options_cls, "getRelease",
-                                                "()Ljava/lang/String;");
-    jmethodID environment_mid = (*env)->GetMethodID(env, options_cls, "getEnvironment",
-                                                    "()Ljava/lang/String;");
-    jmethodID dist_mid = (*env)->GetMethodID(env, options_cls, "getDist", "()Ljava/lang/String;");
-    jmethodID max_crumbs_mid = (*env)->GetMethodID(env, options_cls, "getMaxBreadcrumbs", "()I");
-    jmethodID native_sdk_name_mid = (*env)->GetMethodID(env, options_cls, "getSdkName",
-                                                        "()Ljava/lang/String;");
+    jmethodID outbox_path_mid = (*env)->GetMethodID(
+        env, options_cls, "getOutboxPath", "()Ljava/lang/String;");
+    jmethodID dsn_mid = (*env)->GetMethodID(
+        env, options_cls, "getDsn", "()Ljava/lang/String;");
+    jmethodID is_debug_mid
+        = (*env)->GetMethodID(env, options_cls, "isDebug", "()Z");
+    jmethodID release_mid = (*env)->GetMethodID(
+        env, options_cls, "getRelease", "()Ljava/lang/String;");
+    jmethodID environment_mid = (*env)->GetMethodID(
+        env, options_cls, "getEnvironment", "()Ljava/lang/String;");
+    jmethodID dist_mid = (*env)->GetMethodID(
+        env, options_cls, "getDist", "()Ljava/lang/String;");
+    jmethodID max_crumbs_mid
+        = (*env)->GetMethodID(env, options_cls, "getMaxBreadcrumbs", "()I");
+    jmethodID native_sdk_name_mid = (*env)->GetMethodID(
+        env, options_cls, "getSdkName", "()Ljava/lang/String;");
 
-    jmethodID handler_strategy_mid = (*env)->GetMethodID(env, options_cls, "getNdkHandlerStrategy", "()I");
+    jmethodID handler_strategy_mid
+        = (*env)->GetMethodID(env, options_cls, "getNdkHandlerStrategy", "()I");
 
-    jmethodID traces_sample_rate_mid = (*env)->GetMethodID(env, options_cls, "getTracesSampleRate", "()F");
+    jmethodID traces_sample_rate_mid
+        = (*env)->GetMethodID(env, options_cls, "getTracesSampleRate", "()F");
+
+    jmethodID enable_app_hang_tracking_mid = (*env)->GetMethodID(
+        env, options_cls, "isEnableAppHangTracking", "()Z");
+
+    jmethodID app_hang_timeout_mid = (*env)->GetMethodID(
+        env, options_cls, "getAppHangTimeoutMillis", "()J");
 
     (*env)->DeleteLocalRef(env, options_cls);
 
@@ -286,13 +370,16 @@ Java_io_sentry_ndk_SentryNdk_initSentryNative(
     options = sentry_options_new();
     ENSURE_OR_FAIL(options);
 
-    // session tracking is enabled by default, but the Android SDK already handles it
+    // session tracking is enabled by default, but the Android SDK already
+    // handles it
     sentry_options_set_auto_session_tracking(options, 0);
 
-    jboolean debug = (jboolean) (*env)->CallBooleanMethod(env, sentry_ndk_options, is_debug_mid);
+    jboolean debug = (jboolean)(*env)->CallBooleanMethod(
+        env, sentry_ndk_options, is_debug_mid);
     sentry_options_set_debug(options, debug);
 
-    jint max_crumbs = (jint) (*env)->CallIntMethod(env, sentry_ndk_options, max_crumbs_mid);
+    jint max_crumbs
+        = (jint)(*env)->CallIntMethod(env, sentry_ndk_options, max_crumbs_mid);
     sentry_options_set_max_breadcrumbs(options, max_crumbs);
 
     outbox_path = call_get_string(env, sentry_ndk_options, outbox_path_mid);
@@ -307,7 +394,8 @@ Java_io_sentry_ndk_SentryNdk_initSentryNative(
     sentry_options_set_transport(options, transport);
     options_owns_transport = true;
 
-    // give sentry-native its own database path it can work with, next to the outbox
+    // give sentry-native its own database path it can work with, next to the
+    // outbox
     size_t outbox_len = strlen(outbox_path);
     size_t final_len = outbox_len + 15; // len(".sentry-native\0") = 15
     char *database_path = sentry_malloc(final_len);
@@ -315,7 +403,8 @@ Java_io_sentry_ndk_SentryNdk_initSentryNative(
     strncpy(database_path, outbox_path, final_len);
     char *dir = strrchr(database_path, '/');
     if (dir) {
-        strncpy(dir + 1, ".sentry-native", final_len - (dir + 1 - database_path));
+        strncpy(
+            dir + 1, ".sentry-native", final_len - (dir + 1 - database_path));
     }
     sentry_options_set_database_path(options, database_path);
     sentry_free(database_path);
@@ -343,22 +432,37 @@ Java_io_sentry_ndk_SentryNdk_initSentryNative(
         sentry_free(dist_str);
     }
 
-    native_sdk_name_str = call_get_string(env, sentry_ndk_options, native_sdk_name_mid);
+    native_sdk_name_str
+        = call_get_string(env, sentry_ndk_options, native_sdk_name_mid);
     if (native_sdk_name_str) {
         sentry_options_set_sdk_name(options, native_sdk_name_str);
         sentry_free(native_sdk_name_str);
     }
 
-    jint handler_strategy = (jint) (*env)->CallIntMethod(env, sentry_ndk_options, handler_strategy_mid);
+    jint handler_strategy = (jint)(*env)->CallIntMethod(
+        env, sentry_ndk_options, handler_strategy_mid);
     sentry_options_set_handler_strategy(options, handler_strategy);
 
-    jfloat traces_sample_rate = (jfloat) (*env)->CallFloatMethod(env, sentry_ndk_options, traces_sample_rate_mid);
+    jfloat traces_sample_rate = (jfloat)(*env)->CallFloatMethod(
+        env, sentry_ndk_options, traces_sample_rate_mid);
     sentry_options_set_traces_sample_rate(options, traces_sample_rate);
 
-    sentry_init(options);
-    return;
+    jboolean enable_app_hang_tracking = (jboolean)(*env)->CallBooleanMethod(
+        env, sentry_ndk_options, enable_app_hang_tracking_mid);
+    sentry_options_set_enable_app_hang_tracking(
+        options, enable_app_hang_tracking);
 
-    fail:
+    jlong app_hang_timeout = (jlong)(*env)->CallLongMethod(
+        env, sentry_ndk_options, app_hang_timeout_mid);
+    if (app_hang_timeout < 0) {
+        app_hang_timeout = 0;
+    }
+    sentry_options_set_app_hang_timeout(options, (uint64_t)app_hang_timeout);
+
+    int rv = sentry_init(options);
+    return (jint)rv;
+
+fail:
     if (!transport_owns_path) {
         sentry_free(outbox_path);
     }
@@ -366,15 +470,20 @@ Java_io_sentry_ndk_SentryNdk_initSentryNative(
         sentry_transport_free(transport);
     }
     sentry_options_free(options);
+    return (jint)-1;
 }
 
 JNIEXPORT void JNICALL
-Java_io_sentry_ndk_NativeModuleListLoader_nativeClearModuleList(JNIEnv *env, jclass cls) {
+Java_io_sentry_ndk_NativeModuleListLoader_nativeClearModuleList(
+    JNIEnv *env, jclass cls)
+{
     sentry_clear_modulecache();
 }
 
 JNIEXPORT jobjectArray JNICALL
-Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(JNIEnv *env, jclass cls) {
+Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(
+    JNIEnv *env, jclass cls)
+{
     sentry_value_t image_list_t = sentry_get_modules_list();
     jobjectArray image_list = NULL;
 
@@ -384,61 +493,68 @@ Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(JNIEnv *env, jcla
         jclass image_class = (*env)->FindClass(env, "io/sentry/ndk/DebugImage");
         image_list = (*env)->NewObjectArray(env, len_t, image_class, NULL);
 
-        jmethodID image_addr_method = (*env)->GetMethodID(env, image_class, "setImageAddr",
-                                                          "(Ljava/lang/String;)V");
+        jmethodID image_addr_method = (*env)->GetMethodID(
+            env, image_class, "setImageAddr", "(Ljava/lang/String;)V");
 
-        jmethodID image_size_method = (*env)->GetMethodID(env, image_class, "setImageSize",
-                                                          "(J)V");
+        jmethodID image_size_method
+            = (*env)->GetMethodID(env, image_class, "setImageSize", "(J)V");
 
-        jmethodID code_file_method = (*env)->GetMethodID(env, image_class, "setCodeFile",
-                                                         "(Ljava/lang/String;)V");
+        jmethodID code_file_method = (*env)->GetMethodID(
+            env, image_class, "setCodeFile", "(Ljava/lang/String;)V");
 
-        jmethodID image_addr_ctor = (*env)->GetMethodID(env, image_class, "<init>",
-                                                        "()V");
+        jmethodID image_addr_ctor
+            = (*env)->GetMethodID(env, image_class, "<init>", "()V");
 
-        jmethodID type_method = (*env)->GetMethodID(env, image_class, "setType",
-                                                    "(Ljava/lang/String;)V");
+        jmethodID type_method = (*env)->GetMethodID(
+            env, image_class, "setType", "(Ljava/lang/String;)V");
 
-        jmethodID debug_id_method = (*env)->GetMethodID(env, image_class, "setDebugId",
-                                                        "(Ljava/lang/String;)V");
+        jmethodID debug_id_method = (*env)->GetMethodID(
+            env, image_class, "setDebugId", "(Ljava/lang/String;)V");
 
-        jmethodID code_id_method = (*env)->GetMethodID(env, image_class, "setCodeId",
-                                                       "(Ljava/lang/String;)V");
+        jmethodID code_id_method = (*env)->GetMethodID(
+            env, image_class, "setCodeId", "(Ljava/lang/String;)V");
 
-        jmethodID debug_file_method = (*env)->GetMethodID(env, image_class, "setDebugFile",
-                                                          "(Ljava/lang/String;)V");
+        jmethodID debug_file_method = (*env)->GetMethodID(
+            env, image_class, "setDebugFile", "(Ljava/lang/String;)V");
 
         for (size_t i = 0; i < len_t; i++) {
             sentry_value_t image_t = sentry_value_get_by_index(image_list_t, i);
 
             if (!sentry_value_is_null(image_t)) {
-                jobject image = (*env)->NewObject(env, image_class, image_addr_ctor);
+                jobject image
+                    = (*env)->NewObject(env, image_class, image_addr_ctor);
 
-                sentry_value_t image_addr_t = sentry_value_get_by_key(image_t, "image_addr");
+                sentry_value_t image_addr_t
+                    = sentry_value_get_by_key(image_t, "image_addr");
                 if (!sentry_value_is_null(image_addr_t)) {
 
                     const char *value_v = sentry_value_as_string(image_addr_t);
                     jstring value = (*env)->NewStringUTF(env, value_v);
 
-                    (*env)->CallVoidMethod(env, image, image_addr_method, value);
+                    (*env)->CallVoidMethod(
+                        env, image, image_addr_method, value);
 
-                    // Local refs (eg NewStringUTF) are freed automatically when the native method
-                    // returns, but if you're iterating a large array, it's recommended to release
-                    // manually due to allocation limits (512) on Android < 8 or OOM.
+                    // Local refs (eg NewStringUTF) are freed automatically when
+                    // the native method returns, but if you're iterating a
+                    // large array, it's recommended to release manually due to
+                    // allocation limits (512) on Android < 8 or OOM.
                     // https://developer.android.com/training/articles/perf-jni.html#local-and-global-references
                     (*env)->DeleteLocalRef(env, value);
                 }
 
-                sentry_value_t image_size_t = sentry_value_get_by_key(image_t, "image_size");
+                sentry_value_t image_size_t
+                    = sentry_value_get_by_key(image_t, "image_size");
                 if (!sentry_value_is_null(image_size_t)) {
 
                     int32_t value_v = sentry_value_as_int32(image_size_t);
-                    jlong value = (jlong) value_v;
+                    jlong value = (jlong)value_v;
 
-                    (*env)->CallVoidMethod(env, image, image_size_method, value);
+                    (*env)->CallVoidMethod(
+                        env, image, image_size_method, value);
                 }
 
-                sentry_value_t code_file_t = sentry_value_get_by_key(image_t, "code_file");
+                sentry_value_t code_file_t
+                    = sentry_value_get_by_key(image_t, "code_file");
                 if (!sentry_value_is_null(code_file_t)) {
 
                     const char *value_v = sentry_value_as_string(code_file_t);
@@ -449,7 +565,8 @@ Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(JNIEnv *env, jcla
                     (*env)->DeleteLocalRef(env, value);
                 }
 
-                sentry_value_t code_type_t = sentry_value_get_by_key(image_t, "type");
+                sentry_value_t code_type_t
+                    = sentry_value_get_by_key(image_t, "type");
                 if (!sentry_value_is_null(code_type_t)) {
 
                     const char *value_v = sentry_value_as_string(code_type_t);
@@ -460,7 +577,8 @@ Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(JNIEnv *env, jcla
                     (*env)->DeleteLocalRef(env, value);
                 }
 
-                sentry_value_t debug_id_t = sentry_value_get_by_key(image_t, "debug_id");
+                sentry_value_t debug_id_t
+                    = sentry_value_get_by_key(image_t, "debug_id");
                 if (!sentry_value_is_null(code_type_t)) {
 
                     const char *value_v = sentry_value_as_string(debug_id_t);
@@ -471,7 +589,8 @@ Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(JNIEnv *env, jcla
                     (*env)->DeleteLocalRef(env, value);
                 }
 
-                sentry_value_t code_id_t = sentry_value_get_by_key(image_t, "code_id");
+                sentry_value_t code_id_t
+                    = sentry_value_get_by_key(image_t, "code_id");
                 if (!sentry_value_is_null(code_id_t)) {
 
                     const char *value_v = sentry_value_as_string(code_id_t);
@@ -483,13 +602,15 @@ Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(JNIEnv *env, jcla
                 }
 
                 // not needed on Android, but keeping for forward compatibility
-                sentry_value_t debug_file_t = sentry_value_get_by_key(image_t, "debug_file");
+                sentry_value_t debug_file_t
+                    = sentry_value_get_by_key(image_t, "debug_file");
                 if (!sentry_value_is_null(debug_file_t)) {
 
                     const char *value_v = sentry_value_as_string(debug_file_t);
                     jstring value = (*env)->NewStringUTF(env, value_v);
 
-                    (*env)->CallVoidMethod(env, image, debug_file_method, value);
+                    (*env)->CallVoidMethod(
+                        env, image, debug_file_method, value);
 
                     (*env)->DeleteLocalRef(env, value);
                 }
@@ -507,6 +628,7 @@ Java_io_sentry_ndk_NativeModuleListLoader_nativeLoadModuleList(JNIEnv *env, jcla
 }
 
 JNIEXPORT void JNICALL
-Java_io_sentry_ndk_SentryNdk_shutdown(JNIEnv *env, jclass cls) {
+Java_io_sentry_ndk_SentryNdk_shutdown(JNIEnv *env, jclass cls)
+{
     sentry_close();
 }
