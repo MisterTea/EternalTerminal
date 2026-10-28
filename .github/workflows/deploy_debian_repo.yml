@@ -98,6 +98,7 @@ jobs:
             openssh-client \
             protobuf-compiler \
             python3 \
+            qemu-user-binfmt \
             qemu-user-static \
             rsync \
             sbuild \
@@ -297,21 +298,23 @@ jobs:
               return 0
             fi
 
-            # qemu-user-static ships the magic, the interpreter path, and
-            # fix_binary in /usr/share/binfmts. Import that after binfmt_misc
-            # is mounted. Writing the register file by hand fails: the kernel
-            # stops unescaping at an embedded NUL and returns EINVAL.
-            if [[ ! -e "/usr/share/binfmts/qemu-${qemu_target}" ]]; then
-              echo "Missing /usr/share/binfmts/qemu-${qemu_target} for ${arch}" >&2
+            # qemu-user-binfmt ships the register string, including the
+            # fix-binary interpreter, in /usr/lib/binfmt.d. systemd is not
+            # running in this container, so apply that file directly.
+            local conf="/usr/lib/binfmt.d/qemu-${qemu_target}.conf"
+            if [[ ! -f "${conf}" ]]; then
+              echo "Missing ${conf} for ${arch}" >&2
               exit 1
             fi
             if [[ -e "${registry_entry}" ]]; then
               echo -1 > "${registry_entry}" || true
             fi
-            update-binfmts --unimport "qemu-${qemu_target}" || true
-            update-binfmts --import "qemu-${qemu_target}"
+            cat "${conf}" > /proc/sys/fs/binfmt_misc/register
             if ! binfmt_ready "${registry_entry}"; then
               echo "ERROR: qemu-${qemu_target} binfmt entry is not enabled with F" >&2
+              echo "registration file:" >&2
+              cat "${conf}" >&2 || true
+              echo "kernel entry:" >&2
               cat "${registry_entry}" >&2 || true
               exit 1
             fi
