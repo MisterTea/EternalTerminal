@@ -75,7 +75,7 @@ Repository secrets:
 
 **Deploy Debian Repo** (`.github/workflows/deploy_debian_repo.yml`) builds `oldstable`, `stable`, and `testing` for `amd64` and `arm64` by default, with vcpkg and telemetry disabled and without dbgsym packages. `push_changes` defaults to true and commits the apt repository to `debian-et`.
 
-**Deploy Ubuntu PPA** (`.github/workflows/deploy_ubuntu_ppa.yml`) builds a source package for each supported Ubuntu series and signs it. `simulate_upload` defaults to true, which runs `dput --simulate`. Set it to false to upload to `ppa:jgmath2000/et`.
+**Deploy Ubuntu PPA** (`.github/workflows/deploy_ubuntu_ppa.yml`) builds a source package for each supported Ubuntu series and signs it. The upstream tarball comes from the GitHub release. `deployment/debian_SOURCE` comes from the ref you dispatch, so a packaging fix can ship without a new upstream tag. `simulate_upload` defaults to true, which runs `dput --simulate`. Set it to false to upload to `ppa:jgmath2000/et`. The first series uploads `orig.tar.gz`; later series omit it. Set `include_orig` to false when that tarball is already in the PPA. Set `ubuntu_series` to retry specific series. Debug symbol packages are disabled in `debian/rules` because they exceed the PPA quota.
 
 **Deploy Arch Linux AUR** (`.github/workflows/deploy_archlinux_aur.yml`) updates `pkgver` and `sha256sums` in `ssh://aur@aur.archlinux.org/eternalterminal.git` and pushes. `push_changes` defaults to true.
 

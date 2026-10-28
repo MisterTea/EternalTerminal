@@ -333,7 +333,9 @@ jobs:
             fi
             python3 -c 'import pathlib, sys; path = pathlib.Path("EternalTerminal/debian/changelog"); path.write_text(path.read_text().replace("##DISTRO##", sys.argv[1]))' "${distro}"
             sed -i -E 's/^\* /  * /; s/^-- / -- /' EternalTerminal/debian/changelog
-            printf '\nexport DEB_BUILD_OPTIONS += noautodbgsym\n\noverride_dh_strip:\n\tdh_strip --no-automatic-dbgsym\n' >> EternalTerminal/debian/rules
+            if ! grep -q noautodbgsym EternalTerminal/debian/rules; then
+              printf '\nexport DEB_BUILD_OPTIONS += noautodbgsym\n\noverride_dh_strip:\n\tdh_strip --no-automatic-dbgsym\n' >> EternalTerminal/debian/rules
+            fi
 
             rm -f ./*.dsc ./*.changes ./*.buildinfo ./*.debian.tar.* ./*.upload
             pushd EternalTerminal
