@@ -16,6 +16,15 @@ on:
         required: true
         type: boolean
         default: true
+      ubuntu_series:
+        description: "Space-separated Ubuntu series to build. Leave blank for distro-info --supported."
+        required: false
+        default: ""
+      include_orig:
+        description: "Upload the upstream tarball with the first series. Set false when that tarball is already in the PPA."
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -144,22 +153,41 @@ jobs:
         env:
           PPA: ${{ inputs.ppa }}
           SIMULATE_UPLOAD: ${{ inputs.simulate_upload }}
+          UBUNTU_SERIES: ${{ inputs.ubuntu_series }}
+          INCLUDE_ORIG: ${{ inputs.include_orig }}
         run: |
           rm -f ./*.changes
 
-          readarray -t ubuntu_series < <(distro-info --supported)
+          if [[ -n "${UBUNTU_SERIES}" ]]; then
+            read -r -a ubuntu_series <<< "${UBUNTU_SERIES}"
+          else
+            # ubuntu-latest's distro-info-data lags new releases. The Launchpad
+            # copy is what --supported should be saying today.
+            tmp_csv="$(mktemp)"
+            curl -fsSL "https://git.launchpad.net/ubuntu/+source/distro-info-data/plain/ubuntu.csv" -o "${tmp_csv}"
+            sudo cp "${tmp_csv}" /usr/share/distro-info/ubuntu.csv
+            rm -f "${tmp_csv}"
+            readarray -t ubuntu_series < <(distro-info --supported)
+          fi
           if [[ "${#ubuntu_series[@]}" -eq 0 ]]; then
-            echo "distro-info --supported did not return any Ubuntu series" >&2
+            echo "No Ubuntu series to build" >&2
             exit 1
           fi
+          printf 'Building Ubuntu series: %s\n' "${ubuntu_series[*]}"
 
           pushd EternalTerminal
+          upload_orig="${INCLUDE_ORIG}"
           for distro in "${ubuntu_series[@]}"; do
             rm -rf debian
             cp -a deployment/debian_SOURCE debian
             python3 -c 'import pathlib, sys; path = pathlib.Path("debian/changelog"); path.write_text(path.read_text().replace("##DISTRO##", sys.argv[1]))' "${distro}"
             sed -i -E 's/^\* /  * /; s/^-- / -- /' debian/changelog
-            debuild -S -us -uc
+            if [[ "${upload_orig}" == "true" ]]; then
+              debuild -S -sa -us -uc
+              upload_orig=false
+            else
+              debuild -S -sd -us -uc
+            fi
 
             changes_files=(../*"${distro}"*.changes)
             if [[ ! -e "${changes_files[0]}" ]]; then
