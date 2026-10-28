@@ -123,7 +123,6 @@ ConnectResponse authenticateKnownClient(
   ConnectRequest request;
   request.set_clientid(clientId);
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(fd, request, true);
 
   const ConnectResponse challenge = handler->readProto<ConnectResponse>(
@@ -261,8 +260,7 @@ TEST_CASE("TerminalClient rejects a setup reply that is not INITIAL_RESPONSE",
   handler->queueConnectFd(fds[0]);
   const string key = "0123456789abcdef0123456789abcdef";
 
-  // An authenticated server whose first session packet has the wrong type,
-  // as an on-path attacker can produce by relabeling INITIAL_RESPONSE.
+  // An authenticated server whose first session packet has the wrong type.
   std::thread server([&]() {
     handler->readProto<ConnectRequest>(fds[1], true);
     ConnectResponse challenge;
@@ -278,9 +276,9 @@ TEST_CASE("TerminalClient rejects a setup reply that is not INITIAL_RESPONSE",
     handler->writeProto(fds[1], response, true);
 
     readSessionFrame(handler, fds[1]);  // INITIAL_PAYLOAD
-    Packet relabeled(TerminalPacketType::TERMINAL_BUFFER, "");
-    relabeled.encrypt(make_shared<CryptoHandler>(key, SERVER_CLIENT_NONCE_MSB));
-    writeSessionFrame(handler, fds[1], relabeled);
+    Packet wrongType(TerminalPacketType::TERMINAL_BUFFER, "");
+    wrongType.encrypt(make_shared<CryptoHandler>(key, SERVER_CLIENT_NONCE_MSB));
+    writeSessionFrame(handler, fds[1], wrongType);
   });
 
   REQUIRE_THROWS_WITH(
@@ -310,7 +308,6 @@ TEST_CASE("ClientConnection completes handshake over socketpair",
     auto request = handler->readProto<ConnectRequest>(fds[1], true);
     REQUIRE(request.clientid() == "client-id");
     REQUIRE(request.version() == PROTOCOL_VERSION);
-    REQUIRE(request.supportschallenge());
 
     ConnectResponse challenge;
     challenge.set_authchallenge(
@@ -355,70 +352,6 @@ TEST_CASE("ClientConnection completes handshake over socketpair",
   handler->close(fds[1]);
 }
 
-TEST_CASE("ClientConnection accepts a legacy server's unchallenged status",
-          "[ClientConnection]") {
-  auto handler = make_shared<SocketPairHandler>();
-  int fds[2];
-  REQUIRE(createTestSocketPair(fds) == 0);
-  handler->queueConnectFd(fds[0]);
-
-  const string key = "12345678901234567890123456789012";
-  ClientConnection conn(handler, SocketEndpoint(), "client-id", key);
-
-  std::thread server([&]() {
-    auto request = handler->readProto<ConnectRequest>(fds[1], true);
-    REQUIRE(request.supportschallenge());
-    ConnectResponse response;
-    response.set_status(NEW_CLIENT);
-    handler->writeProto(fds[1], response, true);
-  });
-
-  REQUIRE(conn.connect());
-  server.join();
-  REQUIRE(conn.lastStatus() == NEW_CLIENT);
-  REQUIRE_FALSE(conn.wasRecovered());
-  REQUIRE_FALSE(handler->hasData(fds[1]));
-
-  conn.shutdown();
-  handler->close(fds[1]);
-}
-
-TEST_CASE("ClientConnection refuses to reattach through a legacy server",
-          "[ClientConnection]") {
-  for (const ConnectStatus status : {NEW_CLIENT, RETURNING_CLIENT}) {
-    CAPTURE(status);
-    auto handler = make_shared<SocketPairHandler>();
-    int fds[2];
-    REQUIRE(createTestSocketPair(fds) == 0);
-    handler->queueConnectFd(fds[0]);
-
-    const string key = "12345678901234567890123456789012";
-    ClientConnection conn(handler, SocketEndpoint(), "client-id", key,
-                          /*_resetIntent=*/true);
-
-    std::thread server([&]() {
-      auto request = handler->readProto<ConnectRequest>(fds[1], true);
-      REQUIRE(request.resetintent());
-      ConnectResponse response;
-      response.set_status(status);
-      response.set_resetrequired(true);
-      response.set_resetsalt(
-          CryptoHandler::randomBytes(CryptoHandler::EPOCH_SALT_BYTES));
-      handler->writeProto(fds[1], response, true);
-    });
-
-    REQUIRE_THROWS_WITH(conn.connect(),
-                        ClientConnection::LEGACY_SERVER_REATTACH_ERROR);
-    server.join();
-    REQUIRE_FALSE(conn.wasRecovered());
-    char unexpected = 0;
-    REQUIRE(::recv(fds[1], &unexpected, 1, 0) == 0);
-
-    conn.shutdown();
-    handler->close(fds[1]);
-  }
-}
-
 namespace {
 // Hex of a XOR b, truncated to the shorter input.
 string xorHex(const string& a, const string& b) {
@@ -433,7 +366,7 @@ string xorHex(const string& a, const string& b) {
 }
 }  // namespace
 
-TEST_CASE("ClientConnection does not reuse keystream for a forged reattach",
+TEST_CASE("ClientConnection refuses an unchallenged response on reattach",
           "[ClientConnection]") {
   const string key = "12345678901234567890123456789012";
 
@@ -468,7 +401,7 @@ TEST_CASE("ClientConnection does not reuse keystream for a forged reattach",
     connected = conn.connect();
   } catch (const std::runtime_error& err) {
     REQUIRE(string(err.what()) ==
-            ClientConnection::LEGACY_SERVER_REATTACH_ERROR);
+            ClientConnection::UNAUTHENTICATED_SERVER_ERROR);
   }
   attacker.join();
 
@@ -483,9 +416,12 @@ TEST_CASE("ClientConnection does not reuse keystream for a forged reattach",
     const string newInput = "secret typed after reattaching to the session";
     conn.writePacket(Packet(TerminalPacketType::TERMINAL_BUFFER, newInput));
     const Packet observed = readSessionFrame(handler, fds[1]);
-    CHECK(xorHex(observed.getPayload().substr(crypto_secretbox_MACBYTES),
-                 originalClientPacket.getPayload().substr(
-                     crypto_secretbox_MACBYTES)) !=
+    const auto ciphertext = [](const Packet& packet) {
+      const string sealed = packet.getPayload();
+      return sealed.substr(
+          0, sealed.size() - crypto_aead_xchacha20poly1305_ietf_ABYTES);
+    };
+    CHECK(xorHex(ciphertext(observed), ciphertext(originalClientPacket)) !=
           xorHex(newInput, originalInput));
   }
   conn.shutdown();
@@ -493,63 +429,32 @@ TEST_CASE("ClientConnection does not reuse keystream for a forged reattach",
   REQUIRE_FALSE(connected);
 }
 
-TEST_CASE(
-    "ClientConnection accepts a legacy RETURNING_CLIENT on a fresh connect",
-    "[ClientConnection]") {
-  auto handler = make_shared<SocketPairHandler>();
-  int fds[2];
-  REQUIRE(createTestSocketPair(fds) == 0);
-  handler->queueConnectFd(fds[0]);
-
-  const string key = "12345678901234567890123456789012";
-  ClientConnection conn(handler, SocketEndpoint(), "client-id", key);
-
-  std::thread server([&]() {
-    auto request = handler->readProto<ConnectRequest>(fds[1], true);
-    REQUIRE_FALSE(request.resetintent());
-    ConnectResponse response;
-    response.set_status(RETURNING_CLIENT);
-    handler->writeProto(fds[1], response, true);
-  });
-
-  REQUIRE(conn.connect());
-  server.join();
-  REQUIRE(conn.lastStatus() == RETURNING_CLIENT);
-  REQUIRE_FALSE(conn.wasRecovered());
-
-  conn.shutdown();
-  handler->close(fds[1]);
-}
-
-TEST_CASE("ClientConnection reconnects to a legacy server without resetIntent",
+TEST_CASE("ClientConnection refuses every unchallenged success status",
           "[ClientConnection]") {
-  auto handler = make_shared<SocketPairHandler>();
-  int fds[2];
-  REQUIRE(createTestSocketPair(fds) == 0);
-
   const string key = "12345678901234567890123456789012";
-  HandshakeClientConnection conn(handler, "client-id", key);
+  for (const ConnectStatus status : {NEW_CLIENT, RETURNING_CLIENT}) {
+    for (const bool resetIntent : {false, true}) {
+      CAPTURE(status, resetIntent);
+      auto handler = make_shared<SocketPairHandler>();
+      int fds[2];
+      REQUIRE(createTestSocketPair(fds) == 0);
+      HandshakeClientConnection conn(handler, "client-id", key);
 
-  std::thread server([&]() {
-    auto request = handler->readProto<ConnectRequest>(fds[1], true);
-    REQUIRE_FALSE(request.resetintent());
-    ConnectResponse response;
-    response.set_status(RETURNING_CLIENT);
-    response.set_resetrequired(true);
-    response.set_resetsalt(
-        CryptoHandler::randomBytes(CryptoHandler::EPOCH_SALT_BYTES));
-    handler->writeProto(fds[1], response, true);
-  });
+      std::thread server([&]() {
+        handler->readProto<ConnectRequest>(fds[1], true);
+        ConnectResponse response;
+        response.set_status(status);
+        handler->writeProto(fds[1], response, true);
+      });
+      ConnectResponse response;
+      REQUIRE_THROWS_WITH(conn.handshake(fds[0], &response, resetIntent),
+                          ClientConnection::UNAUTHENTICATED_SERVER_ERROR);
+      server.join();
 
-  ConnectResponse response;
-  conn.handshake(fds[0], &response, /*resetIntent=*/false);
-  server.join();
-  REQUIRE(response.status() == RETURNING_CLIENT);
-  REQUIRE_FALSE(response.resetrequired());
-  REQUIRE_FALSE(response.has_resetsalt());
-
-  handler->close(fds[0]);
-  handler->close(fds[1]);
+      handler->close(fds[0]);
+      handler->close(fds[1]);
+    }
+  }
 }
 
 TEST_CASE("ClientConnection rejects a success without reset decision proof",
@@ -738,7 +643,6 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   ConnectRequest missingKeyRequest;
   missingKeyRequest.set_clientid("missing");
   missingKeyRequest.set_version(PROTOCOL_VERSION);
-  missingKeyRequest.set_supportschallenge(true);
   handler->writeProto(firstPair[0], missingKeyRequest, true);
   server.clientHandler(firstPair[1]);
   auto missingKeyResponse =
@@ -763,7 +667,6 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   ConnectRequest oldVersionRequest;
   oldVersionRequest.set_clientid("client-one");
   oldVersionRequest.set_version(PROTOCOL_VERSION - 1);
-  oldVersionRequest.set_supportschallenge(true);
   handler->writeProto(versionPair[0], oldVersionRequest, true);
   server.clientHandler(versionPair[1]);
   auto versionResponse =
@@ -799,107 +702,6 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   server.shutdown();
 }
 
-TEST_CASE("ServerConnection answers legacy clients with the protocol-6 flow",
-          "[ServerConnection]") {
-  auto handler = make_shared<SocketPairHandler>();
-  SocketEndpoint endpoint;
-  endpoint.set_name("server");
-  endpoint.set_port(0);
-  RecordingServerConnection server(handler, endpoint);
-
-  int unknownPair[2];
-  REQUIRE(createTestSocketPair(unknownPair) == 0);
-  ConnectRequest unknownRequest;
-  unknownRequest.set_clientid("unknown");
-  unknownRequest.set_version(PROTOCOL_VERSION);
-  handler->writeProto(unknownPair[0], unknownRequest, true);
-  server.clientHandler(unknownPair[1]);
-  auto unknownResponse =
-      handler->readProto<ConnectResponse>(unknownPair[0], true);
-  REQUIRE(unknownResponse.status() == INVALID_KEY);
-  handler->close(unknownPair[0]);
-  handler->close(unknownPair[1]);
-
-  const string clientKey = "0123456789abcdef0123456789abcdef";
-  server.addClientKey("legacy", clientKey);
-  ConnectRequest request;
-  request.set_clientid("legacy");
-  request.set_version(PROTOCOL_VERSION);
-  request.set_resetintent(true);
-
-  int newPair[2];
-  REQUIRE(createTestSocketPair(newPair) == 0);
-  handler->writeProto(newPair[0], request, true);
-  server.clientHandler(newPair[1]);
-  auto newResponse = handler->readProto<ConnectResponse>(newPair[0], true);
-  REQUIRE(newResponse.status() == NEW_CLIENT);
-  REQUIRE_FALSE(newResponse.has_authchallenge());
-  REQUIRE_FALSE(newResponse.has_resetrequired());
-  REQUIRE_FALSE(newResponse.has_resetsalt());
-  REQUIRE_FALSE(newResponse.has_resetproof());
-  REQUIRE(server.newClientCalled);
-
-  int returnPair[2];
-  REQUIRE(createTestSocketPair(returnPair) == 0);
-  handler->writeProto(returnPair[0], request, true);
-  std::thread client([&]() {
-    auto response = handler->readProto<ConnectResponse>(returnPair[0], true);
-    REQUIRE(response.status() == RETURNING_CLIENT);
-    REQUIRE_FALSE(response.has_authchallenge());
-    REQUIRE_FALSE(response.has_resetrequired());
-    REQUIRE_FALSE(response.has_resetsalt());
-    REQUIRE_FALSE(response.has_resetproof());
-    auto seqHeader = handler->readProto<SequenceHeader>(
-        returnPair[0], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
-    REQUIRE_FALSE(seqHeader.reset());
-    SequenceHeader seqResponse;
-    seqResponse.set_sequencenumber(0);
-    handler->writeProto(returnPair[0], seqResponse, true);
-    handler->readProto<CatchupBuffer>(returnPair[0], true);
-    CatchupBuffer back;
-    handler->writeProto(returnPair[0], back, true);
-  });
-  server.clientHandler(returnPair[1]);
-  client.join();
-  REQUIRE(server.clientConnectionExists("legacy"));
-
-  server.shutdown();
-  handler->close(newPair[0]);
-  handler->close(returnPair[0]);
-}
-
-TEST_CASE("ServerConnection refuses to resume a legacy client",
-          "[ServerConnection]") {
-  auto handler = make_shared<SocketPairHandler>();
-  SocketEndpoint endpoint;
-  endpoint.set_name("server");
-  endpoint.set_port(0);
-  RecordingServerConnection server(handler, endpoint);
-
-  server.addClientKey("live-term", "0123456789abcdef0123456789abcdef");
-  server.resumeIds.insert("live-term");
-
-  int fds[2];
-  REQUIRE(createTestSocketPair(fds) == 0);
-  ConnectRequest request;
-  request.set_clientid("live-term");
-  request.set_version(PROTOCOL_VERSION);
-  handler->writeProto(fds[0], request, true);
-  server.clientHandler(fds[1]);
-
-  auto response = handler->readProto<ConnectResponse>(fds[0], true);
-  REQUIRE(response.status() == INVALID_KEY);
-  REQUIRE_FALSE(response.has_authchallenge());
-  REQUIRE_FALSE(response.has_resetrequired());
-  REQUIRE_FALSE(server.resumeClientCalled);
-  REQUIRE_FALSE(server.newClientCalled);
-  REQUIRE_FALSE(server.clientConnectionExists("live-term"));
-  REQUIRE(server.clientKeyExists("live-term"));
-
-  server.shutdown();
-  handler->close(fds[0]);
-}
-
 TEST_CASE("ServerConnection rejects removed clients during recovery grace",
           "[ServerConnection]") {
   auto handler = make_shared<SocketPairHandler>();
@@ -916,7 +718,6 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   ConnectRequest endedRequest;
   endedRequest.set_clientid("ended");
   endedRequest.set_version(PROTOCOL_VERSION);
-  endedRequest.set_supportschallenge(true);
   handler->writeProto(endedPair[0], endedRequest, true);
   server.clientHandler(endedPair[1]);
   auto endedResponse = handler->readProto<ConnectResponse>(endedPair[0], true);
@@ -929,7 +730,6 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   ConnectRequest unknownRequest;
   unknownRequest.set_clientid("unknown");
   unknownRequest.set_version(PROTOCOL_VERSION);
-  unknownRequest.set_supportschallenge(true);
   handler->writeProto(unknownPair[0], unknownRequest, true);
   server.clientHandler(unknownPair[1]);
   auto unknownResponse =
@@ -1025,7 +825,6 @@ TEST_CASE("ServerConnection rejects known ids without proof before reset",
   ConnectRequest request;
   request.set_clientid("live-term");
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(fds[0], request, true);
 
   std::thread serverThread([&]() { server.clientHandler(fds[1]); });
@@ -1069,7 +868,6 @@ TEST_CASE("ServerConnection rejects a proof replayed for an old challenge",
   ConnectRequest request;
   request.set_clientid(clientId);
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(fds[0], request, true);
   auto challenge = handler->readProto<ConnectResponse>(fds[0], true);
   REQUIRE(challenge.has_authchallenge());
