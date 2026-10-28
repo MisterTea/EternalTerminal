@@ -428,7 +428,7 @@ jobs:
   publish:
     name: publish-debian-repo
     needs: build
-    if: ${{ !cancelled() && needs.build.result == 'success' && env.ACT != 'true' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     container:
       image: debian:stable
@@ -438,6 +438,7 @@ jobs:
       INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
     steps:
       - name: Install publishing dependencies
+        if: ${{ env.ACT != 'true' }}
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -452,6 +453,7 @@ jobs:
             wget
 
       - name: Import GPG signing key
+        if: ${{ env.ACT != 'true' }}
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -502,6 +504,7 @@ jobs:
           } >> "${GITHUB_ENV}"
 
       - name: Resolve release
+        if: ${{ env.ACT != 'true' }}
         run: |
           if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
             release_tag="${INPUT_RELEASE_TAG}"
@@ -523,6 +526,7 @@ jobs:
           path: incoming
 
       - name: Publish local repositories
+        if: ${{ env.ACT != 'true' }}
         run: |
           mapfile -t deb_files < <(find incoming -type f -name '*.deb' | sort)
           if [[ "${#deb_files[@]}" -eq 0 ]]; then
@@ -570,7 +574,7 @@ jobs:
           path: ~/.aptly/public/
 
       - name: Configure SSH for Debian repository push
-        if: ${{ inputs.push_changes }}
+        if: ${{ inputs.push_changes && env.ACT != 'true' }}
         env:
           DEBIAN_REPO_SSH_PRIVATE_KEY: ${{ secrets.DEBIAN_REPO_SSH_PRIVATE_KEY }}
         run: |
@@ -603,7 +607,7 @@ jobs:
           git config --global user.email "jgmath2000@gmail.com"
 
       - name: Commit and push Debian repository
-        if: ${{ inputs.push_changes }}
+        if: ${{ inputs.push_changes && env.ACT != 'true' }}
         run: |
           git clone "${DEBIAN_REPO}" debian-et
           mkdir -p debian-et/debian-source
