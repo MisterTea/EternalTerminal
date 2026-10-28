@@ -153,10 +153,6 @@ jobs:
         run: |
           mkdir EternalTerminal
           tar -xzf "${ORIG_TARBALL}" --strip-components=1 -C EternalTerminal
-          # Packaging comes from this workflow's ref so a debian/rules fix
-          # ships without replacing the upstream release tarball.
-          rm -rf EternalTerminal/deployment/debian_SOURCE
-          cp -a packaging/deployment/debian_SOURCE EternalTerminal/deployment/debian_SOURCE
 
       - name: Build source packages and upload
         env:
@@ -186,7 +182,9 @@ jobs:
           upload_orig="${INCLUDE_ORIG}"
           for distro in "${ubuntu_series[@]}"; do
             rm -rf debian
-            cp -a deployment/debian_SOURCE debian
+            # debian/ is outside the upstream tarball. Copy it from this
+            # workflow's ref so a packaging fix does not change orig.
+            cp -a ../packaging/deployment/debian_SOURCE debian
             python3 -c 'import pathlib, sys; path = pathlib.Path("debian/changelog"); path.write_text(path.read_text().replace("##DISTRO##", sys.argv[1]))' "${distro}"
             sed -i -E 's/^\* /  * /; s/^-- / -- /' debian/changelog
             if [[ "${upload_orig}" == "true" ]]; then
