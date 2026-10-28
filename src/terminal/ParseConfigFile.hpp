@@ -257,6 +257,55 @@ static enum ssh_config_opcode_e ssh_config_get_opcode(char* keyword) {
   return SOC_UNSUPPORTED;
 }
 
+/**
+ * @brief Splits SetEnv arguments into NAME=VALUE assignments like OpenSSH's
+ * argv_split(): blanks separate words, quotes may start anywhere in a word and
+ * are removed (so `TERM="xterm-256color"` yields `TERM=xterm-256color`), a
+ * backslash escapes a quote, a backslash or a space, and an unquoted '#' at the
+ * start of a word ends the line.
+ */
+static vector<string> split_setenv_assignments(const string& line) {
+  vector<string> words;
+  size_t pos = 0;
+  while (pos < line.size()) {
+    while (pos < line.size() &&
+           isblank(static_cast<unsigned char>(line[pos]))) {
+      pos++;
+    }
+    if (pos >= line.size() || line[pos] == '#') {
+      break;
+    }
+    string word;
+    char quote = 0;
+    for (; pos < line.size(); pos++) {
+      const char c = line[pos];
+      if (quote == 0 && isblank(static_cast<unsigned char>(c))) {
+        break;
+      }
+      if (c == '\\' && pos + 1 < line.size()) {
+        const char next = line[pos + 1];
+        if (next == '"' || next == '\'' || next == '\\' ||
+            (quote == 0 && next == ' ')) {
+          word += next;
+          pos++;
+          continue;
+        }
+      }
+      if (quote == 0 && (c == '"' || c == '\'')) {
+        quote = c;
+      } else if (c == quote) {
+        quote = 0;
+      } else {
+        word += c;
+      }
+    }
+    if (!word.empty()) {
+      words.push_back(word);
+    }
+  }
+  return words;
+}
+
 /** @brief Parses a single line of ssh config, updating the provided Options. */
 static int ssh_config_parse_line(const char* targethost,
                                  struct Options* options, const char* line,
@@ -1892,38 +1941,8 @@ static int ssh_config_parse_line(const char* targethost,
       // NAME=VALUE must stay one token. The generic tokenizer treats '=' as a
       // delimiter, which would keep only the name.
       if (*parsing && s != nullptr) {
-        string rest(s);
-        size_t pos = 0;
-        while (pos < rest.size()) {
-          while (pos < rest.size() &&
-                 isblank(static_cast<unsigned char>(rest[pos]))) {
-            pos++;
-          }
-          if (pos >= rest.size() || rest[pos] == '#') {
-            break;
-          }
-          string token;
-          if (rest[pos] == '"') {
-            size_t end = rest.find('"', pos + 1);
-            if (end == string::npos) {
-              token = rest.substr(pos + 1);
-              pos = rest.size();
-            } else {
-              token = rest.substr(pos + 1, end - pos - 1);
-              pos = end + 1;
-            }
-          } else {
-            size_t end = pos;
-            while (end < rest.size() &&
-                   !isblank(static_cast<unsigned char>(rest[end]))) {
-              end++;
-            }
-            token = rest.substr(pos, end - pos);
-            pos = end;
-          }
-          if (!token.empty()) {
-            ssh_options_set(options, SSH_OPTIONS_SETENV, token.c_str());
-          }
+        for (const string& assignment : split_setenv_assignments(s)) {
+          ssh_options_set(options, SSH_OPTIONS_SETENV, assignment.c_str());
         }
       }
       break;

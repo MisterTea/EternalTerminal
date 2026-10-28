@@ -247,31 +247,13 @@ inline bool applySessionOption(Options* options, const string& option) {
     return any;
   }
   if (keyLower == "setenv") {
-    if (value.empty()) {
-      return false;
-    }
-    size_t pos = 0;
     bool any = false;
-    while (pos < value.size()) {
-      while (pos < value.size() &&
-             isblank(static_cast<unsigned char>(value[pos]))) {
-        pos++;
-      }
-      if (pos >= value.size()) {
-        break;
-      }
-      size_t end = pos;
-      while (end < value.size() &&
-             !isblank(static_cast<unsigned char>(value[end]))) {
-        end++;
-      }
-      string assignment = value.substr(pos, end - pos);
+    for (const string& assignment : split_setenv_assignments(value)) {
       if (ssh_options_set(options, SSH_OPTIONS_SETENV, assignment.c_str()) !=
           0) {
         return false;
       }
       any = true;
-      pos = end;
     }
     return any;
   }
