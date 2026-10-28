@@ -212,6 +212,9 @@ jobs:
               dput_args=(--simulate "${dput_args[@]}")
             fi
             dput "${dput_args[@]}" "${PPA}" "${changes_files[0]}"
+            # Launchpad's FTP endpoint returns 550 when the next series
+            # starts uploading immediately after a successful one.
+            sleep 45
           done
           popd
 
