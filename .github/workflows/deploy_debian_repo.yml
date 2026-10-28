@@ -289,51 +289,30 @@ jobs:
               return 0
             fi
 
-            if [[ ! -x "/usr/bin/qemu-${qemu_target}-static" ]]; then
-              echo "Missing qemu-${qemu_target}-static for ${arch}" >&2
-              exit 1
-            fi
-
             mountpoint -q /proc/sys/fs/binfmt_misc ||
               mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
 
             registry_entry="/proc/sys/fs/binfmt_misc/qemu-${qemu_target}"
-            if [[ -e "${registry_entry}" ]]; then
-              if binfmt_ready "${registry_entry}"; then
-                return 0
-              fi
-              # Disabled or non-F entries cannot execute inside the chroot.
-              echo -1 > "${registry_entry}"
+            if [[ -e "${registry_entry}" ]] && binfmt_ready "${registry_entry}"; then
+              return 0
             fi
 
-            # Register directly rather than running a fetched script in this
-            # privileged, key-holding job. Debian's qemu-user-static ships
-            # only systemd binfmt.d entries, which nothing applies here.
-            # Hex values match qemu-binfmt-conf.sh. Bash cannot hold the NUL
-            # bytes in those magics, so Python writes the register entry.
-            # F lets chroots use the host interpreter.
-            case "${qemu_target}" in
-              x86_64)
-                magic_hex='7f454c4602010100000000000000000002003e00'
-                mask_hex='fffffffffffefe00fffffffffffffffffeffffff'
-                ;;
-              arm)
-                magic_hex='7f454c4601010100000000000000000002002800'
-                mask_hex='ffffffffffffff00fffffffffffffffffeffffff'
-                ;;
-              aarch64)
-                magic_hex='7f454c460201010000000000000000000200b700'
-                mask_hex='ffffffffffffff00fffffffffffffffffeffffff'
-                ;;
-              *)
-                echo "ERROR: no binfmt magic recorded for ${qemu_target}; add it" >&2
-                exit 1
-                ;;
-            esac
-            python3 -c 'import pathlib,sys; name,magic_hex,mask_hex=sys.argv[1:]; entry=f":qemu-{name}:M::".encode()+bytes.fromhex(magic_hex)+b":"+bytes.fromhex(mask_hex)+f":/usr/bin/qemu-{name}-static:F:\n".encode(); pathlib.Path("/proc/sys/fs/binfmt_misc/register").write_bytes(entry)' \
-              "${qemu_target}" "${magic_hex}" "${mask_hex}"
+            # qemu-user-static ships the magic, the interpreter path, and
+            # fix_binary in /usr/share/binfmts. Import that after binfmt_misc
+            # is mounted. Writing the register file by hand fails: the kernel
+            # stops unescaping at an embedded NUL and returns EINVAL.
+            if [[ ! -e "/usr/share/binfmts/qemu-${qemu_target}" ]]; then
+              echo "Missing /usr/share/binfmts/qemu-${qemu_target} for ${arch}" >&2
+              exit 1
+            fi
+            if [[ -e "${registry_entry}" ]]; then
+              echo -1 > "${registry_entry}" || true
+            fi
+            update-binfmts --unimport "qemu-${qemu_target}" || true
+            update-binfmts --import "qemu-${qemu_target}"
             if ! binfmt_ready "${registry_entry}"; then
               echo "ERROR: qemu-${qemu_target} binfmt entry is not enabled with F" >&2
+              cat "${registry_entry}" >&2 || true
               exit 1
             fi
           }
