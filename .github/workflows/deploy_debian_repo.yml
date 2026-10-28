@@ -330,18 +330,8 @@ jobs:
                 exit 1
                 ;;
             esac
-            python3 - "${qemu_target}" "${magic_hex}" "${mask_hex}" <<'PY'
-import pathlib, sys
-name, magic_hex, mask_hex = sys.argv[1:]
-entry = (
-    f":qemu-{name}:M::".encode()
-    + bytes.fromhex(magic_hex)
-    + b":"
-    + bytes.fromhex(mask_hex)
-    + f":/usr/bin/qemu-{name}-static:F:\n".encode()
-)
-pathlib.Path("/proc/sys/fs/binfmt_misc/register").write_bytes(entry)
-PY
+            python3 -c 'import pathlib,sys; name,magic_hex,mask_hex=sys.argv[1:]; entry=f":qemu-{name}:M::".encode()+bytes.fromhex(magic_hex)+b":"+bytes.fromhex(mask_hex)+f":/usr/bin/qemu-{name}-static:F:\n".encode(); pathlib.Path("/proc/sys/fs/binfmt_misc/register").write_bytes(entry)' \
+              "${qemu_target}" "${magic_hex}" "${mask_hex}"
             if ! binfmt_ready "${registry_entry}"; then
               echo "ERROR: qemu-${qemu_target} binfmt entry is not enabled with F" >&2
               exit 1
