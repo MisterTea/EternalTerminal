@@ -98,6 +98,7 @@ jobs:
             openssh-client \
             protobuf-compiler \
             python3 \
+            qemu-user-binfmt \
             qemu-user-static \
             rsync \
             sbuild \
@@ -289,51 +290,32 @@ jobs:
               return 0
             fi
 
-            if [[ ! -x "/usr/bin/qemu-${qemu_target}-static" ]]; then
-              echo "Missing qemu-${qemu_target}-static for ${arch}" >&2
-              exit 1
-            fi
-
             mountpoint -q /proc/sys/fs/binfmt_misc ||
               mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
 
             registry_entry="/proc/sys/fs/binfmt_misc/qemu-${qemu_target}"
-            if [[ -e "${registry_entry}" ]]; then
-              if binfmt_ready "${registry_entry}"; then
-                return 0
-              fi
-              # Disabled or non-F entries cannot execute inside the chroot.
-              echo -1 > "${registry_entry}"
+            if [[ -e "${registry_entry}" ]] && binfmt_ready "${registry_entry}"; then
+              return 0
             fi
 
-            # Register directly rather than running a fetched script in this
-            # privileged, key-holding job. Debian's qemu-user-static ships
-            # only systemd binfmt.d entries, which nothing applies here.
-            # Values match qemu-binfmt-conf.sh; F lets chroots use the host
-            # interpreter.
-            case "${qemu_target}" in
-              x86_64)
-                magic='\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00'
-                mask='\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
-                ;;
-              arm)
-                magic='\x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00'
-                mask='\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
-                ;;
-              aarch64)
-                magic='\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00'
-                mask='\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
-                ;;
-              *)
-                echo "ERROR: no binfmt magic recorded for ${qemu_target}; add it" >&2
-                exit 1
-                ;;
-            esac
-            printf ':qemu-%s:M::%s:%s:/usr/bin/qemu-%s-static:F:\n' \
-              "${qemu_target}" "${magic}" "${mask}" "${qemu_target}" \
-              > /proc/sys/fs/binfmt_misc/register
+            # qemu-user-binfmt ships the register string, including the
+            # fix-binary interpreter, in /usr/lib/binfmt.d. systemd is not
+            # running in this container, so apply that file directly.
+            local conf="/usr/lib/binfmt.d/qemu-${qemu_target}.conf"
+            if [[ ! -f "${conf}" ]]; then
+              echo "Missing ${conf} for ${arch}" >&2
+              exit 1
+            fi
+            if [[ -e "${registry_entry}" ]]; then
+              echo -1 > "${registry_entry}" || true
+            fi
+            cat "${conf}" > /proc/sys/fs/binfmt_misc/register
             if ! binfmt_ready "${registry_entry}"; then
               echo "ERROR: qemu-${qemu_target} binfmt entry is not enabled with F" >&2
+              echo "registration file:" >&2
+              cat "${conf}" >&2 || true
+              echo "kernel entry:" >&2
+              cat "${registry_entry}" >&2 || true
               exit 1
             fi
           }
@@ -351,7 +333,9 @@ jobs:
             fi
             python3 -c 'import pathlib, sys; path = pathlib.Path("EternalTerminal/debian/changelog"); path.write_text(path.read_text().replace("##DISTRO##", sys.argv[1]))' "${distro}"
             sed -i -E 's/^\* /  * /; s/^-- / -- /' EternalTerminal/debian/changelog
-            printf '\nexport DEB_BUILD_OPTIONS += noautodbgsym\n\noverride_dh_strip:\n\tdh_strip --no-automatic-dbgsym\n' >> EternalTerminal/debian/rules
+            if ! grep -q noautodbgsym EternalTerminal/debian/rules; then
+              printf '\nexport DEB_BUILD_OPTIONS += noautodbgsym\n\noverride_dh_strip:\n\tdh_strip --no-automatic-dbgsym\n' >> EternalTerminal/debian/rules
+            fi
 
             rm -f ./*.dsc ./*.changes ./*.buildinfo ./*.debian.tar.* ./*.upload
             pushd EternalTerminal

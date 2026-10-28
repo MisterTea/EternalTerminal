@@ -1,5 +1,7 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
+# Debug symbols are larger than the PPA quota can hold.
+export DEB_BUILD_OPTIONS += noautodbgsym
 
 %:
 	dh $@ --parallel --with systemd --buildsystem=cmake --builddirectory=build
@@ -14,3 +16,6 @@ override_dh_install:
 
 override_dh_auto_test:
 	: # Disable ctest on debian because of odd errors on ubuntu 18.04
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym

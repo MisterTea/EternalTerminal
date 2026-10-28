@@ -495,6 +495,51 @@ TEST_CASE("applySessionOption accepts space-form SetEnv NAME=VALUE",
   freeOptionsFields(&opts);
 }
 
+TEST_CASE("SetEnv values are unquoted like OpenSSH", "[SSHConfig]") {
+  const fs::path tempDir =
+      fs::temp_directory_path() / ("et_test_ssh_setenv_" + sole::uuid4().str());
+  fs::remove_all(tempDir);
+  fs::create_directories(tempDir);
+  const fs::path configPath = tempDir / "config";
+  std::ofstream(configPath)
+      << "Host demo\n"
+         "  SetEnv TERM=\"xterm-256color\" \"GREETING=hello world\"\n"
+         "  SetEnv NAME='a b'c QUOTE=say\\\"hi\\\" # trailing comment\n";
+
+  Options opts = {};
+  ssh_options_set(&opts, SSH_OPTIONS_HOST, "demo");
+  REQUIRE(parse_ssh_config_file("demo", &opts, configPath.string()) == 0);
+  REQUIRE(opts.env_vars.size() == 4);
+  REQUIRE(opts.env_vars[0].first == "TERM");
+  REQUIRE(opts.env_vars[0].second == "xterm-256color");
+  REQUIRE(opts.env_vars[1].first == "GREETING");
+  REQUIRE(opts.env_vars[1].second == "hello world");
+  REQUIRE(opts.env_vars[2].first == "NAME");
+  REQUIRE(opts.env_vars[2].second == "a bc");
+  REQUIRE(opts.env_vars[3].first == "QUOTE");
+  REQUIRE(opts.env_vars[3].second == "say\"hi\"");
+
+  const string dump =
+      formatOpenSshResolvedConfig("demo", opts.host, "demo", opts);
+  REQUIRE(dump.find("setenv TERM=xterm-256color\n") != string::npos);
+
+  freeOptionsFields(&opts);
+  fs::remove_all(tempDir);
+}
+
+TEST_CASE("applySessionOption unquotes SetEnv values",
+          "[OpenSshLocalQueries][SSHConfig]") {
+  Options opts = {};
+  REQUIRE(applySessionOption(&opts, "SetEnv=TERM=\"xterm-256color\""));
+  REQUIRE(applySessionOption(&opts, "SetEnv \"GREETING=hello world\""));
+  REQUIRE(opts.env_vars.size() == 2);
+  REQUIRE(opts.env_vars[0].first == "TERM");
+  REQUIRE(opts.env_vars[0].second == "xterm-256color");
+  REQUIRE(opts.env_vars[1].first == "GREETING");
+  REQUIRE(opts.env_vars[1].second == "hello world");
+  freeOptionsFields(&opts);
+}
+
 TEST_CASE("applySessionOption rejects invalid DynamicForward specs",
           "[OpenSshLocalQueries][SSHConfig]") {
   Options opts = {};
