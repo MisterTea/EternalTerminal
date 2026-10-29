@@ -1,0 +1,6 @@
+post_upgrade() {
+  # The new etserver binary is on disk, but the running daemon is the
+  # previous process. A mismatched etterminal then corrupts the session (#911).
+  systemctl daemon-reload
+  systemctl try-restart et.service
+}
