@@ -90,8 +90,17 @@ jobs:
           include="[]"
           for suite in "${debian_suites[@]}"; do
             for arch in "${debian_arches[@]}"; do
-              include="$(jq --compact-output --arg suite "${suite}" --arg arch "${arch}" \
-                '. + [{suite: $suite, arch: $arch}]' <<<"${include}")"
+              case "${arch}" in
+                amd64) runner="ubuntu-latest" ;;
+                # Native arm64 avoids multi-hour QEMU builds on amd64 runners.
+                arm64) runner="ubuntu-24.04-arm" ;;
+                *) runner="ubuntu-latest" ;;
+              esac
+              include="$(jq --compact-output \
+                --arg suite "${suite}" \
+                --arg arch "${arch}" \
+                --arg runner "${runner}" \
+                '. + [{suite: $suite, arch: $arch, runner: $runner}]' <<<"${include}")"
             done
           done
           matrix="$(jq --compact-output --argjson include "${include}" '{include: $include}' <<<'{}')"
@@ -105,11 +114,11 @@ jobs:
   build:
     name: build-${{ matrix.suite }}-${{ matrix.arch }}
     needs: resolve
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     container:
       image: debian:stable
       options: --privileged
-    timeout-minutes: 360
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
