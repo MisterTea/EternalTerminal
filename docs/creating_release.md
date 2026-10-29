@@ -77,7 +77,7 @@ Repository secrets:
 
 **Deploy Ubuntu PPA** (`.github/workflows/deploy_ubuntu_ppa.yml`) builds a source package for each supported Ubuntu series and signs it. The upstream tarball comes from the GitHub release. The `debian/` directory copied into the source package comes from the ref you dispatch, so a packaging fix can ship without a new upstream tag. `simulate_upload` defaults to true, which runs `dput --simulate`. Set it to false to upload to `ppa:jgmath2000/et`. The first series uploads `orig.tar.gz`; later series omit it. Set `include_orig` to false when that tarball is already in the PPA. Set `ubuntu_series` to retry specific series. Debug symbol packages are disabled in `debian/rules` because they exceed the PPA quota.
 
-**Deploy Arch Linux AUR** (`.github/workflows/deploy_archlinux_aur.yml`) updates `pkgver` and `sha256sums` in `ssh://aur@aur.archlinux.org/eternalterminal.git` and pushes. `push_changes` defaults to true.
+**Deploy Arch Linux AUR** (`.github/workflows/deploy_archlinux_aur.yml`) updates `pkgver` and `sha256sums` in `ssh://aur@aur.archlinux.org/eternalterminal.git` and pushes. It also installs a pacman script that restarts `et.service` on upgrade, so the running `etserver` matches the new package. `push_changes` defaults to true.
 
 Homebrew, MacPorts, and Fedora pick up the tag from outside this repository.
 
