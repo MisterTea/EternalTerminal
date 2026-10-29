@@ -47,23 +47,81 @@ defaults:
     shell: bash
 
 jobs:
-  deploy_debian_repo:
-    name: deploy-debian-repo
+  resolve:
+    name: resolve-debian-matrix
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Choose suites and architectures
+        id: matrix
+        env:
+          DEBIAN_SUITES: ${{ inputs.debian_suites }}
+          DEBIAN_ARCHES: ${{ inputs.debian_arches }}
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates \
+            distro-info \
+            jq
+
+          if [[ -n "${DEBIAN_SUITES}" ]]; then
+            read -r -a debian_suites <<< "${DEBIAN_SUITES}"
+          else
+            mapfile -t debian_suites < <(
+              debian-distro-info --oldstable
+              debian-distro-info --stable
+              debian-distro-info --testing
+            )
+          fi
+          if [[ -n "${DEBIAN_ARCHES}" ]]; then
+            read -r -a debian_arches <<< "${DEBIAN_ARCHES}"
+          else
+            debian_arches=(amd64 arm64)
+          fi
+          if [[ "${#debian_suites[@]}" -eq 0 || "${#debian_arches[@]}" -eq 0 ]]; then
+            echo "Debian suite or architecture list is empty" >&2
+            exit 1
+          fi
+
+          include="[]"
+          for suite in "${debian_suites[@]}"; do
+            for arch in "${debian_arches[@]}"; do
+              include="$(jq --compact-output --arg suite "${suite}" --arg arch "${arch}" \
+                '. + [{suite: $suite, arch: $arch}]' <<<"${include}")"
+            done
+          done
+          matrix="$(jq --compact-output --argjson include "${include}" '{include: $include}' <<<'{}')"
+          echo "Debian build matrix: ${matrix}"
+          {
+            echo "matrix<<EOF"
+            echo "${matrix}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: build-${{ matrix.suite }}-${{ matrix.arch }}
+    needs: resolve
     runs-on: ubuntu-latest
     container:
       image: debian:stable
       options: --privileged
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
     env:
       DEBFULLNAME: Jason Gauci
       DEBEMAIL: jgmath2000@gmail.com
       DEBIAN_REPO: ${{ inputs.debian_repo }}
-      DEBIAN_ARCHES: ${{ inputs.debian_arches }}
-      DEBIAN_SUITES: ${{ inputs.debian_suites }}
+      DEBIAN_ARCHES: ${{ matrix.arch }}
+      DEBIAN_SUITES: ${{ matrix.suite }}
       DEB_BUILD_JOBS: ${{ inputs.deb_build_jobs }}
       INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
       QUIET_SBUILD: ${{ inputs.quiet_sbuild }}
-      PUSH_CHANGES: ${{ inputs.push_changes }}
       VERBOSE_BUILD: ${{ inputs.verbose_build }}
     steps:
       - name: Install build and publishing dependencies
@@ -123,56 +181,6 @@ jobs:
           1;
           EOF
 
-      - name: Import GPG signing key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: |
-          if [[ -z "${GPG_PRIVATE_KEY}" ]]; then
-            echo "Missing required secret GPG_PRIVATE_KEY" >&2
-            exit 1
-          fi
-          if [[ -z "${GPG_PASSPHRASE}" ]]; then
-            echo "Missing required secret GPG_PASSPHRASE" >&2
-            exit 1
-          fi
-
-          install -d -m 700 "${HOME}/.gnupg"
-          {
-            echo "use-agent"
-            echo "pinentry-mode loopback"
-          } > "${HOME}/.gnupg/gpg.conf"
-          echo "allow-loopback-pinentry" > "${HOME}/.gnupg/gpg-agent.conf"
-          gpgconf --kill gpg-agent || true
-
-          printf '%s\n' "${GPG_PRIVATE_KEY}" | gpg --batch --import
-          key_fingerprint="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')"
-          if [[ -z "${key_fingerprint}" ]]; then
-            echo "No GPG secret key was imported" >&2
-            exit 1
-          fi
-
-          passphrase_file="${RUNNER_TEMP}/gpg-passphrase"
-          printf '%s' "${GPG_PASSPHRASE}" > "${passphrase_file}"
-          chmod 600 "${passphrase_file}"
-
-          printf 'apt repository signing smoke test\n' > "${RUNNER_TEMP}/gpg-smoke-test"
-          gpg --batch --yes --pinentry-mode loopback \
-            --passphrase-file "${passphrase_file}" \
-            --local-user "${key_fingerprint}" \
-            --detach-sign --armor \
-            --output "${RUNNER_TEMP}/gpg-smoke-test.asc" \
-            "${RUNNER_TEMP}/gpg-smoke-test"
-
-          public_key_file="${RUNNER_TEMP}/et.gpg"
-          gpg --batch --yes --output "${public_key_file}" --export "${key_fingerprint}"
-
-          {
-            echo "GPG_KEY_ID=${key_fingerprint}"
-            echo "GPG_PASSPHRASE_FILE=${passphrase_file}"
-            echo "GPG_PUBLIC_KEY_FILE=${public_key_file}"
-          } >> "${GITHUB_ENV}"
-
       - name: Resolve release
         run: |
           if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
@@ -206,7 +214,7 @@ jobs:
         run: |
           wget "${TARBALL_URL}" -O "${ORIG_TARBALL}"
 
-      - name: Build Debian packages and publish local repositories
+      - name: Build Debian packages
         run: |
           debbuildopts="-j${DEB_BUILD_JOBS}"
 
@@ -407,23 +415,156 @@ jobs:
 
               cp -a "${package_files[@]}" "debian-packages/${distro}-${arch}/"
             done
-
-            aptly repo create -distribution="${distro}" -component=main "et-${distro}" || true
-            aptly repo add -force-replace=true "et-${distro}" debian-packages/"${distro}"-*/*.deb
-            aptly publish drop "${distro}" || true
-            aptly publish repo \
-              -batch=true \
-              -gpg-key="${GPG_KEY_ID}" \
-              -passphrase-file="${GPG_PASSPHRASE_FILE}" \
-              "et-${distro}"
           done
 
       - name: Upload built Debian packages
         if: ${{ !env.ACT }}
         uses: actions/upload-artifact@v4
         with:
-          name: debian-packages-${{ env.RELEASE_TAG }}
+          name: debian-deb-${{ matrix.suite }}-${{ matrix.arch }}
           path: debian-packages/
+          if-no-files-found: error
+
+  publish:
+    name: publish-debian-repo
+    needs: build
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    timeout-minutes: 30
+    env:
+      DEBIAN_REPO: ${{ inputs.debian_repo }}
+      INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - name: Install publishing dependencies
+        if: ${{ env.ACT != 'true' }}
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aptly \
+            ca-certificates \
+            curl \
+            git \
+            gnupg \
+            jq \
+            openssh-client \
+            rsync \
+            wget
+
+      - name: Import GPG signing key
+        if: ${{ env.ACT != 'true' }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [[ -z "${GPG_PRIVATE_KEY}" ]]; then
+            echo "Missing required secret GPG_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${GPG_PASSPHRASE}" ]]; then
+            echo "Missing required secret GPG_PASSPHRASE" >&2
+            exit 1
+          fi
+
+          install -d -m 700 "${HOME}/.gnupg"
+          {
+            echo "use-agent"
+            echo "pinentry-mode loopback"
+          } > "${HOME}/.gnupg/gpg.conf"
+          echo "allow-loopback-pinentry" > "${HOME}/.gnupg/gpg-agent.conf"
+          gpgconf --kill gpg-agent || true
+
+          printf '%s\n' "${GPG_PRIVATE_KEY}" | gpg --batch --import
+          key_fingerprint="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [[ -z "${key_fingerprint}" ]]; then
+            echo "No GPG secret key was imported" >&2
+            exit 1
+          fi
+
+          passphrase_file="${RUNNER_TEMP}/gpg-passphrase"
+          printf '%s' "${GPG_PASSPHRASE}" > "${passphrase_file}"
+          chmod 600 "${passphrase_file}"
+
+          printf 'apt repository signing smoke test\n' > "${RUNNER_TEMP}/gpg-smoke-test"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "${passphrase_file}" \
+            --local-user "${key_fingerprint}" \
+            --detach-sign --armor \
+            --output "${RUNNER_TEMP}/gpg-smoke-test.asc" \
+            "${RUNNER_TEMP}/gpg-smoke-test"
+
+          public_key_file="${RUNNER_TEMP}/et.gpg"
+          gpg --batch --yes --output "${public_key_file}" --export "${key_fingerprint}"
+
+          {
+            echo "GPG_KEY_ID=${key_fingerprint}"
+            echo "GPG_PASSPHRASE_FILE=${passphrase_file}"
+            echo "GPG_PUBLIC_KEY_FILE=${public_key_file}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Resolve release
+        if: ${{ env.ACT != 'true' }}
+        run: |
+          if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+          else
+            latest_release="$(curl --fail --silent --show-error --location "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")"
+            release_tag="$(jq --raw-output ".tag_name" <<<"${latest_release}")"
+          fi
+          if [[ -z "${release_tag}" || "${release_tag}" == "null" ]]; then
+            echo "Could not resolve a release tag" >&2
+            exit 1
+          fi
+          echo "RELEASE_TAG=${release_tag}" >> "${GITHUB_ENV}"
+
+      - name: Download built packages
+        if: ${{ !env.ACT }}
+        uses: actions/download-artifact@v4
+        with:
+          pattern: debian-deb-*
+          path: incoming
+
+      - name: Publish local repositories
+        if: ${{ env.ACT != 'true' }}
+        run: |
+          mapfile -t deb_files < <(find incoming -type f -name '*.deb' | sort)
+          if [[ "${#deb_files[@]}" -eq 0 ]]; then
+            echo "No Debian packages were downloaded" >&2
+            exit 1
+          fi
+
+          declare -A suites_seen
+          for deb in "${deb_files[@]}"; do
+            parent="$(basename "$(dirname "${deb}")")"
+            if [[ "${parent}" == debian-deb-* ]]; then
+              suite_arch="${parent#debian-deb-}"
+            elif [[ "${parent}" == incoming ]]; then
+              echo "Could not tell which suite built ${deb}" >&2
+              exit 1
+            else
+              suite_arch="${parent}"
+            fi
+            arch="${suite_arch##*-}"
+            suite="${suite_arch%-"${arch}"}"
+            if [[ -z "${suite}" || "${suite}" == "${suite_arch}" ]]; then
+              echo "Could not parse suite and architecture from ${deb}" >&2
+              exit 1
+            fi
+            mkdir -p "debs/${suite}"
+            cp -a "${deb}" "debs/${suite}/"
+            suites_seen["${suite}"]=1
+          done
+
+          for suite in "${!suites_seen[@]}"; do
+            aptly repo create -distribution="${suite}" -component=main "et-${suite}"
+            aptly repo add "et-${suite}" "debs/${suite}/"*.deb
+            aptly publish repo \
+              -batch=true \
+              -gpg-key="${GPG_KEY_ID}" \
+              -passphrase-file="${GPG_PASSPHRASE_FILE}" \
+              "et-${suite}"
+          done
 
       - name: Upload published Debian repository
         if: ${{ !env.ACT }}
@@ -433,7 +574,7 @@ jobs:
           path: ~/.aptly/public/
 
       - name: Configure SSH for Debian repository push
-        if: ${{ inputs.push_changes }}
+        if: ${{ inputs.push_changes && env.ACT != 'true' }}
         env:
           DEBIAN_REPO_SSH_PRIVATE_KEY: ${{ secrets.DEBIAN_REPO_SSH_PRIVATE_KEY }}
         run: |
@@ -466,7 +607,7 @@ jobs:
           git config --global user.email "jgmath2000@gmail.com"
 
       - name: Commit and push Debian repository
-        if: ${{ inputs.push_changes }}
+        if: ${{ inputs.push_changes && env.ACT != 'true' }}
         run: |
           git clone "${DEBIAN_REPO}" debian-et
           mkdir -p debian-et/debian-source
