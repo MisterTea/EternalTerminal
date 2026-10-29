@@ -397,6 +397,14 @@ IF(USE_SENTRY)
   list(INSERT CORE_LIBRARIES 0 sentry::sentry)
 ENDIF()
 
+# Ubuntu's libunwind exports the GCC exception ABI. If it is earlier in
+# DT_NEEDED than libgcc_s, thrown exceptions are unwound by libunwind and
+# segfault (issue 903). Keep libgcc_s first; stack traces still use unw_*.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(INSERT CORE_LIBRARIES 0
+    "-Wl,--push-state,--no-as-needed" gcc_s "-Wl,--pop-state")
+endif()
+
 macro(ET_WARNINGS_AS_ERRORS TARGET_NAME)
   if(MSVC)
     target_compile_options(${TARGET_NAME} PRIVATE /WX)
@@ -1086,6 +1094,22 @@ else(WIN32)
         PROPERTIES
           SKIP_RETURN_CODE 77
           TIMEOUT 60
+          LABELS "e2e;et;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME etserver_immediate_disconnect_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/etserver_immediate_disconnect_e2e.py
+          --etserver $<TARGET_FILE:etserver>
+      )
+      set_tests_properties(
+        etserver_immediate_disconnect_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 30
           LABELS "e2e;et;system"
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           RUN_SERIAL TRUE
