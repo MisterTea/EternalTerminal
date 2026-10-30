@@ -82,7 +82,7 @@ void PortForwardHandler::prunePendingDestinations() {
 
 void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
                                 vector<PortForwardData>* dataToSend,
-                                const set<int>* readyFds) {
+                                const set<int>* readyFds, bool peerConnected) {
   lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& it : sourceHandlers) {
     if (it->update(dataToSend, readyFds)) {
@@ -97,11 +97,27 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
     if (fd >= 0) {
       const int requestId = nextDestinationRequest;
       nextDestinationRequest = requestId == INT32_MAX ? 1 : requestId + 1;
-      pendingDestinations[requestId] = PendingDestination{it, fd};
+      pendingDestinations[requestId] = PendingDestination{it, fd, destination};
+      unsentDestinationRequests.push_back(requestId);
+    }
+  }
+  // Request only connections that are still pending. One that expired while
+  // the peer was away is closed without ever reaching the recovery buffer.
+  for (auto it = unsentDestinationRequests.begin();
+       it != unsentDestinationRequests.end();) {
+    auto pending = pendingDestinations.find(*it);
+    if (pending == pendingDestinations.end()) {
+      LOG(INFO) << "Dropping destination request " << *it
+                << ": it expired while the peer was disconnected";
+      it = unsentDestinationRequests.erase(it);
+    } else if (peerConnected) {
       PortForwardDestinationRequest pfr;
-      *(pfr.mutable_destination()) = destination;
-      pfr.set_fd(requestId);
+      *(pfr.mutable_destination()) = pending->second.destination;
+      pfr.set_fd(*it);
       requests->push_back(pfr);
+      it = unsentDestinationRequests.erase(it);
+    } else {
+      ++it;
     }
   }
 

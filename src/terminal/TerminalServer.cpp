@@ -748,7 +748,8 @@ void TerminalServer::runTerminal(
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
-      portForwardHandler->update(&requests, &dataToSend, &readyFds);
+      portForwardHandler->update(&requests, &dataToSend, &readyFds,
+                                 !serverClientState->isDisconnected());
       for (auto& pfr : requests) {
         serverClientState->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
