@@ -2,6 +2,10 @@
 #include "PortForwardHandler.hpp"
 #include "TestHeaders.hpp"
 
+#ifndef WIN32
+#include <sys/resource.h>
+#endif
+
 using namespace et;
 
 namespace {
@@ -475,6 +479,61 @@ TEST_CASE("PortForwardHandler createDestination connection failed",
   CHECK(response.has_error());
   CHECK_FALSE(response.has_socketid());
 }
+
+#ifndef WIN32
+TEST_CASE("PortForwardHandler createDestination survives descriptor exhaustion",
+          "[PortForwardHandler]") {
+  // Reconnect can replay a backlog of forwarded ssh-agent requests at once.
+  // Running out of descriptors must fail that destination, not abort.
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<PipeSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  string pattern = GetTempDirectory() + "et_forward_emfile_XXXXXX";
+  string directory = string(mkdtemp(&pattern[0]));
+  SocketEndpoint endpoint;
+  endpoint.set_name(directory + "/agent.sock");
+  set<int> listenFds = pipeHandler->listen(endpoint);
+  REQUIRE(!listenFds.empty());
+
+  PortForwardDestinationRequest request;
+  *request.mutable_destination() = endpoint;
+  request.set_fd(300);
+
+  struct rlimit original;
+  REQUIRE(::getrlimit(RLIMIT_NOFILE, &original) == 0);
+  // Every descriptor below the lowest free one is in use, so capping the
+  // soft limit there makes the next socket() fail with EMFILE.
+  int lowestFree = ::dup(*listenFds.begin());
+  REQUIRE(lowestFree >= 0);
+  ::close(lowestFree);
+  struct rlimit capped = original;
+  capped.rlim_cur = lowestFree;
+
+  PortForwardDestinationResponse response;
+  {
+    struct RestoreLimit {
+      const struct rlimit& limit;
+      ~RestoreLimit() { ::setrlimit(RLIMIT_NOFILE, &limit); }
+    } restore{original};
+    REQUIRE(::setrlimit(RLIMIT_NOFILE, &capped) == 0);
+    response = handler.createDestination(request);
+  }
+
+  CHECK(response.clientfd() == 300);
+  CHECK(response.has_error());
+  CHECK(response.error() == strerror(EMFILE));
+  CHECK_FALSE(response.has_socketid());
+
+  // Once descriptors are available again, the same destination connects.
+  PortForwardDestinationResponse retry = handler.createDestination(request);
+  CHECK_FALSE(retry.has_error());
+  CHECK(retry.has_socketid());
+
+  pipeHandler->stopListening(endpoint);
+  fs::remove_all(directory);
+}
+#endif
 
 TEST_CASE("PortForwardHandler handlePacket PORT_FORWARD_DATA destination",
           "[PortForwardHandler]") {

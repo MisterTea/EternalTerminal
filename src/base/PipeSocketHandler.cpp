@@ -12,7 +12,15 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   sockaddr_un remote{};
 
   int sockFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-  FATAL_FAIL(sockFd);
+  if (sockFd < 0) {
+    // Out of descriptors (EMFILE/ENFILE) or similar. Fail this connect so a
+    // forwarded destination reports an error instead of aborting the client.
+    auto localErrno = GetErrno();
+    LOG(WARNING) << "Error creating socket for " << endpoint << ": "
+                 << localErrno << " " << strerror(localErrno);
+    SetErrno(localErrno);
+    return -1;
+  }
   string clientPath;
   if (!prepareClientSocket(sockFd, &clientPath)) {
     RawSocketUtils::closeSocket(sockFd);
