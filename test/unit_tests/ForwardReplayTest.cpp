@@ -295,11 +295,15 @@ TEST_CASE("Idle and server loops do not replay forwards accepted while down",
   REQUIRE(waitForSequencePast(session.client->writer(), clientBefore,
                               std::chrono::seconds(2)));
 
+  const int64_t clientAtReverse = writerSequence(session.client->writer());
   const int64_t serverBefore =
       writerSequence(session.serverConnection()->getWriter());
   open.push_back(dial(session.reverseSource));
-  REQUIRE(waitForSequencePast(session.serverConnection()->getWriter(),
-                              serverBefore, std::chrono::seconds(2)));
+  // The server's next write is often the response to the local forward, so a
+  // sequence bump is not the reverse request. The client writes a destination
+  // response only after it has received that request.
+  REQUIRE(waitForSequencePast(session.client->writer(), clientAtReverse,
+                              std::chrono::seconds(2)));
 
   session.sever();
   REQUIRE(session.client->disconnected());
