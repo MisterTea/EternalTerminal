@@ -1389,3 +1389,80 @@ TEST_CASE("Late forwarding responses close destinations after source removal",
   CHECK(closed.sourcetodestination());
   CHECK(closed.closed());
 }
+
+namespace {
+class ExpiringPortForwardHandler : public PortForwardHandler {
+ public:
+  using PortForwardHandler::PortForwardHandler;
+
+  void expireSourceFdForTest(int fd) {
+    for (auto& handler : sourceHandlers) {
+      handler->expireForTest(fd);
+    }
+  }
+};
+
+int createHeldSource(PortForwardHandler& handler,
+                     FakePortForwardSocketHandler& networkHandler) {
+  PortForwardSourceRequest sourceRequest;
+  sourceRequest.mutable_source()->set_port(8080);
+  sourceRequest.mutable_destination()->set_port(9090);
+  REQUIRE_FALSE(
+      handler.createSource(sourceRequest, nullptr, 1000, 1000).has_error());
+  auto listenFds = networkHandler.getEndpointFds(sourceRequest.source());
+  REQUIRE_FALSE(listenFds.empty());
+  return *listenFds.begin();
+}
+}  // namespace
+
+TEST_CASE("PortForwardHandler holds destination requests while disconnected",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+  const int listenFd = createHeldSource(handler, *networkHandler);
+
+  networkHandler->queueAccept(listenFd, 123);
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/false);
+  CHECK(requests.empty());
+  CHECK(networkHandler->closedFds.empty());
+
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/true);
+  REQUIRE(requests.size() == 1);
+  CHECK(requests[0].fd() > 0);
+  CHECK(requests[0].destination().port() == 9090);
+
+  // The held request was sent once; later updates do not repeat it.
+  requests.clear();
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/true);
+  CHECK(requests.empty());
+}
+
+TEST_CASE(
+    "PortForwardHandler drops held requests that expire while disconnected",
+    "[PortForwardHandler]") {
+  // A request written while the peer is away is replayed on recovery, long
+  // after its connection was closed. One that expires first is never sent.
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  ExpiringPortForwardHandler handler(networkHandler, pipeHandler);
+  const int listenFd = createHeldSource(handler, *networkHandler);
+
+  networkHandler->queueAccept(listenFd, 123);
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/false);
+  REQUIRE(requests.empty());
+
+  handler.expireSourceFdForTest(123);
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/false);
+  CHECK(networkHandler->closedFds == vector<int>{123});
+
+  // A connection accepted after the peer returns is still requested.
+  networkHandler->queueAccept(listenFd, 124);
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/true);
+  REQUIRE(requests.size() == 1);
+  CHECK(requests[0].destination().port() == 9090);
+}
