@@ -45,6 +45,14 @@ class TcpSocketHandler : public UnixSocketHandler {
 
   virtual void minimizeKernelBuffering(int fd);
 
+  /**
+   * @brief Returns true if a setsockopt() errno on a freshly accepted or
+   * connected socket means the peer has already disconnected, so the dead
+   * socket must be tolerated rather than aborting the process (ECONNRESET
+   * on FreeBSD, EINVAL on macOS, ENOTCONN where reported).
+   */
+  static bool isPeerDisconnectedSockoptError(int err);
+
  protected:
   /** @brief Tracks all listening sockets created per TCP port. */
   map<int, set<int>> portServerSockets;
