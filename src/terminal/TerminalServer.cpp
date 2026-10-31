@@ -480,6 +480,12 @@ void TerminalServer::runTerminal(
       }
     }
 
+    // Collect forward fds before locking the connection. Packet handling can
+    // hold the forwarding mutex while writing to the connection.
+    set<int> pfFds;
+    uint64_t currentForwardFdsGeneration;
+    portForwardHandler->getForwardFds(&pfFds, &currentForwardFdsGeneration);
+
     set<int> readFds;
     set<int> writeFds;
     set<int> refreshFds;
@@ -514,13 +520,9 @@ void TerminalServer::runTerminal(
       }
     }
     // Include port forward sockets for low-latency forwarding.
-    set<int> pfFds;
-    portForwardHandler->getForwardFds(&pfFds);
     readFds.insert(pfFds.begin(), pfFds.end());
 
     // Any open or close since the last pass may have recycled an fd number.
-    uint64_t currentForwardFdsGeneration =
-        portForwardHandler->getForwardFdsGeneration();
     if (currentForwardFdsGeneration != forwardFdsGeneration) {
       refreshFds.insert(pfFds.begin(), pfFds.end());
       forwardFdsGeneration = currentForwardFdsGeneration;
