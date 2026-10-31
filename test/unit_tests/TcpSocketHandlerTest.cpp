@@ -174,11 +174,10 @@ TEST_CASE("TcpSocketHandler accept survives clients that reset before accept",
     REQUIRE(::close(raw) == 0);
 
     // Either the dead connection is accepted (and closed here) or the
-    // kernel has already discarded it; neither may abort the process.
+    // kernel has already discarded it and accept() returns -1; neither
+    // may abort the process. close() is a no-op for -1.
     const int accepted = handler.accept(listenFd);
-    if (accepted >= 0) {
-      handler.close(accepted);
-    }
+    handler.close(accepted);
   }
 
   // The listener still accepts a real client afterwards.
