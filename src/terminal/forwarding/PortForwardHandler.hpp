@@ -80,8 +80,8 @@ class PortForwardHandler {
   /** @brief Sends data back to the listener that originally accepted the source
    * socket. */
   void sendDataToSourceOnSocket(int socketId, const string& data);
-  void getForwardFds(set<int>* fds);
-  uint64_t getForwardFdsGeneration() const { return forwardFdsGeneration; }
+  void getForwardFds(set<int>* fds, uint64_t* generation = nullptr);
+  uint64_t getForwardFdsGeneration() const;
   /** @brief True while a `-W` stdio bridge still has an active local fd. */
   bool hasActiveStdioForward() const;
 

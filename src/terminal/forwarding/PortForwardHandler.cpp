@@ -462,7 +462,7 @@ void PortForwardHandler::closeSourceSocketId(int socketId) {
   ++forwardFdsGeneration;
 }
 
-void PortForwardHandler::getForwardFds(set<int>* fds) {
+void PortForwardHandler::getForwardFds(set<int>* fds, uint64_t* generation) {
   lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& handler : sourceHandlers) {
     handler->getActiveFds(fds);
@@ -473,6 +473,14 @@ void PortForwardHandler::getForwardFds(set<int>* fds) {
       fds->insert(fd);
     }
   }
+  if (generation) {
+    *generation = forwardFdsGeneration;
+  }
+}
+
+uint64_t PortForwardHandler::getForwardFdsGeneration() const {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  return forwardFdsGeneration;
 }
 
 bool PortForwardHandler::hasActiveStdioForward() const {
