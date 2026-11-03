@@ -242,7 +242,9 @@ jobs:
           path: |
             /var/cache/distfiles
             /var/cache/binpkgs
-            /var/db/repos/gentoo
+            # Do not cache the Portage tree. Restoring it on top of the
+            # emerge-webrsync from "Install checkout tools" leaves ebuilds
+            # that the older Manifest does not list, and emerge then fails.
           key: gentoo-packages-${{ github.sha }}
           restore-keys: |
             gentoo-packages-
