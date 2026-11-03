@@ -89,6 +89,10 @@ jobs:
             install: |
               dnf install -y dnf-plugins-core epel-release
               dnf config-manager --set-enabled crb
+              # The base image and the mirrors can disagree on libcurl for a
+              # while (libcurl-devel then has nothing that provides its exact
+              # libcurl NEVRA). Align the image with the enabled repos first.
+              dnf distro-sync -y
               dnf install -y \
                 autoconf \
                 automake \
