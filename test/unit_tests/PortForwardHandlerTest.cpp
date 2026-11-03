@@ -870,7 +870,8 @@ TEST_CASE(
   REQUIRE_FALSE(destResponse.has_error());
 
   set<int> fds;
-  handler.getForwardFds(&fds);
+  uint64_t generation;
+  handler.getForwardFds(&fds, &generation);
 
   // Should include the source listener fd (assigned by
   // FakePortForwardSocketHandler)
@@ -881,6 +882,7 @@ TEST_CASE(
 
   // Should include the destination fd (42)
   CHECK(fds.count(42) == 1);
+  CHECK(generation == handler.getForwardFdsGeneration());
 }
 
 TEST_CASE("PortForwardHandler getForwardFds excludes closed destination fds",

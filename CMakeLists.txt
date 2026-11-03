@@ -405,6 +405,47 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     "-Wl,--push-state,--no-as-needed" gcc_s "-Wl,--pop-state")
 endif()
 
+# GCC 13 ships a private libstdc++.so.6 that predates CXXABI_1.3.15.
+# Ubuntu 26's libprotobuf.so references that symbol, and the linker stops
+# at the compiler's copy, so the link fails unless the system libstdc++
+# (from a newer GCC) is also on the link line.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  execute_process(
+    COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libstdc++.so
+    OUTPUT_VARIABLE ET_COMPILER_LIBSTDCXX
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  execute_process(
+    COMMAND ${CMAKE_CXX_COMPILER} -print-multiarch
+    OUTPUT_VARIABLE ET_CXX_MULTIARCH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  set(ET_SYSTEM_LIBSTDCXX "")
+  foreach(_et_stdcxx_dir /usr/lib/${ET_CXX_MULTIARCH} /usr/lib64 /usr/lib)
+    if(EXISTS "${_et_stdcxx_dir}/libstdc++.so.6")
+      set(ET_SYSTEM_LIBSTDCXX "${_et_stdcxx_dir}/libstdc++.so.6")
+      break()
+    endif()
+  endforeach()
+  if(ET_COMPILER_LIBSTDCXX AND ET_SYSTEM_LIBSTDCXX
+     AND NOT ET_COMPILER_LIBSTDCXX STREQUAL ET_SYSTEM_LIBSTDCXX)
+    execute_process(
+      COMMAND nm -D "${ET_COMPILER_LIBSTDCXX}"
+      OUTPUT_VARIABLE ET_COMPILER_LIBSTDCXX_SYMS
+      ERROR_QUIET)
+    execute_process(
+      COMMAND nm -D "${ET_SYSTEM_LIBSTDCXX}"
+      OUTPUT_VARIABLE ET_SYSTEM_LIBSTDCXX_SYMS
+      ERROR_QUIET)
+    if(NOT ET_COMPILER_LIBSTDCXX_SYMS MATCHES "__cxa_call_terminate"
+       AND ET_SYSTEM_LIBSTDCXX_SYMS MATCHES "__cxa_call_terminate")
+      message(STATUS
+        "Linking ${ET_SYSTEM_LIBSTDCXX}; ${ET_COMPILER_LIBSTDCXX} lacks CXXABI_1.3.15")
+      list(APPEND CORE_LIBRARIES "${ET_SYSTEM_LIBSTDCXX}")
+    endif()
+  endif()
+endif()
+
 macro(ET_WARNINGS_AS_ERRORS TARGET_NAME)
   if(MSVC)
     target_compile_options(${TARGET_NAME} PRIVATE /WX)
