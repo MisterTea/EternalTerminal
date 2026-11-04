@@ -7,6 +7,13 @@
   }
 namespace et {
 
+// Key and nonce buffers and callers' key-length checks use the secretbox
+// sizes, which the AEAD cipher shares.
+static_assert(crypto_aead_xchacha20poly1305_ietf_KEYBYTES ==
+              crypto_secretbox_KEYBYTES);
+static_assert(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES ==
+              crypto_secretbox_NONCEBYTES);
+
 namespace {
 string resetDecisionMessage(const string& clientId, int protocolVersion,
                             const string& challenge, int status,
@@ -182,18 +189,22 @@ bool CryptoHandler::verifyConnectionProof(
   return sodium_memcmp(proof.data(), expected.data(), expected.length()) == 0;
 }
 
-string CryptoHandler::encrypt(const string& buffer) {
+string CryptoHandler::encrypt(const string& buffer,
+                              const string& associatedData) {
   lock_guard<std::mutex> guard(cryptoMutex);
   incrementNonce();
-  string retval(buffer.length() + crypto_secretbox_MACBYTES, '\0');
-  SODIUM_FAIL(crypto_secretbox_easy((unsigned char*)&retval[0],
-                                    (const unsigned char*)buffer.c_str(),
-                                    buffer.length(), nonce, key));
+  string retval(buffer.length() + crypto_aead_xchacha20poly1305_ietf_ABYTES,
+                '\0');
+  SODIUM_FAIL(crypto_aead_xchacha20poly1305_ietf_encrypt(
+      (unsigned char*)&retval[0], nullptr, (const unsigned char*)buffer.data(),
+      buffer.length(), (const unsigned char*)associatedData.data(),
+      associatedData.length(), nullptr, nonce, key));
   return retval;
 }
 
-string CryptoHandler::decrypt(const string& buffer) {
-  if (buffer.length() < crypto_secretbox_MACBYTES) {
+string CryptoHandler::decrypt(const string& buffer,
+                              const string& associatedData) {
+  if (buffer.length() < crypto_aead_xchacha20poly1305_ietf_ABYTES) {
     throw MalformedPacketError(
         "Ciphertext shorter than the authentication tag");
   }
@@ -203,10 +214,13 @@ string CryptoHandler::decrypt(const string& buffer) {
   unsigned char savedNonce[crypto_secretbox_NONCEBYTES];
   memcpy(savedNonce, nonce, sizeof(nonce));
   incrementNonce();
-  string retval(buffer.length() - crypto_secretbox_MACBYTES, '\0');
-  if (crypto_secretbox_open_easy((unsigned char*)&retval[0],
-                                 (const unsigned char*)buffer.c_str(),
-                                 buffer.length(), nonce, key) == -1) {
+  string retval(buffer.length() - crypto_aead_xchacha20poly1305_ietf_ABYTES,
+                '\0');
+  if (crypto_aead_xchacha20poly1305_ietf_decrypt(
+          (unsigned char*)&retval[0], nullptr, nullptr,
+          (const unsigned char*)buffer.data(), buffer.length(),
+          (const unsigned char*)associatedData.data(), associatedData.length(),
+          nonce, key) == -1) {
     memcpy(nonce, savedNonce, sizeof(nonce));
     throw MalformedPacketError("Decrypt failed. Possible key mismatch?");
   }

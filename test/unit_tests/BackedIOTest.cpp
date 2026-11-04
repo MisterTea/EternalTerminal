@@ -672,3 +672,20 @@ TEST_CASE("BackedReader uncounts catchup after rejecting an entry",
   REQUIRE(out.getPayload() == "second");
   REQUIRE(reader.getSequenceNumber() == 2);
 }
+
+TEST_CASE("Packet decryption rejects a relabeled type", "[BackedIO]") {
+  const string key = "12345678901234567890123456789012";
+  auto receiver = make_shared<CryptoHandler>(key, 0);
+  Packet genuine(TerminalPacketType::TERMINAL_BUFFER, "keystrokes");
+  genuine.encrypt(make_shared<CryptoHandler>(key, 0));
+
+  string relabeled = genuine.serialize();
+  relabeled[1] = char(TerminalPacketType::KEEP_ALIVE);
+  Packet forged(relabeled);
+  REQUIRE_THROWS_AS(forged.decrypt(receiver), MalformedPacketError);
+
+  Packet retransmitted(genuine.serialize());
+  retransmitted.decrypt(receiver);
+  REQUIRE(retransmitted.getHeader() == TerminalPacketType::TERMINAL_BUFFER);
+  REQUIRE(retransmitted.getPayload() == "keystrokes");
+}

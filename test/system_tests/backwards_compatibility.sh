@@ -49,6 +49,31 @@ run_and_expect() {
   return 1
 }
 
+# Protocol 7 cannot talk to et-v7.0.0, which speaks protocol 6, so each side
+# must refuse the other with a clear error. Use run_and_expect again once
+# OLD_TAG speaks protocol 7.
+run_and_expect_refusal() {
+  local expected="$1"
+  shift
+
+  local output
+  output=$(mktemp)
+
+  set +e
+  "$@" 2>&1 | tee "$output"
+  set -e
+
+  if grep -q "$expected" "$output"; then
+    rm -f "$output"
+    return 0
+  fi
+
+  echo "Expected refusal was not found: $expected"
+  cat "$output"
+  rm -f "$output"
+  return 1
+}
+
 require_binary() {
   if [ ! -x "$1" ]; then
     echo "Missing executable: $1"
@@ -102,14 +127,14 @@ SSH_OPTIONS=("--ssh-option" "Port=$SSH_PORT" "--ssh-option" "StrictHostKeyChecki
 OLD_SERVER_PID=$!
 sleep 3
 
-run_and_expect "compat new to old" \
+run_and_expect_refusal "Client: 7 != Server: 6" \
   "$CURRENT_BUILD/et" --command "echo 'compat new to old'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \
   localhost:9920
 
-run_and_expect "compat new to old ipv6 full" \
+run_and_expect_refusal "Client: 7 != Server: 6" \
   "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 full'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
@@ -118,7 +143,7 @@ run_and_expect "compat new to old ipv6 full" \
   --port 9920 \
   0:0:0:0:0:0:0:1
 
-run_and_expect "compat new to old ipv6 full host port" \
+run_and_expect_refusal "Client: 7 != Server: 6" \
   "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 full host port'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
@@ -126,7 +151,7 @@ run_and_expect "compat new to old ipv6 full host port" \
   "${SSH_OPTIONS[@]}" \
   0:0:0:0:0:0:0:1:9920
 
-run_and_expect "compat new to old ipv6 abbreviated" \
+run_and_expect_refusal "Client: 7 != Server: 6" \
   "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 abbreviated'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
@@ -142,7 +167,7 @@ OLD_SERVER_PID=""
 CURRENT_SERVER_PID=$!
 sleep 3
 
-run_and_expect "compat old to new" \
+run_and_expect_refusal "Client: 6 != Server: 7" \
   "$OLD_BUILD/et" -c "echo 'compat old to new'" \
   --serverfifo="$CURRENT_FIFO" \
   --terminal-path "$CURRENT_BUILD/etterminal" \

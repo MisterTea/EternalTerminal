@@ -41,8 +41,8 @@ class Packet {
    */
   void decrypt(shared_ptr<CryptoHandler> cryptoHandler) {
     if (encrypted) {
+      payload = cryptoHandler->decrypt(payload, string(1, char(header)));
       encrypted = false;
-      payload = cryptoHandler->decrypt(payload);
     } else {
       // Peer-controlled framing: sever this connection, not the process.
       throw MalformedPacketError(
@@ -59,7 +59,9 @@ class Packet {
       STFATAL << "Tried to encrypt a packet that was already encrypted";
     } else {
       encrypted = true;
-      payload = cryptoHandler->encrypt(payload);
+      // The type byte travels in the clear; authenticate it so a relabeled
+      // packet fails to decrypt.
+      payload = cryptoHandler->encrypt(payload, string(1, char(header)));
     }
   }
 

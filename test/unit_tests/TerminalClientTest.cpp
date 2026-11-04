@@ -310,8 +310,7 @@ TEST_CASE("TerminalClient reconnects after an unknown server packet type",
   AgentProxySession session;
   session.startClient(/*forwardSshAgent=*/false, /*resumeSavedSession=*/false);
 
-  // The packet type is outside the MAC, so this is what a relabeled packet
-  // looks like to the client.
+  // An authenticated server sends a packet type this client does not know.
   auto serverSide = session.server->tryGetClientConnection(session.id);
   REQUIRE(serverSide != nullptr);
   serverSide->writePacket(Packet(uint8_t(200), ""));

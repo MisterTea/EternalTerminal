@@ -8,7 +8,7 @@
 namespace et {
 
 /**
- * @brief Provides thread-safe libsodium secretbox encryption/decryption state.
+ * @brief Provides thread-safe libsodium XChaCha20-Poly1305 encryption state.
  */
 class CryptoHandler {
  public:
@@ -47,17 +47,19 @@ class CryptoHandler {
 
   /**
    * @brief Encrypts a plaintext buffer and advances the nonce.
-   * @param buffer Plaintext payload to seal with secretbox.
+   * @param buffer Plaintext payload to encrypt.
+   * @param associatedData Cleartext bytes the MAC also covers.
    * @return Ciphertext including the MAC.
    */
-  string encrypt(const string& buffer);
+  string encrypt(const string& buffer, const string& associatedData = string());
 
   /**
-   * @brief Decrypts a ciphertext buffer and advances the nonce.
+   * @brief Decrypts a ciphertext buffer, advancing the nonce only on success.
    * @param buffer Ciphertext that must contain the MAC.
+   * @param associatedData Must match the bytes given to encrypt().
    * @return Original plaintext payload.
    */
-  string decrypt(const string& buffer);
+  string decrypt(const string& buffer, const string& associatedData = string());
 
   // Derives a new epoch key from the original key and resets the nonce.
   void rekey(const string& salt);
