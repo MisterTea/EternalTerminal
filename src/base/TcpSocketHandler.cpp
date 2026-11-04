@@ -287,12 +287,34 @@ void TcpSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   portServerSockets.erase(it);
 }
 
+bool TcpSocketHandler::isPeerDisconnectedSockoptError(int err) {
+  // A peer that connects and immediately resets leaves a dead connection in
+  // the accept queue; what setsockopt() then reports depends on the kernel:
+  //  - FreeBSD: tcp_ctloutput() returns ECONNRESET once the tcpcb has been
+  //    dropped (INP_DROPPED/TF_DISCONNECTED in sys/netinet/tcp_usrreq.c).
+  //  - macOS: the same race surfaces as EINVAL.
+  //  - Linux: TCP_NODELAY has no state check and simply succeeds, so the
+  //    dead peer is only discovered at the first read/write.
+  // None of these may abort the server; the socket fails at first I/O and
+  // is closed by the usual error path.
+  return err == ECONNRESET || err == EINVAL || err == ENOTCONN;
+}
+
 void TcpSocketHandler::initSocket(int fd) {
   UnixSocketHandler::initSocket(fd);
   {
     int flag = 1;
-    FATAL_FAIL_UNLESS_EINVAL(
-        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int)));
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int)) ==
+        -1) {
+      const auto localErrno = GetErrno();
+      if (isPeerDisconnectedSockoptError(localErrno)) {
+        LOG(INFO) << "TCP_NODELAY failed on fd " << fd << ": " << localErrno
+                  << " " << strerror(localErrno)
+                  << " (peer already disconnected)";
+      } else {
+        STFATAL << "Error: (" << localErrno << "): " << strerror(localErrno);
+      }
+    }
   }
   {
     // Linger is disabled deliberately. With l_onoff=1, closing a socket that
@@ -303,8 +325,17 @@ void TcpSocketHandler::initSocket(int fd) {
     struct linger so_linger;
     so_linger.l_onoff = 0;
     so_linger.l_linger = 5;
-    FATAL_FAIL_UNLESS_EINVAL(setsockopt(
-        fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
+    if (setsockopt(fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger,
+                   sizeof so_linger) == -1) {
+      const auto localErrno = GetErrno();
+      if (isPeerDisconnectedSockoptError(localErrno)) {
+        LOG(INFO) << "SO_LINGER failed on fd " << fd << ": " << localErrno
+                  << " " << strerror(localErrno)
+                  << " (peer already disconnected)";
+      } else {
+        STFATAL << "Error: (" << localErrno << "): " << strerror(localErrno);
+      }
+    }
   }
 }
 
