@@ -108,7 +108,7 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
     auto pending = pendingDestinations.find(*it);
     if (pending == pendingDestinations.end()) {
       LOG(INFO) << "Dropping destination request " << *it
-                << ": it expired while the peer was disconnected";
+                << ": its connection closed before the peer was reachable";
       it = unsentDestinationRequests.erase(it);
     } else if (peerConnected) {
       PortForwardDestinationRequest pfr;

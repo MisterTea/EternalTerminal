@@ -1415,6 +1415,17 @@ int createHeldSource(PortForwardHandler& handler,
   REQUIRE_FALSE(listenFds.empty());
   return *listenFds.begin();
 }
+
+void answerDestinationRequest(PortForwardHandler& handler, int token,
+                              int socketId) {
+  PortForwardDestinationResponse response;
+  response.set_clientfd(token);
+  response.set_socketid(socketId);
+  handler.handlePacket(
+      Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE,
+             protoToString(response)),
+      make_shared<FakeConnection>());
+}
 }  // namespace
 
 TEST_CASE("PortForwardHandler holds destination requests while disconnected",
@@ -1437,6 +1448,35 @@ TEST_CASE("PortForwardHandler holds destination requests while disconnected",
   CHECK(requests[0].destination().port() == 9090);
 
   // The held request was sent once; later updates do not repeat it.
+  requests.clear();
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/true);
+  CHECK(requests.empty());
+}
+
+TEST_CASE("PortForwardHandler sends held requests in accept order",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+  const int listenFd = createHeldSource(handler, *networkHandler);
+
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  networkHandler->queueAccept(listenFd, 123);
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/false);
+  networkHandler->queueAccept(listenFd, 124);
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/false);
+  REQUIRE(requests.empty());
+
+  handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/true);
+  REQUIRE(requests.size() == 2);
+  answerDestinationRequest(handler, requests[0].fd(), 7);
+  answerDestinationRequest(handler, requests[1].fd(), 8);
+  handler.sendDataToSourceOnSocket(7, "first");
+  handler.sendDataToSourceOnSocket(8, "second");
+  CHECK(networkHandler->writes.at(123).back() == "first");
+  CHECK(networkHandler->writes.at(124).back() == "second");
+
   requests.clear();
   handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/true);
   CHECK(requests.empty());
@@ -1467,4 +1507,8 @@ TEST_CASE(
   handler.update(&requests, &dataToSend, nullptr, /*peerConnected=*/true);
   REQUIRE(requests.size() == 1);
   CHECK(requests[0].destination().port() == 9090);
+  answerDestinationRequest(handler, requests[0].fd(), 7);
+  handler.sendDataToSourceOnSocket(7, "new");
+  CHECK(networkHandler->writes.count(123) == 0);
+  CHECK(networkHandler->writes.at(124).back() == "new");
 }
