@@ -716,7 +716,8 @@ int TerminalClient::run(const string& command, const bool noexit) {
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
-      portForwardHandler->update(&requests, &dataToSend, &readyFds);
+      portForwardHandler->update(&requests, &dataToSend, &readyFds,
+                                 !connection->isDisconnected());
       for (auto& pfr : requests) {
         connection->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
@@ -1099,7 +1100,8 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
-      portForwardHandler->update(&requests, &dataToSend, &readyFds);
+      portForwardHandler->update(&requests, &dataToSend, &readyFds,
+                                 !connection->isDisconnected());
       for (auto& pfr : requests) {
         connection->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,

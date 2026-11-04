@@ -31,10 +31,16 @@ class PortForwardHandler {
 
   /** @brief Polls handlers and collects destination requests and
    * `PortForwardData` for the caller to send. Touches only the descriptors
-   * named in `readyFds`; `nullptr` polls every one. */
+   * named in `readyFds`; `nullptr` polls every one.
+   *
+   * While `peerConnected` is false, newly accepted connections stay parked
+   * locally and produce no request: a request written then would sit in the
+   * recovery buffer and be replayed long after its connection expired. Held
+   * connections are requested once the peer is back, or closed by the
+   * source's pending-connection timeout if it is not. */
   void update(vector<PortForwardDestinationRequest>* requests,
               vector<PortForwardData>* dataToSend,
-              const set<int>* readyFds = nullptr);
+              const set<int>* readyFds = nullptr, bool peerConnected = true);
   /** @brief Handles control packets arriving over the SSH connection. */
   void handlePacket(const Packet& packet, shared_ptr<Connection> connection);
   PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr,
@@ -109,11 +115,15 @@ class PortForwardHandler {
   struct PendingDestination {
     std::weak_ptr<ForwardSourceHandler> handler;
     int fd;
+    SocketEndpoint destination;
   };
   // Destination requests carry these tokens in the wire fd/clientfd fields,
   // so a late response cannot reach a reused descriptor number. Expiry
   // bounds each token's lifetime far below the wrap period.
   unordered_map<int, PendingDestination> pendingDestinations;
+  /** @brief Pending tokens, in accept order, not yet requested from the peer.
+   */
+  std::deque<int> unsentDestinationRequests;
   int nextDestinationRequest = 1;
   void prunePendingDestinations();
   /** @brief Bumped by every site that opens or closes a descriptor exposed by
