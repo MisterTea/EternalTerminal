@@ -480,13 +480,11 @@ void TerminalServer::runTerminal(
       }
     }
 
-    // Collect forward fds before locking the connection. handlePacket writes
-    // the response while it holds the handler mutex, so taking that mutex
-    // under the connection lock inverts the lock order.
+    // Collect forward fds before locking the connection. Packet handling can
+    // hold the forwarding mutex while writing to the connection.
     set<int> pfFds;
-    portForwardHandler->getForwardFds(&pfFds);
-    const uint64_t currentForwardFdsGeneration =
-        portForwardHandler->getForwardFdsGeneration();
+    uint64_t currentForwardFdsGeneration;
+    portForwardHandler->getForwardFds(&pfFds, &currentForwardFdsGeneration);
 
     set<int> readFds;
     set<int> writeFds;
