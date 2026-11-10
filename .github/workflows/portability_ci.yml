@@ -262,6 +262,9 @@ jobs:
         shell: bash
         run: |
           cmake_build_dir="${GITHUB_WORKSPACE}/build"
+          if [[ "${{ matrix.distro }}" == fedora ]]; then
+            export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-Wall"
+          fi
           cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build and test
