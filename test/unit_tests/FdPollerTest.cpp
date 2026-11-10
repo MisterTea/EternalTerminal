@@ -3,6 +3,10 @@
 #include "TestHeaders.hpp"
 #include "TestSocketPair.hpp"
 
+#ifndef WIN32
+#include <sys/resource.h>
+#endif
+
 using namespace et;
 using namespace et::test;
 
@@ -16,6 +20,45 @@ inline void writeTestSocket(int fd, const void* buf, size_t count) {
   REQUIRE(::write(fd, buf, count) == static_cast<ssize_t>(count));
 #endif
 }
+
+#ifndef WIN32
+// Raises the soft RLIMIT_NOFILE while in scope, so a test can allocate
+// descriptors at FD_SETSIZE and above where the soft limit defaults to 1024
+// (as on some build systems). Only the soft limit changes, which needs no
+// privileges; it is raised to `wanted`, or to the hard limit if that is lower.
+class ScopedNofileLimit {
+ public:
+  ScopedNofileLimit(rlim_t needed, rlim_t wanted) {
+    if (getrlimit(RLIMIT_NOFILE, &saved_) != 0) {
+      return;
+    }
+    rlim_t current = saved_.rlim_cur;
+    if (current != RLIM_INFINITY && current < wanted) {
+      struct rlimit raised = saved_;
+      raised.rlim_cur = std::min(wanted, saved_.rlim_max);
+      if (setrlimit(RLIMIT_NOFILE, &raised) == 0) {
+        raised_ = true;
+        current = raised.rlim_cur;
+      }
+    }
+    sufficient_ = current == RLIM_INFINITY || current >= needed;
+  }
+  ~ScopedNofileLimit() {
+    if (raised_) {
+      setrlimit(RLIMIT_NOFILE, &saved_);
+    }
+  }
+  ScopedNofileLimit(const ScopedNofileLimit&) = delete;
+  ScopedNofileLimit& operator=(const ScopedNofileLimit&) = delete;
+
+  bool sufficient() const { return sufficient_; }
+
+ private:
+  struct rlimit saved_ = {};
+  bool raised_ = false;
+  bool sufficient_ = false;
+};
+#endif
 }  // namespace
 
 TEST_CASE("FdPoller supports descriptors above FD_SETSIZE", "[FdPoller]") {
@@ -39,6 +82,14 @@ TEST_CASE("FdPoller supports descriptors above FD_SETSIZE", "[FdPoller]") {
   test::closeTestFd(sockets[0]);
   test::closeTestFd(sockets[1]);
 #else
+  // Two descriptors at FD_SETSIZE and above need a soft limit above that;
+  // ask for some headroom in case low-numbered descriptors are in use.
+  const rlim_t fdSetSize = static_cast<rlim_t>(FD_SETSIZE);
+  ScopedNofileLimit nofileLimit(fdSetSize + 2, fdSetSize + 64);
+  if (!nofileLimit.sufficient()) {
+    SKIP("RLIMIT_NOFILE is too low for descriptors above FD_SETSIZE");
+  }
+
   int pipeFds[2];
   REQUIRE(pipe(pipeFds) == 0);
   int highFd = fcntl(pipeFds[0], F_DUPFD, FD_SETSIZE);
