@@ -5,8 +5,8 @@ ServerConnection::ServerConnection(
     const SocketEndpoint& _serverEndpoint)
     : socketHandler(_socketHandler),
       serverEndpoint(_serverEndpoint),
-      startTime_(time(NULL)),
-      clientHandlerThreadPool(new ThreadPool(8)) {
+      clientHandlerThreadPool(new ThreadPool(8)),
+      startTime_(time(NULL)) {
   socketHandler->listen(serverEndpoint);
 }
 

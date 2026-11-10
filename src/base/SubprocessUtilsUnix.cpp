@@ -47,14 +47,14 @@ string SubprocessUtils::SubprocessToStringInteractive(
 
     char** argsArray = new char*[args.size() + 2];
     argsArray[0] = strdup(command.c_str());
-    for (int a = 0; a < args.size(); a++) {
+    for (size_t a = 0; a < args.size(); a++) {
       argsArray[a + 1] = strdup(args[a].c_str());
     }
     argsArray[args.size() + 1] = NULL;
     execvp(command.c_str(), argsArray);
 
     LOG(INFO) << "execvp error";
-    for (int a = 0; a <= args.size(); a++) {
+    for (size_t a = 0; a <= args.size(); a++) {
       free(argsArray[a]);
     }
     delete[] argsArray;

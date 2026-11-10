@@ -1206,7 +1206,7 @@ void simultaneousTerminalConnectionTest(
 
   const string s("test");
   thread typeKeysThread([s, fakeConsole]() {
-    for (int a = 0; a < s.size(); a++) {
+    for (size_t a = 0; a < s.size(); a++) {
       VLOG(1) << "Writing packet " << a;
       fakeConsole->simulateKeystrokes(string(1, s[a]));
     }
@@ -1214,7 +1214,7 @@ void simultaneousTerminalConnectionTest(
 
   string resultConcat;
   string result;
-  for (int a = 0; a < s.size(); a++) {
+  for (size_t a = 0; a < s.size(); a++) {
     result = fakeUserTerminal->getKeystrokes(1);
     resultConcat = resultConcat.append(result);
     LOG(INFO) << "ON MESSAGE " << a;

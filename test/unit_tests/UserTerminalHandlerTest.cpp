@@ -58,7 +58,7 @@ class RouterPairSocketHandler : public PipeSocketHandler {
 
 class SessionEndTerminal : public UserTerminal {
  public:
-  SessionEndTerminal() : masterFd(-1), peerFd(-1), exitCode(37) {}
+  SessionEndTerminal() : exitCode(37), masterFd(-1), peerFd(-1) {}
   ~SessionEndTerminal() override { cleanup(); }
 
   int setup(int /*routerFd*/) override {
