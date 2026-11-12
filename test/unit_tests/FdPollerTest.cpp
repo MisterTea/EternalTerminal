@@ -3,6 +3,10 @@
 #include "TestHeaders.hpp"
 #include "TestSocketPair.hpp"
 
+#ifndef WIN32
+#include <sys/resource.h>
+#endif
+
 using namespace et;
 using namespace et::test;
 
@@ -16,6 +20,64 @@ inline void writeTestSocket(int fd, const void* buf, size_t count) {
   REQUIRE(::write(fd, buf, count) == static_cast<ssize_t>(count));
 #endif
 }
+
+#ifndef WIN32
+// Raises the soft RLIMIT_NOFILE while in scope, so a test can allocate
+// descriptors at FD_SETSIZE and above where the soft limit defaults to 1024
+// (as on some build systems). Only the soft limit changes, which needs no
+// privileges; it is raised to `wanted`, or to the hard limit if that is lower.
+class ScopedNofileLimit {
+ public:
+  ScopedNofileLimit(rlim_t needed, rlim_t wanted) {
+    if (getrlimit(RLIMIT_NOFILE, &saved_) != 0) {
+      return;
+    }
+    rlim_t current = saved_.rlim_cur;
+    if (current != RLIM_INFINITY && current < wanted) {
+      struct rlimit raised = saved_;
+      raised.rlim_cur = std::min(wanted, saved_.rlim_max);
+      if (setrlimit(RLIMIT_NOFILE, &raised) == 0) {
+        raised_ = true;
+        current = raised.rlim_cur;
+      }
+    }
+    sufficient_ = current == RLIM_INFINITY || current >= needed;
+  }
+  ~ScopedNofileLimit() {
+    if (raised_) {
+      setrlimit(RLIMIT_NOFILE, &saved_);
+    }
+  }
+  ScopedNofileLimit(const ScopedNofileLimit&) = delete;
+  ScopedNofileLimit& operator=(const ScopedNofileLimit&) = delete;
+
+  bool sufficient() const { return sufficient_; }
+
+ private:
+  struct rlimit saved_ = {};
+  bool raised_ = false;
+  bool sufficient_ = false;
+};
+
+struct rlimit currentNofileLimit() {
+  struct rlimit limit = {};
+  REQUIRE(getrlimit(RLIMIT_NOFILE, &limit) == 0);
+  return limit;
+}
+
+// Restores RLIMIT_NOFILE when a test that changes it ends, even on failure.
+class RestoreNofileLimit {
+ public:
+  explicit RestoreNofileLimit(const struct rlimit& original)
+      : original_(original) {}
+  ~RestoreNofileLimit() { setrlimit(RLIMIT_NOFILE, &original_); }
+  RestoreNofileLimit(const RestoreNofileLimit&) = delete;
+  RestoreNofileLimit& operator=(const RestoreNofileLimit&) = delete;
+
+ private:
+  struct rlimit original_;
+};
+#endif
 }  // namespace
 
 TEST_CASE("FdPoller supports descriptors above FD_SETSIZE", "[FdPoller]") {
@@ -39,6 +101,14 @@ TEST_CASE("FdPoller supports descriptors above FD_SETSIZE", "[FdPoller]") {
   test::closeTestFd(sockets[0]);
   test::closeTestFd(sockets[1]);
 #else
+  // Two descriptors at FD_SETSIZE and above need a soft limit above that;
+  // ask for some headroom in case low-numbered descriptors are in use.
+  const rlim_t fdSetSize = static_cast<rlim_t>(FD_SETSIZE);
+  ScopedNofileLimit nofileLimit(fdSetSize + 2, fdSetSize + 64);
+  if (!nofileLimit.sufficient()) {
+    SKIP("RLIMIT_NOFILE is too low for descriptors above FD_SETSIZE");
+  }
+
   int pipeFds[2];
   REQUIRE(pipe(pipeFds) == 0);
   int highFd = fcntl(pipeFds[0], F_DUPFD, FD_SETSIZE);
@@ -63,6 +133,69 @@ TEST_CASE("FdPoller supports descriptors above FD_SETSIZE", "[FdPoller]") {
   CHECK(close(highWriteFd) == 0);
 #endif
 }
+
+#ifndef WIN32
+TEST_CASE("ScopedNofileLimit raises the soft limit and restores it",
+          "[FdPoller][rlimit]") {
+  const struct rlimit original = currentNofileLimit();
+  RestoreNofileLimit restore(original);
+  const rlim_t hard = original.rlim_max;
+  // Start from a low soft limit, as on build systems that use 1024 or less.
+  constexpr rlim_t kLowered = 256;
+  if (hard != RLIM_INFINITY && hard <= kLowered) {
+    SKIP("RLIMIT_NOFILE hard limit is too low to lower the soft limit");
+  }
+  const rlim_t raiseTo =
+      hard == RLIM_INFINITY ? 2 * kLowered : std::min(2 * kLowered, hard);
+  struct rlimit lowered = original;
+  lowered.rlim_cur = kLowered;
+  REQUIRE(setrlimit(RLIMIT_NOFILE, &lowered) == 0);
+
+  {
+    ScopedNofileLimit limit(kLowered + 1, raiseTo);
+    CHECK(limit.sufficient());
+    CHECK(currentNofileLimit().rlim_cur == raiseTo);
+  }
+  CHECK(currentNofileLimit().rlim_cur == kLowered);
+
+  {
+    // Already high enough: nothing to raise or restore.
+    ScopedNofileLimit limit(kLowered / 2, kLowered);
+    CHECK(limit.sufficient());
+    CHECK(currentNofileLimit().rlim_cur == kLowered);
+  }
+  CHECK(currentNofileLimit().rlim_cur == kLowered);
+
+  if (hard != RLIM_INFINITY) {
+    // Some systems refuse a soft limit as high as the hard limit (macOS caps
+    // it at kern.maxfilesperproc), so only expect the cap where it applies.
+    struct rlimit atHard = lowered;
+    atHard.rlim_cur = hard;
+    const bool canReachHard = setrlimit(RLIMIT_NOFILE, &atHard) == 0;
+    REQUIRE(setrlimit(RLIMIT_NOFILE, &lowered) == 0);
+
+    {
+      // More than the hard limit is wanted but not needed: the limit is
+      // capped at the hard limit and is still enough.
+      ScopedNofileLimit limit(raiseTo, hard + 64);
+      if (canReachHard) {
+        CHECK(limit.sufficient());
+        CHECK(currentNofileLimit().rlim_cur == hard);
+      }
+      CHECK(currentNofileLimit().rlim_cur <= hard);
+    }
+    CHECK(currentNofileLimit().rlim_cur == kLowered);
+
+    {
+      // More than the hard limit is needed: never enough.
+      ScopedNofileLimit limit(hard + 1, hard + 1);
+      CHECK_FALSE(limit.sufficient());
+      CHECK(currentNofileLimit().rlim_cur <= hard);
+    }
+    CHECK(currentNofileLimit().rlim_cur == kLowered);
+  }
+}
+#endif
 
 TEST_CASE("FdPoller replaces its descriptor set", "[FdPoller]") {
   int firstPair[2];
