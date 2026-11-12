@@ -269,4 +269,54 @@ TEST_CASE("PipeSocketHandler listenAsUser throws when path cannot bind",
   REQUIRE_THROWS_AS(socketHandler->listenAsUser(endpoint, getuid(), getgid()),
                     std::runtime_error);
 }
+
+// A path that fills sun_path exactly leaves no room for the terminating NUL.
+TEST_CASE("PipeSocketHandler connect rejects a path that does not fit",
+          "[UnixSocketHandler][PipeSocketHandler]") {
+  shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
+  SocketEndpoint endpoint;
+  endpoint.set_name("/" + string(sizeof(sockaddr_un::sun_path) - 1, 'x'));
+
+  int clientFd = socketHandler->connect(endpoint);
+  REQUIRE(clientFd < 0);
+  REQUIRE(GetErrno() == ENAMETOOLONG);
+}
+
+TEST_CASE("PipeSocketHandler listen rejects a path that does not fit",
+          "[UnixSocketHandler][PipeSocketHandler]") {
+  shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
+  SocketEndpoint endpoint;
+  endpoint.set_name("/" + string(sizeof(sockaddr_un::sun_path) - 1, 'x'));
+
+  REQUIRE_THROWS_AS(socketHandler->listen(endpoint), std::runtime_error);
+}
+
+TEST_CASE("PipeSocketHandler accepts the longest path that fits",
+          "[UnixSocketHandler][PipeSocketHandler]") {
+  shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
+
+  string tmpPath = GetTempDirectory() + string("et_test_pipe_XXXXXXXX");
+  string pipeDirectory = string(mkdtemp(&tmpPath[0]));
+  const size_t longest = sizeof(sockaddr_un::sun_path) - 1;
+  string pipePath = pipeDirectory + "/";
+  REQUIRE(pipePath.size() < longest);
+  pipePath += string(longest - pipePath.size(), 'x');
+
+  SocketEndpoint endpoint;
+  endpoint.set_name(pipePath);
+
+  set<int> serverFds = socketHandler->listen(endpoint);
+  REQUIRE(!serverFds.empty());
+
+  int clientFd = socketHandler->connect(endpoint);
+  REQUIRE(clientFd >= 0);
+
+  int accepted = socketHandler->accept(*serverFds.begin());
+  REQUIRE(accepted >= 0);
+
+  socketHandler->close(accepted);
+  socketHandler->close(clientFd);
+  socketHandler->stopListening(endpoint);
+  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+}
 #endif

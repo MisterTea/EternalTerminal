@@ -10,6 +10,10 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 
   string pipePath = endpoint.name();
   sockaddr_un remote{};
+  if (pipePath.size() >= sizeof(remote.sun_path)) {
+    SetErrno(ENAMETOOLONG);
+    return -1;
+  }
 
   int sockFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
   if (sockFd < 0) {
@@ -27,7 +31,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
     return -1;
   }
   remote.sun_family = AF_UNIX;
-  strncpy(remote.sun_path, pipePath.c_str(), sizeof(remote.sun_path));
+  strncpy(remote.sun_path, pipePath.c_str(), sizeof(remote.sun_path) - 1);
 
   VLOG(3) << "Connecting to " << endpoint << " with fd " << sockFd;
   int result =
@@ -98,12 +102,15 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   }
 
   sockaddr_un local{};
+  if (pipePath.size() >= sizeof(local.sun_path)) {
+    throw runtime_error("Pipe path is too long: " + pipePath);
+  }
 
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
   FATAL_FAIL(fd);
   prepareListenSocket(fd);
   local.sun_family = AF_UNIX; /* local is declared before socket() ^ */
-  strncpy(local.sun_path, pipePath.c_str(), sizeof(local.sun_path));
+  strncpy(local.sun_path, pipePath.c_str(), sizeof(local.sun_path) - 1);
   RawSocketUtils::unlinkSocketPath(local.sun_path);
 
   FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, unixAddressLength(local)));
