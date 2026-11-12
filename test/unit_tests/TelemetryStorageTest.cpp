@@ -79,6 +79,7 @@ class TelemetrySandbox {
   map<string, optional<string>> saved;
 };
 
+#ifndef NO_TELEMETRY
 mode_t modeOf(const string& path) {
   struct stat st;
   if (lstat(path.c_str(), &st) != 0) throw std::runtime_error("lstat failed");
@@ -99,6 +100,7 @@ string readFixture(const string& path) {
   std::ifstream in(path);
   return string(std::istreambuf_iterator<char>(in), {});
 }
+#endif
 }  // namespace
 
 TEST_CASE("Telemetry creates private configuration and preserves its id",

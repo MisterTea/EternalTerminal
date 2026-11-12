@@ -90,7 +90,6 @@ class ServerTestFakeSshSetupHandler : public FakeSshSetupHandler {
           thread([userTerminalHandler]() { userTerminalHandler->run(); }));
       auto tokens = split(jumphost, ':');
       string jhost = tokens[0];
-      int jport = stoi(tokens[1]);
 
       // Create a socket handler for the jumphost to connect to the destination
       shared_ptr<PipeSocketHandler> jumphostClientSocketHandler(
@@ -460,12 +459,12 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerDataTransferTest",
 
   // Test sending smaller amount of data
   string s = "test_data_transfer";
-  for (int a = 0; a < s.size(); a++) {
+  for (size_t a = 0; a < s.size(); a++) {
     fakeConsole->simulateKeystrokes(string(1, s[a]));
   }
 
   string resultConcat;
-  for (int a = 0; a < s.size(); a++) {
+  for (size_t a = 0; a < s.size(); a++) {
     string result = fakeUserTerminal->getKeystrokes(1);
     resultConcat = resultConcat.append(result);
   }

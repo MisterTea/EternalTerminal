@@ -519,7 +519,7 @@ inline char* ssh_path_expand_tilde(const char* d) {
     STFATAL << "~user/path format not supported on windows";
 #else
     struct passwd* pw;
-    int s = p - d;
+    size_t s = p - d;
     char u[128];
 
     if (s >= sizeof(u)) {
@@ -1632,7 +1632,6 @@ static int ssh_config_get_yesno(char** str, int notfound) {
 static void local_parse_file(const char* targethost, struct Options* options,
                              const char* filename, int* parsing, int seen[]) {
   string line;
-  int len = 0;
   std::string fileDir = fs::path(filename).parent_path().string();
   if (fileDir.empty()) fileDir = ".";
 
@@ -2013,8 +2012,6 @@ inline int parse_ssh_config_file(const char* targethost,
                                  struct Options* options, string filename,
                                  int* seen_inout = nullptr) {
   string line;
-  int len = 0;
-  int read = 0;
   unsigned int count = 0;
   int parsing;
   int local_seen[SOC_END - SOC_UNSUPPORTED] = {0};
