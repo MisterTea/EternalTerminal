@@ -1,0 +1,6 @@
+# Loads the unit and applies the distro's preset policy on first install;
+# an upgrade leaves an already-configured service alone.
+systemctl daemon-reload >/dev/null 2>&1 || :
+if [ "$1" -eq 1 ]; then
+  systemctl --no-reload preset et.service >/dev/null 2>&1 || :
+fi
