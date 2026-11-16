@@ -387,6 +387,16 @@ else()
   if(HAVE_STDCXXFS)
     list(APPEND CORE_LIBRARIES stdc++fs)
   endif()
+  # httplib resolves names with getaddrinfo_a, which glibc kept in libanl until
+  # 2.34 merged it into libc. httplib's target does not link libanl itself.
+  include(CheckFunctionExists)
+  check_function_exists(getaddrinfo_a HAVE_GETADDRINFO_A_IN_LIBC)
+  if(NOT HAVE_GETADDRINFO_A_IN_LIBC)
+    check_library_exists(anl getaddrinfo_a "" HAVE_LIBANL)
+    if(HAVE_LIBANL)
+      list(APPEND CORE_LIBRARIES anl)
+    endif()
+  endif()
 endif()
 
 IF(Unwind_FOUND)
