@@ -257,7 +257,11 @@ int UserSocketOps::connectAtPath(const string& path) {
     struct pollfd pfd = {fd, POLLOUT, 0};
     int ready;
     do {
-      ready = ::poll(&pfd, 1, CONNECT_TIMEOUT_MS);
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              deadline - std::chrono::steady_clock::now())
+              .count();
+      ready = ::poll(&pfd, 1, remaining > 0 ? int(remaining) : 0);
     } while (ready < 0 && errno == EINTR);
     int soError = 0;
     socklen_t len = sizeof(soError);
