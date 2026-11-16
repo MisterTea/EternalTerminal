@@ -63,6 +63,14 @@ class BackedWriter {
   void revive(int newSocketFd);
 
   /**
+   * @brief Restores a socket invalidated by invalidateSocket() after a
+   * failed recovery, sending the packets buffered while it was detached.
+   * The peer never saw them, and skipping them would desynchronise its
+   * sequence and nonce from ours.
+   */
+  void reattach(int oldSocketFd);
+
+  /**
    * @brief Returns true when writing `bytes` more will not block the caller:
    * either a socket is attached or the disconnect buffer still has room.
    */
@@ -112,8 +120,14 @@ class BackedWriter {
   int64_t backupSize;
   /** @brief Bytes buffered since the socket was lost; reset on revive. */
   int64_t disconnectedBytes;
+  /** @brief Packets buffered since the socket was lost; reset on revive. */
+  int64_t disconnectedPackets;
   /** @brief Sequence number that increments each time a packet is backed up. */
   int64_t sequenceNumber;
+
+  /** @brief Frames and sends an encrypted packet on socketFd. Hold the
+   * recover mutex. */
+  BackedWriterWriteState sendPacket(const Packet& packet);
 };
 }  // namespace et
 

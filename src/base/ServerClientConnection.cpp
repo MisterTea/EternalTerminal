@@ -86,9 +86,9 @@ bool ServerClientConnection::recoverClient(int newSocketFd, bool forceReset,
       reader->reattach(oldSocketFd);
     }
     if (writer) {
-      // As in recover(): the writer's state changes under its recoverMutex.
-      lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
-      writer->revive(oldSocketFd);
+      // Packets written while the socket was detached were only buffered;
+      // the live peer still needs them, in order.
+      writer->reattach(oldSocketFd);
     }
   }
   return false;

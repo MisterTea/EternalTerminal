@@ -714,3 +714,30 @@ TEST_CASE("BackedReader reattach keeps a partly read packet", "[BackedIO]") {
   CHECK(output.getHeader() == 42);
   CHECK(output.getPayload() == "split across a failed reconnect");
 }
+
+TEST_CASE("BackedWriter reattach sends packets buffered while detached",
+          "[BackedIO]") {
+  // A packet written during a failed reconnect was only buffered; the live
+  // peer must still get it, or every later packet fails to decrypt.
+  auto handler = make_shared<InMemorySocketHandler>();
+  const string key = "12345678901234567890123456789012";
+  const int fd = handler->createChannel();
+  BackedWriter writer(handler, make_shared<CryptoHandler>(key, 0), fd);
+  BackedReader reader(handler, make_shared<CryptoHandler>(key, 0), fd);
+
+  REQUIRE(writer.write(Packet(1, "before")) == BackedWriterWriteState::SUCCESS);
+  writer.invalidateSocket();
+  REQUIRE(writer.write(Packet(2, "while detached")) ==
+          BackedWriterWriteState::BUFFERED_ONLY);
+  writer.reattach(fd);
+  REQUIRE(writer.write(Packet(3, "after")) == BackedWriterWriteState::SUCCESS);
+
+  Packet output;
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getPayload() == "before");
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getPayload() == "while detached");
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getPayload() == "after");
+  CHECK(reader.getSequenceNumber() == writer.getSequenceNumber());
+}
