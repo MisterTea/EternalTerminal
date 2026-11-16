@@ -1238,7 +1238,7 @@ else(WIN32)
     WORLD_READ
     DESTINATION "bin")
   install(
-    PROGRAMS scripts/et1 scripts/et1.cmd
+    PROGRAMS scripts/et1
     DESTINATION "bin"
     PERMISSIONS
     OWNER_EXECUTE
