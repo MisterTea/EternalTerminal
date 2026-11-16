@@ -1,3 +1,5 @@
+#include <grp.h>
+#include <pwd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
@@ -26,6 +28,53 @@ bool pathTooLong(const string& path) {
   return path.size() >= sizeof(sockaddr_un::sun_path);
 }
 }  // namespace
+
+// Looks up uid's supplementary groups, starting with gid. Runs in the parent:
+// NSS lookups are not safe in a child forked from a multithreaded process.
+// Falls back to gid alone if the user cannot be found. The list is capped
+// at NGROUPS_MAX (16 on macOS), which setgroups() would otherwise reject.
+vector<gid_t> UserSocketOps::supplementaryGroups(uid_t uid, gid_t gid) {
+  vector<gid_t> groups = {gid};
+  long bufSize = ::sysconf(_SC_GETPW_R_SIZE_MAX);
+  vector<char> buf(bufSize > 0 ? bufSize : 16384);
+  struct passwd pwd;
+  struct passwd* result = nullptr;
+  int pwErr;
+  while ((pwErr = ::getpwuid_r(uid, &pwd, buf.data(), buf.size(), &result)) ==
+             ERANGE &&
+         buf.size() < 1024 * 1024) {
+    buf.resize(buf.size() * 2);
+  }
+  if (pwErr != 0 || result == nullptr) {
+    LOG(WARNING) << "Cannot look up uid " << uid
+                 << ", keeping only its primary group";
+    return groups;
+  }
+  long maxGroups = ::sysconf(_SC_NGROUPS_MAX);
+  int count = 32;
+  for (int attempt = 0; attempt < 8; attempt++) {
+    vector<gid_t> found(count);
+    int n = count;
+#ifdef __APPLE__
+    int rc = ::getgrouplist(pwd.pw_name, static_cast<int>(gid),
+                            reinterpret_cast<int*>(found.data()), &n);
+#else
+    int rc = ::getgrouplist(pwd.pw_name, gid, found.data(), &n);
+#endif
+    if (rc >= 0) {
+      found.resize(n);
+      // getgrouplist() puts gid first, so truncating keeps it.
+      if (maxGroups > 0 && found.size() > static_cast<size_t>(maxGroups)) {
+        found.resize(maxGroups);
+      }
+      return found;
+    }
+    count = n > count ? n : count * 2;
+  }
+  LOG(WARNING) << "Cannot list the groups of " << pwd.pw_name
+               << ", keeping only its primary group";
+  return groups;
+}
 
 void UserSocketOps::coverageExit(int code) {
 #ifdef CODE_COVERAGE
@@ -212,6 +261,11 @@ int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
     return op == Op::LISTEN ? listenAtPath(path) : connectAtPath(path);
   }
 
+  // The forwarded socket may be reachable only through one of the user's
+  // supplementary groups (e.g. docker.sock), so keep them, not just gid.
+  const vector<gid_t> groups =
+      ::geteuid() == 0 ? supplementaryGroups(uid, gid) : vector<gid_t>{gid};
+
   int sv[2];
   if (::socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
     return -1;
@@ -229,11 +283,11 @@ int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
   if (pid == 0) {
     fatalClose(sv[0]);
     // Drop privileges before any path operation. Do not use logging here.
-    // Clear supplemental groups when running as root so we do not retain the
-    // parent's group set. setgroups(2) requires privilege and is skipped
-    // otherwise (e.g. already-unprivileged test processes).
+    // Replace the parent's group set with the user's own when running as
+    // root. setgroups(2) requires privilege and is skipped otherwise (e.g.
+    // already-unprivileged test processes).
     if (::geteuid() == 0) {
-      if (::setgroups(1, &gid) != 0) {
+      if (::setgroups(groups.size(), groups.data()) != 0) {
         sendFd(sv[1], -1, -1, errno);
         coverageExit(1);
       }

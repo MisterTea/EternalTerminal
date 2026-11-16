@@ -5,6 +5,7 @@
 #include <io.h>
 #include <windows.h>
 #else
+#include <pwd.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -258,5 +259,19 @@ TEST_CASE("UserSocketOps listenAtPath restricts the socket to its owner",
   test::closeTestFd(listenFd);
   removeSocketPath(path);
   test::removeTempDir(dir);
+}
+
+TEST_CASE("UserSocketOps supplementaryGroups includes the primary group",
+          "[UserSocketOps]") {
+  const auto groups = UserSocketOps::supplementaryGroups(getuid(), getgid());
+  CHECK(std::find(groups.begin(), groups.end(), getgid()) != groups.end());
+  // setgroups() rejects more than NGROUPS_MAX entries (16 on macOS).
+  CHECK(groups.size() <= static_cast<size_t>(::sysconf(_SC_NGROUPS_MAX)));
+
+  // An unknown user falls back to just the primary group.
+  const uid_t unknown = static_cast<uid_t>(0x7ffffff0);
+  REQUIRE(getpwuid(unknown) == nullptr);
+  CHECK(UserSocketOps::supplementaryGroups(unknown, getgid()) ==
+        vector<gid_t>{getgid()});
 }
 #endif

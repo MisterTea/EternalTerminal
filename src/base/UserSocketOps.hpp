@@ -48,6 +48,12 @@ class UserSocketOps {
    */
   static void coverageExit(int code);
 
+  /**
+   * @brief Returns @p uid's supplementary groups, including @p gid, for the
+   * privilege drop; just @p gid if the user cannot be looked up.
+   */
+  static vector<gid_t> supplementaryGroups(uid_t uid, gid_t gid);
+
  private:
   enum class Op : int { LISTEN = 1, CONNECT = 2 };
 
