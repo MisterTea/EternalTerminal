@@ -81,9 +81,13 @@ bool ServerClientConnection::recoverClient(int newSocketFd, bool forceReset,
   if (oldSocketFd != -1) {
     socketFd = oldSocketFd;
     if (reader) {
-      reader->revive(oldSocketFd, vector<string>());
+      // The live socket may be part way through a packet: keep what was
+      // read so far, or the next read would start mid-frame.
+      reader->reattach(oldSocketFd);
     }
     if (writer) {
+      // As in recover(): the writer's state changes under its recoverMutex.
+      lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
       writer->revive(oldSocketFd);
     }
   }

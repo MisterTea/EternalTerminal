@@ -672,3 +672,35 @@ TEST_CASE("BackedReader uncounts catchup after rejecting an entry",
   REQUIRE(out.getPayload() == "second");
   REQUIRE(reader.getSequenceNumber() == 2);
 }
+
+TEST_CASE("BackedReader reattach keeps a partly read packet", "[BackedIO]") {
+  // A failed reconnect restores the live socket; the packet it was part way
+  // through must still be read correctly afterwards.
+  auto handler = make_shared<InMemorySocketHandler>();
+  auto encryptCrypto =
+      make_shared<CryptoHandler>("12345678901234567890123456789012", 0);
+  auto decryptCrypto =
+      make_shared<CryptoHandler>("12345678901234567890123456789012", 0);
+  const int fd = handler->createChannel();
+  BackedWriter writer(handler, encryptCrypto, fd);
+  BackedReader reader(handler, decryptCrypto, fd);
+
+  REQUIRE(writer.write(Packet(42, "split across a failed reconnect")) ==
+          BackedWriterWriteState::SUCCESS);
+  string wire(64 * 1024, '\0');
+  const ssize_t total = handler->read(fd, &wire[0], wire.size());
+  REQUIRE(total > 8);
+  wire.resize(total);
+
+  handler->enqueue(fd, wire.substr(0, total / 2));
+  Packet output;
+  REQUIRE(reader.read(&output) == 0);
+
+  reader.invalidateSocket();
+  reader.reattach(fd);
+
+  handler->enqueue(fd, wire.substr(total / 2));
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getHeader() == 42);
+  CHECK(output.getPayload() == "split across a failed reconnect");
+}

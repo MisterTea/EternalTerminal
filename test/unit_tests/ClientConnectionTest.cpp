@@ -1137,6 +1137,60 @@ TEST_CASE("ServerClientConnection recoverClient keeps old socket on failure",
   handler->close(attack[1]);
 }
 
+TEST_CASE(
+    "ServerClientConnection recoverClient failure keeps a partly read "
+    "packet",
+    "[ServerClientConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  int live[2];
+  REQUIRE(createTestSocketPair(live) == 0);
+
+  const string key = "zyxwvutsrqponmlkjihgfedcba987654";
+  ServerClientConnection connection(handler, "client-partial", live[0], key);
+
+  // Frame a packet the way the client would, then deliver only half of it.
+  int staging[2];
+  REQUIRE(createTestSocketPair(staging) == 0);
+  BackedWriter clientWriter(
+      handler, make_shared<CryptoHandler>(key, CLIENT_SERVER_NONCE_MSB),
+      staging[0]);
+  REQUIRE(clientWriter.write(Packet(42, "split across a failed reconnect")) ==
+          BackedWriterWriteState::SUCCESS);
+  string wire(64 * 1024, '\0');
+  const ssize_t total = handler->read(staging[1], &wire[0], wire.size());
+  REQUIRE(total > 8);
+  wire.resize(total);
+  handler->writeAllOrThrow(live[1], wire.data(), total / 2, false);
+
+  Packet output;
+  REQUIRE(connection.getReader()->read(&output) == 0);
+
+  int attack[2];
+  REQUIRE(createTestSocketPair(attack) == 0);
+  std::thread attacker([&]() {
+    handler->readProto<SequenceHeader>(
+        attack[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    SequenceHeader bad;
+    bad.set_sequencenumber(999999);
+    handler->writeProto(attack[1], bad, true);
+  });
+  REQUIRE_FALSE(connection.recoverClient(attack[0]));
+  attacker.join();
+
+  handler->writeAllOrThrow(live[1], wire.data() + total / 2, total - total / 2,
+                           false);
+  REQUIRE(connection.getReader()->read(&output) == 1);
+  CHECK(output.getHeader() == 42);
+  CHECK(output.getPayload() == "split across a failed reconnect");
+
+  connection.shutdown();
+  handler->close(live[0]);
+  handler->close(live[1]);
+  handler->close(attack[1]);
+  handler->close(staging[0]);
+  handler->close(staging[1]);
+}
+
 TEST_CASE("ServerClientConnection recoverClient closes old socket on success",
           "[ServerClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
