@@ -100,6 +100,20 @@ zypper ref
 zypper in EternalTerminal
 ```
 
+### Other RPM-based Linux
+
+Each release carries RPMs for x86_64 and aarch64, built against glibc 2.28.
+They install on RHEL, Rocky Linux and AlmaLinux 8 and later, Fedora, Amazon
+Linux 2023, openSUSE Leap 15 and CBL-Mariner 2 (with its Extended repository,
+which provides libutempter). Where Fedora, EPEL or openSUSE package `et`,
+prefer those repositories, which also deliver updates.
+
+```bash
+version=7.1.1  # see https://github.com/MisterTea/EternalTerminal/releases
+sudo dnf install "https://github.com/MisterTea/EternalTerminal/releases/download/et-v${version}/et-${version}-1.$(uname -m).rpm"
+sudo systemctl enable --now et
+```
+
 ### Other Linux
 
 Install dependencies:

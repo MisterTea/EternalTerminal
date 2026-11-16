@@ -1,0 +1,178 @@
+name: Deploy Linux RPM Release Assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to package. Leave blank to use the latest GitHub release."
+        required: false
+        default: ""
+      overwrite_asset:
+        description: "Overwrite existing RPM assets with the same names."
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  resolve:
+    name: resolve-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release_tag: ${{ steps.resolve.outputs.release_tag }}
+      should_build: ${{ steps.resolve.outputs.should_build }}
+    steps:
+      - name: Resolve release
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+          OVERWRITE_ASSET: ${{ inputs.overwrite_asset || false }}
+        run: |
+          if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+            if ! gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null; then
+              echo "Release ${release_tag} does not exist in ${GITHUB_REPOSITORY}" >&2
+              exit 1
+            fi
+          else
+            release_tag="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          fi
+          if [[ "${release_tag}" != et-v* ]]; then
+            echo "Expected release tag to start with et-v, got ${release_tag}" >&2
+            exit 1
+          fi
+
+          existing="$(
+            gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" \
+              --json assets --jq '.assets[].name' | grep -E '^et-.*\.rpm$' || true
+          )"
+          if [[ -n "${existing}" && "${OVERWRITE_ASSET}" != "true" ]]; then
+            echo "RPM assets already exist and overwrite_asset is false; skipping."
+            echo "should_build=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "should_build=true" >> "${GITHUB_OUTPUT}"
+          fi
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: build-rpm-${{ matrix.arch }}
+    needs: resolve
+    if: needs.resolve.outputs.should_build == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.release_tag }}
+          submodules: recursive
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ github.workspace }}/.vcpkg-binary-cache
+          key: vcpkg-rpm-el8-${{ matrix.arch }}-${{ hashFiles('vcpkg.json', '.github/ci/rpm/build.sh') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}
+          restore-keys: |
+            vcpkg-rpm-el8-${{ matrix.arch }}-
+
+      # The oldest supported glibc sets the floor for every distro the package
+      # installs on; see .github/ci/rpm/build.sh.
+      - name: Build RPM on Rocky Linux 8
+        run: |
+          mkdir -p .vcpkg-binary-cache dist
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/src" \
+            -e VCPKG_DEFAULT_BINARY_CACHE=/src/.vcpkg-binary-cache \
+            rockylinux:8 \
+            /src/.github/ci/rpm/build.sh /src /src/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-${{ matrix.arch }}
+          path: dist/*.rpm
+          if-no-files-found: error
+
+  test:
+    name: test-${{ matrix.arch }}-${{ matrix.name }}
+    needs: [resolve, build]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+        name: [rocky-8, rocky-9, alma-10, fedora, amazon-2023, opensuse-leap, mariner-2]
+        include:
+          - name: rocky-8
+            image: rockylinux:8
+          - name: rocky-9
+            image: rockylinux:9
+          - name: alma-10
+            image: almalinux:10
+          - name: fedora
+            image: fedora:latest
+          - name: amazon-2023
+            image: amazonlinux:2023
+          - name: opensuse-leap
+            image: opensuse/leap:15.6
+          - name: mariner-2
+            image: mcr.microsoft.com/cbl-mariner/base/core:2.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.release_tag }}
+          sparse-checkout: .github/ci/rpm
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rpm-${{ matrix.arch }}
+          path: dist
+
+      - name: Install and run on ${{ matrix.image }}
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          rpm_file="$(basename dist/et-*.rpm)"
+          docker run --rm -v "${GITHUB_WORKSPACE}:/w:ro" "${IMAGE}" \
+            sh /w/.github/ci/rpm/smoke-test.sh "/w/dist/${rpm_file}"
+
+  publish:
+    name: publish-rpms
+    needs: [resolve, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rpm-*
+          path: dist
+          merge-multiple: true
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+          OVERWRITE_ASSET: ${{ inputs.overwrite_asset || false }}
+        run: |
+          upload_args=("${RELEASE_TAG}" dist/*.rpm --repo "${GITHUB_REPOSITORY}")
+          if [[ "${OVERWRITE_ASSET}" == "true" ]]; then
+            upload_args+=(--clobber)
+          fi
+          gh release upload "${upload_args[@]}"
