@@ -5,7 +5,9 @@
 #include <io.h>
 #include <windows.h>
 #else
+#include <fcntl.h>
 #include <pwd.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -260,6 +262,55 @@ TEST_CASE("UserSocketOps listenAtPath restricts the socket to its owner",
   removeSocketPath(path);
   test::removeTempDir(dir);
 }
+
+#ifdef __linux__
+// The hang is Linux behaviour: a full backlog makes connect() wait there.
+// On macOS this test cannot fill the backlog, so the connect succeeds.
+TEST_CASE(
+    "UserSocketOps connectAtPath gives up on a listener that never "
+    "accepts",
+    "[UserSocketOps]") {
+  string dir = makeTempDir();
+  string path = dir + "/sock";
+  int listenFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  REQUIRE(listenFd >= 0);
+  sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+  REQUIRE(::bind(listenFd, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+  REQUIRE(::listen(listenFd, 0) == 0);
+
+  // Fill the backlog; the listener never accepts.
+  vector<int> pending;
+  for (int i = 0; i < 64; i++) {
+    int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+    REQUIRE(::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) | O_NONBLOCK) == 0);
+    const int rc = ::connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    pending.push_back(fd);
+    if (rc < 0) {
+      break;
+    }
+  }
+
+  const auto start = std::chrono::steady_clock::now();
+  int fd = UserSocketOps::connectAtPath(path);
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  CHECK(fd < 0);
+  CHECK(elapsed < std::chrono::seconds(10));
+  if (fd >= 0) {
+    test::closeTestFd(fd);
+  }
+
+  for (int p : pending) {
+    test::closeTestFd(p);
+  }
+  test::closeTestFd(listenFd);
+  removeSocketPath(path);
+  test::removeTempDir(dir);
+}
+#endif
 
 TEST_CASE("UserSocketOps supplementaryGroups includes the primary group",
           "[UserSocketOps]") {

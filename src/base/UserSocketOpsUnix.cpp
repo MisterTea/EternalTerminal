@@ -1,9 +1,13 @@
+#include <fcntl.h>
 #include <grp.h>
+#include <poll.h>
 #include <pwd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#include <chrono>
 
 #include "UserSocketOps.hpp"
 
@@ -27,6 +31,11 @@ void fatalClose(int fd) {
 bool pathTooLong(const string& path) {
   return path.size() >= sizeof(sockaddr_un::sun_path);
 }
+
+// How long a privilege-dropped connect may wait for a listener to accept,
+// matching PipeSocketHandler::connect.
+constexpr int CONNECT_TIMEOUT_MS = 3000;
+
 }  // namespace
 
 // Looks up uid's supplementary groups, starting with gid. Runs in the parent:
@@ -220,7 +229,52 @@ int UserSocketOps::connectAtPath(const string& path) {
   remote.sun_family = AF_UNIX;
   strncpy(remote.sun_path, path.c_str(), sizeof(remote.sun_path) - 1);
 
-  if (::connect(fd, (struct sockaddr*)&remote, sizeof(remote)) < 0) {
+  // A listener that never accepts must not block this connect forever: the
+  // caller waits for the result while serving a session.
+  const int flags = ::fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    int err = errno;
+    fatalClose(fd);
+    SetErrno(err);
+    return -1;
+  }
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(CONNECT_TIMEOUT_MS);
+  int rc;
+  // On Linux a full backlog fails with EAGAIN and leaves nothing in
+  // progress, so retry until the deadline.
+  while ((rc = ::connect(fd, (struct sockaddr*)&remote, sizeof(remote))) < 0 &&
+         errno == EAGAIN && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (rc < 0) {
+    int err = errno == EAGAIN ? ETIMEDOUT : errno;
+    if (err != EINPROGRESS) {
+      fatalClose(fd);
+      SetErrno(err);
+      return -1;
+    }
+    struct pollfd pfd = {fd, POLLOUT, 0};
+    int ready;
+    do {
+      ready = ::poll(&pfd, 1, CONNECT_TIMEOUT_MS);
+    } while (ready < 0 && errno == EINTR);
+    int soError = 0;
+    socklen_t len = sizeof(soError);
+    if (ready <= 0) {
+      err = ready == 0 ? ETIMEDOUT : errno;
+    } else if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) < 0) {
+      err = errno;
+    } else {
+      err = soError;
+    }
+    if (err != 0) {
+      fatalClose(fd);
+      SetErrno(err);
+      return -1;
+    }
+  }
+  if (::fcntl(fd, F_SETFL, flags) < 0) {
     int err = errno;
     fatalClose(fd);
     SetErrno(err);
