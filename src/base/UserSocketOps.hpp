@@ -15,7 +15,7 @@ namespace et {
 class UserSocketOps {
  public:
   /**
-   * @brief unlink/bind/listen/fchmod a UNIX socket path as @p uid/@p gid.
+   * @brief unlink/bind/chmod 0700/listen a UNIX socket path as @p uid/@p gid.
    * @return Listening fd owned by the caller, or -1 on failure (errno set).
    */
   static int listenUnixAsUser(const string& path, uid_t uid, gid_t gid);

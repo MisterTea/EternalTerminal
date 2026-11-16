@@ -134,16 +134,23 @@ int UserSocketOps::listenAtPath(const string& path) {
     SetErrno(err);
     return -1;
   }
-  if (::listen(fd, 5) < 0) {
+  // Restrict the path before listening, so no other user can connect in
+  // between. fchmod() on a socket descriptor does not change the bound path
+  // on Linux, so chmod the path itself; this runs with the session user's
+  // credentials.
+  if (::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR) < 0) {
     int err = errno;
+    ::unlink(local.sun_path);
     fatalClose(fd);
     SetErrno(err);
     return -1;
   }
-  if (::fchmod(fd, S_IRUSR | S_IWUSR | S_IXUSR) < 0) {
-    // fchmod on unix sockets is unsupported on some platforms; fall back to
-    // path chmod. Still running with the caller's credentials.
-    ::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR);
+  if (::listen(fd, 5) < 0) {
+    int err = errno;
+    ::unlink(local.sun_path);
+    fatalClose(fd);
+    SetErrno(err);
+    return -1;
   }
   return fd;
 }

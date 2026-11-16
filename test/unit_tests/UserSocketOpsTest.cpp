@@ -240,3 +240,23 @@ TEST_CASE("UserSocketOps listenAtPath replaces an existing socket path",
   removeSocketPath(path);
   test::removeTempDir(dir);
 }
+
+#ifndef WIN32
+TEST_CASE("UserSocketOps listenAtPath restricts the socket to its owner",
+          "[UserSocketOps]") {
+  // fchmod() on a socket descriptor does not change the bound path on
+  // Linux, so the permissions must not depend on the umask.
+  string dir = makeTempDir();
+  string path = dir + "/sock";
+  const mode_t oldUmask = ::umask(0);
+  int listenFd = UserSocketOps::listenAtPath(path);
+  ::umask(oldUmask);
+  REQUIRE(listenFd >= 0);
+  struct stat st;
+  REQUIRE(::stat(path.c_str(), &st) == 0);
+  CHECK((st.st_mode & 0777) == 0700);
+  test::closeTestFd(listenFd);
+  removeSocketPath(path);
+  test::removeTempDir(dir);
+}
+#endif
