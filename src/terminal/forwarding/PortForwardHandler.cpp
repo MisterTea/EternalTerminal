@@ -147,25 +147,37 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     if (pfsr.has_source()) {
       source = pfsr.source();
     } else {
+      // The request comes from the client: a tunnel with neither a source
+      // nor an environment variable is malformed, so reject it rather than
+      // aborting the shared daemon.
+      if (sourceName == nullptr) {
+        throw runtime_error(
+            "A forward needs a source or an environment variable");
+      }
       // Make a random file to forward the pipe
       string sourcePattern =
           GetTempDirectory() + string("et_forward_sock_XXXXXX");
 #ifndef WIN32
-      string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
-      FATAL_FAIL(::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
-      FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
+      if (::mkdtemp(&sourcePattern[0]) == nullptr) {
+        throw runtime_error(string("Cannot create a forwarding directory: ") +
+                            strerror(errno));
+      }
+      string sourceDirectory = sourcePattern;
+      temporaryDirectories.push_back(sourceDirectory);
+      if (::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR) != 0 ||
+          ::chown(sourceDirectory.c_str(), userid, groupid) != 0) {
+        throw runtime_error(
+            string("Cannot prepare the forwarding directory: ") +
+            strerror(errno));
+      }
 #else
       string sourceDirectory = mktemp(&sourcePattern[0]);
       FATAL_FAIL(mkdir(&sourceDirectory[0]));
-#endif
       temporaryDirectories.push_back(sourceDirectory);
+#endif
       string sourcePath = string(sourceDirectory) + "/sock";
 
       source.set_name(sourcePath);
-      if (sourceName == nullptr) {
-        STFATAL
-            << "Tried to create a pipe but without a place to put the name!";
-      }
       *sourceName = sourcePath;
       LOG(INFO) << "Creating pipe at " << sourcePath;
     }

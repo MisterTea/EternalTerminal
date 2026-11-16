@@ -187,6 +187,19 @@ TEST_CASE("PortForwardHandler createSource with port forward",
 }
 
 #ifndef WIN32
+TEST_CASE("PortForwardHandler rejects a tunnel with no source or name",
+          "[PortForwardHandler]") {
+  // A client-supplied reverse tunnel with neither a source nor an
+  // environment variable must be refused, not abort the daemon.
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<PipeSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+  PortForwardSourceRequest request;
+  request.mutable_destination()->set_name("/unused/destination");
+  auto response = handler.createSource(request, nullptr, getuid(), getgid());
+  CHECK(response.has_error());
+}
+
 TEST_CASE("PortForwardHandler removes its generated socket directory",
           "[PortForwardHandler]") {
   auto networkHandler = make_shared<FakePortForwardSocketHandler>();
