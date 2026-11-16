@@ -325,4 +325,15 @@ TEST_CASE("UserSocketOps supplementaryGroups includes the primary group",
   CHECK(UserSocketOps::supplementaryGroups(unknown, getgid()) ==
         vector<gid_t>{getgid()});
 }
+
+TEST_CASE("UserSocketOps cachedSupplementaryGroups matches a fresh lookup",
+          "[UserSocketOps]") {
+  const auto fresh = UserSocketOps::supplementaryGroups(getuid(), getgid());
+  CHECK(UserSocketOps::cachedSupplementaryGroups(getuid(), getgid()) == fresh);
+  // The second call is served from the cache.
+  CHECK(UserSocketOps::cachedSupplementaryGroups(getuid(), getgid()) == fresh);
+  const uid_t unknown = static_cast<uid_t>(0x7ffffff0);
+  CHECK(UserSocketOps::cachedSupplementaryGroups(unknown, getgid()) ==
+        vector<gid_t>{getgid()});
+}
 #endif

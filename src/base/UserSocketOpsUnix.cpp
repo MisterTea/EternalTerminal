@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <map>
 
 #include "UserSocketOps.hpp"
 
@@ -82,6 +83,30 @@ vector<gid_t> UserSocketOps::supplementaryGroups(uid_t uid, gid_t gid) {
   }
   LOG(WARNING) << "Cannot list the groups of " << pwd.pw_name
                << ", keeping only its primary group";
+  return groups;
+}
+
+vector<gid_t> UserSocketOps::cachedSupplementaryGroups(uid_t uid, gid_t gid) {
+  struct Entry {
+    std::chrono::steady_clock::time_point expiry;
+    vector<gid_t> groups;
+  };
+  static std::mutex cacheMutex;
+  static std::map<pair<uid_t, gid_t>, Entry> cache;
+
+  const auto key = make_pair(uid, gid);
+  {
+    lock_guard<std::mutex> guard(cacheMutex);
+    auto it = cache.find(key);
+    if (it != cache.end() &&
+        std::chrono::steady_clock::now() < it->second.expiry) {
+      return it->second.groups;
+    }
+  }
+  // Look up without the lock, so one slow user does not stall the others.
+  vector<gid_t> groups = supplementaryGroups(uid, gid);
+  lock_guard<std::mutex> guard(cacheMutex);
+  cache[key] = {std::chrono::steady_clock::now() + GROUP_CACHE_TTL, groups};
   return groups;
 }
 
@@ -321,8 +346,9 @@ int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
 
   // The forwarded socket may be reachable only through one of the user's
   // supplementary groups (e.g. docker.sock), so keep them, not just gid.
-  const vector<gid_t> groups =
-      ::geteuid() == 0 ? supplementaryGroups(uid, gid) : vector<gid_t>{gid};
+  const vector<gid_t> groups = ::geteuid() == 0
+                                   ? cachedSupplementaryGroups(uid, gid)
+                                   : vector<gid_t>{gid};
 
   int sv[2];
   if (::socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
