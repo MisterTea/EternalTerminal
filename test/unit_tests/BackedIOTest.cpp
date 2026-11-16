@@ -30,6 +30,17 @@ class InMemorySocketHandler : public SocketHandler {
     }
   }
 
+  // Removes and returns everything queued on fd. Not virtual: GCC 16's
+  // speculative devirtualization of a read() call here inlines
+  // ErrnoReadHandler::read and then warns (-Warray-bounds) that its member
+  // lies outside this smaller object.
+  string drain(int fd) {
+    auto& q = buffers[fd];
+    string data(q.begin(), q.end());
+    q.clear();
+    return data;
+  }
+
   bool hasData(int fd) override { return !buffers[fd].empty(); }
 
   ssize_t read(int fd, void* buf, size_t count) override {
@@ -687,10 +698,9 @@ TEST_CASE("BackedReader reattach keeps a partly read packet", "[BackedIO]") {
 
   REQUIRE(writer.write(Packet(42, "split across a failed reconnect")) ==
           BackedWriterWriteState::SUCCESS);
-  string wire(64 * 1024, '\0');
-  const ssize_t total = handler->read(fd, &wire[0], wire.size());
+  const string wire = handler->drain(fd);
+  const size_t total = wire.size();
   REQUIRE(total > 8);
-  wire.resize(total);
 
   handler->enqueue(fd, wire.substr(0, total / 2));
   Packet output;
