@@ -171,6 +171,14 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
           OVERWRITE_ASSET: ${{ inputs.overwrite_asset || false }}
         run: |
+          # The package version comes from vcpkg.json; it must match the tag.
+          version="${RELEASE_TAG#et-v}"
+          for arch in x86_64 aarch64; do
+            if [[ ! -f "dist/et-${version}-1.${arch}.rpm" ]]; then
+              echo "Expected dist/et-${version}-1.${arch}.rpm; built:" dist/*.rpm >&2
+              exit 1
+            fi
+          done
           upload_args=("${RELEASE_TAG}" dist/*.rpm --repo "${GITHUB_REPOSITORY}")
           if [[ "${OVERWRITE_ASSET}" == "true" ]]; then
             upload_args+=(--clobber)
