@@ -30,6 +30,17 @@ class InMemorySocketHandler : public SocketHandler {
     }
   }
 
+  // Removes and returns everything queued on fd. Not virtual: GCC 16's
+  // speculative devirtualization of a read() call here inlines
+  // ErrnoReadHandler::read and then warns (-Warray-bounds) that its member
+  // lies outside this smaller object.
+  string drain(int fd) {
+    auto& q = buffers[fd];
+    string data(q.begin(), q.end());
+    q.clear();
+    return data;
+  }
+
   bool hasData(int fd) override { return !buffers[fd].empty(); }
 
   ssize_t read(int fd, void* buf, size_t count) override {
@@ -671,4 +682,62 @@ TEST_CASE("BackedReader uncounts catchup after rejecting an entry",
   REQUIRE(reader.read(&out) == 1);
   REQUIRE(out.getPayload() == "second");
   REQUIRE(reader.getSequenceNumber() == 2);
+}
+
+TEST_CASE("BackedReader reattach keeps a partly read packet", "[BackedIO]") {
+  // A failed reconnect restores the live socket; the packet it was part way
+  // through must still be read correctly afterwards.
+  auto handler = make_shared<InMemorySocketHandler>();
+  auto encryptCrypto =
+      make_shared<CryptoHandler>("12345678901234567890123456789012", 0);
+  auto decryptCrypto =
+      make_shared<CryptoHandler>("12345678901234567890123456789012", 0);
+  const int fd = handler->createChannel();
+  BackedWriter writer(handler, encryptCrypto, fd);
+  BackedReader reader(handler, decryptCrypto, fd);
+
+  REQUIRE(writer.write(Packet(42, "split across a failed reconnect")) ==
+          BackedWriterWriteState::SUCCESS);
+  const string wire = handler->drain(fd);
+  const size_t total = wire.size();
+  REQUIRE(total > 8);
+
+  handler->enqueue(fd, wire.substr(0, total / 2));
+  Packet output;
+  REQUIRE(reader.read(&output) == 0);
+
+  reader.invalidateSocket();
+  reader.reattach(fd);
+
+  handler->enqueue(fd, wire.substr(total / 2));
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getHeader() == 42);
+  CHECK(output.getPayload() == "split across a failed reconnect");
+}
+
+TEST_CASE("BackedWriter reattach sends packets buffered while detached",
+          "[BackedIO]") {
+  // A packet written during a failed reconnect was only buffered; the live
+  // peer must still get it, or every later packet fails to decrypt.
+  auto handler = make_shared<InMemorySocketHandler>();
+  const string key = "12345678901234567890123456789012";
+  const int fd = handler->createChannel();
+  BackedWriter writer(handler, make_shared<CryptoHandler>(key, 0), fd);
+  BackedReader reader(handler, make_shared<CryptoHandler>(key, 0), fd);
+
+  REQUIRE(writer.write(Packet(1, "before")) == BackedWriterWriteState::SUCCESS);
+  writer.invalidateSocket();
+  REQUIRE(writer.write(Packet(2, "while detached")) ==
+          BackedWriterWriteState::BUFFERED_ONLY);
+  writer.reattach(fd);
+  REQUIRE(writer.write(Packet(3, "after")) == BackedWriterWriteState::SUCCESS);
+
+  Packet output;
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getPayload() == "before");
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getPayload() == "while detached");
+  REQUIRE(reader.read(&output) == 1);
+  CHECK(output.getPayload() == "after");
+  CHECK(reader.getSequenceNumber() == writer.getSequenceNumber());
 }

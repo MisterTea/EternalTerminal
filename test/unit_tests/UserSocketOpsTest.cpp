@@ -5,6 +5,9 @@
 #include <io.h>
 #include <windows.h>
 #else
+#include <fcntl.h>
+#include <pwd.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -240,3 +243,97 @@ TEST_CASE("UserSocketOps listenAtPath replaces an existing socket path",
   removeSocketPath(path);
   test::removeTempDir(dir);
 }
+
+#ifndef WIN32
+TEST_CASE("UserSocketOps listenAtPath restricts the socket to its owner",
+          "[UserSocketOps]") {
+  // fchmod() on a socket descriptor does not change the bound path on
+  // Linux, so the permissions must not depend on the umask.
+  string dir = makeTempDir();
+  string path = dir + "/sock";
+  const mode_t oldUmask = ::umask(0);
+  int listenFd = UserSocketOps::listenAtPath(path);
+  ::umask(oldUmask);
+  REQUIRE(listenFd >= 0);
+  struct stat st;
+  REQUIRE(::stat(path.c_str(), &st) == 0);
+  CHECK((st.st_mode & 0777) == 0700);
+  test::closeTestFd(listenFd);
+  removeSocketPath(path);
+  test::removeTempDir(dir);
+}
+
+#ifdef __linux__
+// The hang is Linux behaviour: a full backlog makes connect() wait there.
+// On macOS this test cannot fill the backlog, so the connect succeeds.
+TEST_CASE(
+    "UserSocketOps connectAtPath gives up on a listener that never "
+    "accepts",
+    "[UserSocketOps]") {
+  string dir = makeTempDir();
+  string path = dir + "/sock";
+  int listenFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  REQUIRE(listenFd >= 0);
+  sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+  REQUIRE(::bind(listenFd, (struct sockaddr*)&addr, sizeof(addr)) == 0);
+  REQUIRE(::listen(listenFd, 0) == 0);
+
+  // Fill the backlog; the listener never accepts.
+  vector<int> pending;
+  for (int i = 0; i < 64; i++) {
+    int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+    REQUIRE(::fcntl(fd, F_SETFL, ::fcntl(fd, F_GETFL, 0) | O_NONBLOCK) == 0);
+    const int rc = ::connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+    pending.push_back(fd);
+    if (rc < 0) {
+      break;
+    }
+  }
+
+  const auto start = std::chrono::steady_clock::now();
+  int fd = UserSocketOps::connectAtPath(path);
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  CHECK(fd < 0);
+  CHECK(elapsed < std::chrono::seconds(10));
+  if (fd >= 0) {
+    test::closeTestFd(fd);
+  }
+
+  for (int p : pending) {
+    test::closeTestFd(p);
+  }
+  test::closeTestFd(listenFd);
+  removeSocketPath(path);
+  test::removeTempDir(dir);
+}
+#endif
+
+TEST_CASE("UserSocketOps supplementaryGroups includes the primary group",
+          "[UserSocketOps]") {
+  const auto groups = UserSocketOps::supplementaryGroups(getuid(), getgid());
+  CHECK(std::find(groups.begin(), groups.end(), getgid()) != groups.end());
+  // setgroups() rejects more than NGROUPS_MAX entries (16 on macOS).
+  CHECK(groups.size() <= static_cast<size_t>(::sysconf(_SC_NGROUPS_MAX)));
+
+  // An unknown user falls back to just the primary group.
+  const uid_t unknown = static_cast<uid_t>(0x7ffffff0);
+  REQUIRE(getpwuid(unknown) == nullptr);
+  CHECK(UserSocketOps::supplementaryGroups(unknown, getgid()) ==
+        vector<gid_t>{getgid()});
+}
+
+TEST_CASE("UserSocketOps cachedSupplementaryGroups matches a fresh lookup",
+          "[UserSocketOps]") {
+  const auto fresh = UserSocketOps::supplementaryGroups(getuid(), getgid());
+  CHECK(UserSocketOps::cachedSupplementaryGroups(getuid(), getgid()) == fresh);
+  // The second call is served from the cache.
+  CHECK(UserSocketOps::cachedSupplementaryGroups(getuid(), getgid()) == fresh);
+  const uid_t unknown = static_cast<uid_t>(0x7ffffff0);
+  CHECK(UserSocketOps::cachedSupplementaryGroups(unknown, getgid()) ==
+        vector<gid_t>{getgid()});
+}
+#endif

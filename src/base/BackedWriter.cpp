@@ -11,6 +11,7 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,
       socketFd(socketFd_),
       backupSize(0),
       disconnectedBytes(0),
+      disconnectedPackets(0),
       sequenceNumber(0) {}
 
 BackedWriterWriteState BackedWriter::write(Packet packet) {
@@ -42,9 +43,14 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
   // If no socket, data is buffered for later recovery
   if (socketFd < 0) {
     disconnectedBytes += packet.length();
+    disconnectedPackets++;
     return BackedWriterWriteState::BUFFERED_ONLY;
   }
 
+  return sendPacket(packet);
+}
+
+BackedWriterWriteState BackedWriter::sendPacket(const Packet& packet) {
   // Size before we add the header
   int messageSize = packet.length();
 
@@ -113,9 +119,27 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
   throw std::runtime_error("Client is too far behind server.");
 }
 
+void BackedWriter::reattach(int oldSocketFd) {
+  lock_guard<std::mutex> guard(recoverMutex);
+  socketFd = oldSocketFd;
+  // Nothing trims while detached, so the newest disconnectedPackets entries
+  // at the front of the backup are exactly the unsent ones.
+  int64_t unsent = min(disconnectedPackets, int64_t(backupBuffer.size()));
+  disconnectedBytes = 0;
+  disconnectedPackets = 0;
+  for (int64_t i = unsent - 1; i >= 0; i--) {
+    if (sendPacket(backupBuffer[i]) != BackedWriterWriteState::SUCCESS) {
+      // The socket is dead after all; the peer's reconnect replays the
+      // rest from the backup.
+      break;
+    }
+  }
+}
+
 void BackedWriter::revive(int newSocketFd) {
   socketFd = newSocketFd;
   disconnectedBytes = 0;
+  disconnectedPackets = 0;
   // Trim as a connected write would, so a quick reconnect and disconnect
   // cannot stack another disconnect buffer on an untrimmed backup.
   while (backupSize > MAX_BACKUP_BYTES) {
@@ -128,6 +152,7 @@ void BackedWriter::reset(const string& salt) {
   backupBuffer.clear();
   backupSize = 0;
   disconnectedBytes = 0;
+  disconnectedPackets = 0;
   sequenceNumber = 0;
   cryptoHandler->rekey(salt);
 }

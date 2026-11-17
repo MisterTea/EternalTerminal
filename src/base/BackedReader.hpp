@@ -65,6 +65,16 @@ class BackedReader {
   }
 
   /**
+   * @brief Restores a socket invalidated by invalidateSocket() after a
+   * failed recovery. Unlike revive(), keeps any partly read packet, which
+   * the restored socket continues.
+   */
+  inline void reattach(int oldSocketFd) {
+    lock_guard<std::mutex> guard(recoverMutex);
+    socketFd = oldSocketFd;
+  }
+
+  /**
    * @brief Returns the number of packets digested so far (used for recovery
    * tracking).
    */

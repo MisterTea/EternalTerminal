@@ -1,7 +1,14 @@
+#include <fcntl.h>
+#include <grp.h>
+#include <poll.h>
+#include <pwd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#include <chrono>
+#include <map>
 
 #include "UserSocketOps.hpp"
 
@@ -25,7 +32,83 @@ void fatalClose(int fd) {
 bool pathTooLong(const string& path) {
   return path.size() >= sizeof(sockaddr_un::sun_path);
 }
+
+// How long a privilege-dropped connect may wait for a listener to accept,
+// matching PipeSocketHandler::connect.
+constexpr int CONNECT_TIMEOUT_MS = 3000;
+
 }  // namespace
+
+// Looks up uid's supplementary groups, starting with gid. Runs in the parent:
+// NSS lookups are not safe in a child forked from a multithreaded process.
+// Falls back to gid alone if the user cannot be found. The list is capped
+// at NGROUPS_MAX (16 on macOS), which setgroups() would otherwise reject.
+vector<gid_t> UserSocketOps::supplementaryGroups(uid_t uid, gid_t gid) {
+  vector<gid_t> groups = {gid};
+  long bufSize = ::sysconf(_SC_GETPW_R_SIZE_MAX);
+  vector<char> buf(bufSize > 0 ? bufSize : 16384);
+  struct passwd pwd;
+  struct passwd* result = nullptr;
+  int pwErr;
+  while ((pwErr = ::getpwuid_r(uid, &pwd, buf.data(), buf.size(), &result)) ==
+             ERANGE &&
+         buf.size() < 1024 * 1024) {
+    buf.resize(buf.size() * 2);
+  }
+  if (pwErr != 0 || result == nullptr) {
+    LOG(WARNING) << "Cannot look up uid " << uid
+                 << ", keeping only its primary group";
+    return groups;
+  }
+  long maxGroups = ::sysconf(_SC_NGROUPS_MAX);
+  int count = 32;
+  for (int attempt = 0; attempt < 8; attempt++) {
+    vector<gid_t> found(count);
+    int n = count;
+#ifdef __APPLE__
+    int rc = ::getgrouplist(pwd.pw_name, static_cast<int>(gid),
+                            reinterpret_cast<int*>(found.data()), &n);
+#else
+    int rc = ::getgrouplist(pwd.pw_name, gid, found.data(), &n);
+#endif
+    if (rc >= 0) {
+      found.resize(n);
+      // getgrouplist() puts gid first, so truncating keeps it.
+      if (maxGroups > 0 && found.size() > static_cast<size_t>(maxGroups)) {
+        found.resize(maxGroups);
+      }
+      return found;
+    }
+    count = n > count ? n : count * 2;
+  }
+  LOG(WARNING) << "Cannot list the groups of " << pwd.pw_name
+               << ", keeping only its primary group";
+  return groups;
+}
+
+vector<gid_t> UserSocketOps::cachedSupplementaryGroups(uid_t uid, gid_t gid) {
+  struct Entry {
+    std::chrono::steady_clock::time_point expiry;
+    vector<gid_t> groups;
+  };
+  static std::mutex cacheMutex;
+  static std::map<pair<uid_t, gid_t>, Entry> cache;
+
+  const auto key = make_pair(uid, gid);
+  {
+    lock_guard<std::mutex> guard(cacheMutex);
+    auto it = cache.find(key);
+    if (it != cache.end() &&
+        std::chrono::steady_clock::now() < it->second.expiry) {
+      return it->second.groups;
+    }
+  }
+  // Look up without the lock, so one slow user does not stall the others.
+  vector<gid_t> groups = supplementaryGroups(uid, gid);
+  lock_guard<std::mutex> guard(cacheMutex);
+  cache[key] = {std::chrono::steady_clock::now() + GROUP_CACHE_TTL, groups};
+  return groups;
+}
 
 void UserSocketOps::coverageExit(int code) {
 #ifdef CODE_COVERAGE
@@ -134,16 +217,23 @@ int UserSocketOps::listenAtPath(const string& path) {
     SetErrno(err);
     return -1;
   }
-  if (::listen(fd, 5) < 0) {
+  // Restrict the path before listening, so no other user can connect in
+  // between. fchmod() on a socket descriptor does not change the bound path
+  // on Linux, so chmod the path itself; this runs with the session user's
+  // credentials.
+  if (::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR) < 0) {
     int err = errno;
+    ::unlink(local.sun_path);
     fatalClose(fd);
     SetErrno(err);
     return -1;
   }
-  if (::fchmod(fd, S_IRUSR | S_IWUSR | S_IXUSR) < 0) {
-    // fchmod on unix sockets is unsupported on some platforms; fall back to
-    // path chmod. Still running with the caller's credentials.
-    ::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR);
+  if (::listen(fd, 5) < 0) {
+    int err = errno;
+    ::unlink(local.sun_path);
+    fatalClose(fd);
+    SetErrno(err);
+    return -1;
   }
   return fd;
 }
@@ -164,7 +254,56 @@ int UserSocketOps::connectAtPath(const string& path) {
   remote.sun_family = AF_UNIX;
   strncpy(remote.sun_path, path.c_str(), sizeof(remote.sun_path) - 1);
 
-  if (::connect(fd, (struct sockaddr*)&remote, sizeof(remote)) < 0) {
+  // A listener that never accepts must not block this connect forever: the
+  // caller waits for the result while serving a session.
+  const int flags = ::fcntl(fd, F_GETFL, 0);
+  if (flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+    int err = errno;
+    fatalClose(fd);
+    SetErrno(err);
+    return -1;
+  }
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(CONNECT_TIMEOUT_MS);
+  int rc;
+  // On Linux a full backlog fails with EAGAIN and leaves nothing in
+  // progress, so retry until the deadline.
+  while ((rc = ::connect(fd, (struct sockaddr*)&remote, sizeof(remote))) < 0 &&
+         errno == EAGAIN && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  if (rc < 0) {
+    int err = errno == EAGAIN ? ETIMEDOUT : errno;
+    if (err != EINPROGRESS) {
+      fatalClose(fd);
+      SetErrno(err);
+      return -1;
+    }
+    struct pollfd pfd = {fd, POLLOUT, 0};
+    int ready;
+    do {
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              deadline - std::chrono::steady_clock::now())
+              .count();
+      ready = ::poll(&pfd, 1, remaining > 0 ? int(remaining) : 0);
+    } while (ready < 0 && errno == EINTR);
+    int soError = 0;
+    socklen_t len = sizeof(soError);
+    if (ready <= 0) {
+      err = ready == 0 ? ETIMEDOUT : errno;
+    } else if (::getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &len) < 0) {
+      err = errno;
+    } else {
+      err = soError;
+    }
+    if (err != 0) {
+      fatalClose(fd);
+      SetErrno(err);
+      return -1;
+    }
+  }
+  if (::fcntl(fd, F_SETFL, flags) < 0) {
     int err = errno;
     fatalClose(fd);
     SetErrno(err);
@@ -205,6 +344,12 @@ int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
     return op == Op::LISTEN ? listenAtPath(path) : connectAtPath(path);
   }
 
+  // The forwarded socket may be reachable only through one of the user's
+  // supplementary groups (e.g. docker.sock), so keep them, not just gid.
+  const vector<gid_t> groups = ::geteuid() == 0
+                                   ? cachedSupplementaryGroups(uid, gid)
+                                   : vector<gid_t>{gid};
+
   int sv[2];
   if (::socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
     return -1;
@@ -222,11 +367,11 @@ int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
   if (pid == 0) {
     fatalClose(sv[0]);
     // Drop privileges before any path operation. Do not use logging here.
-    // Clear supplemental groups when running as root so we do not retain the
-    // parent's group set. setgroups(2) requires privilege and is skipped
-    // otherwise (e.g. already-unprivileged test processes).
+    // Replace the parent's group set with the user's own when running as
+    // root. setgroups(2) requires privilege and is skipped otherwise (e.g.
+    // already-unprivileged test processes).
     if (::geteuid() == 0) {
-      if (::setgroups(1, &gid) != 0) {
+      if (::setgroups(groups.size(), groups.data()) != 0) {
         sendFd(sv[1], -1, -1, errno);
         coverageExit(1);
       }

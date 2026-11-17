@@ -81,10 +81,14 @@ bool ServerClientConnection::recoverClient(int newSocketFd, bool forceReset,
   if (oldSocketFd != -1) {
     socketFd = oldSocketFd;
     if (reader) {
-      reader->revive(oldSocketFd, vector<string>());
+      // The live socket may be part way through a packet: keep what was
+      // read so far, or the next read would start mid-frame.
+      reader->reattach(oldSocketFd);
     }
     if (writer) {
-      writer->revive(oldSocketFd);
+      // Packets written while the socket was detached were only buffered;
+      // the live peer still needs them, in order.
+      writer->reattach(oldSocketFd);
     }
   }
   return false;

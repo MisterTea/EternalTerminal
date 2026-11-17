@@ -1,6 +1,8 @@
 #ifndef __ET_USER_SOCKET_OPS__
 #define __ET_USER_SOCKET_OPS__
 
+#include <chrono>
+
 #include "Headers.hpp"
 
 namespace et {
@@ -15,7 +17,7 @@ namespace et {
 class UserSocketOps {
  public:
   /**
-   * @brief unlink/bind/listen/fchmod a UNIX socket path as @p uid/@p gid.
+   * @brief unlink/bind/chmod 0700/listen a UNIX socket path as @p uid/@p gid.
    * @return Listening fd owned by the caller, or -1 on failure (errno set).
    */
   static int listenUnixAsUser(const string& path, uid_t uid, gid_t gid);
@@ -47,6 +49,21 @@ class UserSocketOps {
    * child process is written before the image disappears.
    */
   static void coverageExit(int code);
+
+  /**
+   * @brief Returns @p uid's supplementary groups, including @p gid, for the
+   * privilege drop; just @p gid if the user cannot be looked up.
+   */
+  static vector<gid_t> supplementaryGroups(uid_t uid, gid_t gid);
+
+  /**
+   * @brief supplementaryGroups(), remembered for GROUP_CACHE_TTL so a slow
+   * directory service is not queried on every forwarded connection.
+   */
+  static vector<gid_t> cachedSupplementaryGroups(uid_t uid, gid_t gid);
+
+  /** @brief How long a looked-up group list stays valid. */
+  static constexpr std::chrono::seconds GROUP_CACHE_TTL{60};
 
  private:
   enum class Op : int { LISTEN = 1, CONNECT = 2 };
