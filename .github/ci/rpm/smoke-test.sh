@@ -6,16 +6,28 @@ set -eu
 
 rpm=$1
 
-if command -v dnf >/dev/null 2>&1; then
-  dnf install -y "$rpm"
-elif command -v tdnf >/dev/null 2>&1; then
-  tdnf install -y "$rpm"
-elif command -v zypper >/dev/null 2>&1; then
-  zypper --non-interactive install --allow-unsigned-rpm "$rpm"
-else
-  echo "no supported package manager" >&2
-  exit 1
-fi
+install_rpm() {
+  if command -v dnf >/dev/null 2>&1; then
+    dnf install -y "$rpm"
+  elif command -v tdnf >/dev/null 2>&1; then
+    tdnf install -y "$rpm"
+  elif command -v zypper >/dev/null 2>&1; then
+    zypper --non-interactive install --allow-unsigned-rpm "$rpm"
+  else
+    echo "no supported package manager" >&2
+    exit 1
+  fi
+}
+
+# Distro mirrors rate-limit CI runners now and then.
+attempt=1
+until install_rpm; do
+  if [ "$attempt" -ge 3 ]; then
+    exit 1
+  fi
+  attempt=$((attempt + 1))
+  sleep 20
+done
 
 rpm -q --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' et
 
