@@ -1,6 +1,9 @@
 {
   "name": "eternal-terminal",
   "version-string": "7.1.1",
+  "vcpkg-configuration": {
+    "overlay-ports": ["./vcpkg-ports"]
+  },
   "dependencies": [
     "zlib",
     "openssl",
