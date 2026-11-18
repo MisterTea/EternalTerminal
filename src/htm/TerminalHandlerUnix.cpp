@@ -127,7 +127,7 @@ void TerminalHandler::start(const string& cwd, int cols, int rows) {
       {
         char buf[1024];
         sprintf(buf, "htm [%lld]", (long long)getpid());
-        utempter_add_record(masterFd, buf);
+        utempterAddRecord(masterFd, buf);
       }
 #endif
       break;
@@ -190,7 +190,7 @@ string TerminalHandler::pollUserTerminal() {
   if (hungup) {
     run = false;
 #ifdef WITH_UTEMPTER
-    utempter_remove_record(masterFd);
+    utempterRemoveRecord(masterFd);
 #endif
   }
 
@@ -251,7 +251,7 @@ void TerminalHandler::stop() {
   // is unblocked (SIGHUP/EIO) before we wait for it.
   if (masterFd >= 0) {
 #ifdef WITH_UTEMPTER
-    utempter_remove_record(masterFd);
+    utempterRemoveRecord(masterFd);
 #endif
     pendingWrite.clear();
     close(masterFd);

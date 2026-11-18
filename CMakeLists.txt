@@ -247,6 +247,7 @@ option(FUZZING "Enable builds for fuzz testing" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
 option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
+option(UTEMPTER_DLOPEN "Load libutempter at run time when installed instead of linking it" OFF)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 
@@ -322,7 +323,11 @@ else()
   set(SELINUX_LIBRARIES "")
 endif()
 
-if(UTEMPTER_FOUND)
+if(UTEMPTER_DLOPEN)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_UTEMPTER -DUTEMPTER_DLOPEN")
+  set(UTEMPTER_INCLUDE_DIR "")
+  set(UTEMPTER_LIBRARIES ${CMAKE_DL_LIBS})
+elseif(UTEMPTER_FOUND)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_UTEMPTER")
 else()
   set(UTEMPTER_INCLUDE_DIR "")
@@ -1308,6 +1313,10 @@ set(CPACK_RPM_PACKAGE_DESCRIPTION
   "Eternal Terminal (ET) is a remote shell that automatically reconnects without interrupting the session.")
 # xz payloads read on any rpm still in support; zstd needs rpm 4.14.
 set(CPACK_RPM_COMPRESSION_TYPE "xz")
+if(UTEMPTER_DLOPEN AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  # Weak, so the package installs where no repository ships libutempter.
+  set(CPACK_RPM_PACKAGE_RECOMMENDS "libutempter.so.0()(64bit)")
+endif()
 set(CPACK_RPM_USER_FILELIST "%config(noreplace) /etc/et.cfg")
 # Directories other packages own; listing them makes this package claim them.
 set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION

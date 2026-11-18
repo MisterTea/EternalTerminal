@@ -20,7 +20,7 @@
 #endif
 
 #ifdef WITH_UTEMPTER
-#include <utempter.h>
+#include "Utempter.hpp"
 #endif
 
 #include "UserTerminal.hpp"
@@ -64,7 +64,7 @@ class PseudoUserTerminal : public UserTerminal {
     {
       char buf[1024];
       sprintf(buf, "etterminal [%lld]", (long long)getpid());
-      utempter_add_record(masterFd, buf);
+      utempterAddRecord(masterFd, buf);
     }
 #endif
 
@@ -128,7 +128,7 @@ class PseudoUserTerminal : public UserTerminal {
   /** @brief Removes any temporary PTY bookkeeping (utempter). */
   virtual void cleanup() override {
 #ifdef WITH_UTEMPTER
-    utempter_remove_record(masterFd);
+    utempterRemoveRecord(masterFd);
 #endif
   }
 
