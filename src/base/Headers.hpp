@@ -157,7 +157,7 @@ namespace fs = boost::filesystem
 #endif
 
 #ifdef WITH_UTEMPTER
-#include <utempter.h>
+#include "Utempter.hpp"
 #endif
 
 #if defined(_MSC_VER)

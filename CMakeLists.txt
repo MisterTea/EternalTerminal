@@ -247,6 +247,7 @@ option(FUZZING "Enable builds for fuzz testing" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
 option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
+option(UTEMPTER_DLOPEN "Load libutempter at run time when installed instead of linking it" OFF)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 
@@ -322,7 +323,11 @@ else()
   set(SELINUX_LIBRARIES "")
 endif()
 
-if(UTEMPTER_FOUND)
+if(UTEMPTER_DLOPEN)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_UTEMPTER -DUTEMPTER_DLOPEN")
+  set(UTEMPTER_INCLUDE_DIR "")
+  set(UTEMPTER_LIBRARIES ${CMAKE_DL_LIBS})
+elseif(UTEMPTER_FOUND)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_UTEMPTER")
 else()
   set(UTEMPTER_INCLUDE_DIR "")
@@ -386,6 +391,16 @@ else()
   check_library_exists(stdc++fs "" "" HAVE_STDCXXFS)
   if(HAVE_STDCXXFS)
     list(APPEND CORE_LIBRARIES stdc++fs)
+  endif()
+  # httplib resolves names with getaddrinfo_a, which glibc kept in libanl until
+  # 2.34 merged it into libc. httplib's target does not link libanl itself.
+  include(CheckFunctionExists)
+  check_function_exists(getaddrinfo_a HAVE_GETADDRINFO_A_IN_LIBC)
+  if(NOT HAVE_GETADDRINFO_A_IN_LIBC)
+    check_library_exists(anl getaddrinfo_a "" HAVE_LIBANL)
+    if(HAVE_LIBANL)
+      list(APPEND CORE_LIBRARIES anl)
+    endif()
   endif()
 endif()
 
@@ -1228,7 +1243,7 @@ else(WIN32)
     WORLD_READ
     DESTINATION "bin")
   install(
-    PROGRAMS scripts/et1 scripts/et1.cmd
+    PROGRAMS scripts/et1
     DESTINATION "bin"
     PERMISSIONS
     OWNER_EXECUTE
@@ -1280,10 +1295,40 @@ if(NOT CPACK_GENERATOR)
 endif()
 
 SET(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst;${CMAKE_SOURCE_DIR}/debian/postrm;${CMAKE_SOURCE_DIR}/debian/prerm")
-SET(CPACK_INSTALLED_DIRECTORIES "${CMAKE_SOURCE_DIR}/systemctl;/lib/systemd/system" "${CMAKE_SOURCE_DIR}/etc;/etc")
+# /usr/lib/systemd/system is on systemd's unit search path on every distro.
+# /lib is a symlink owned by the filesystem package on merged-/usr systems, so
+# an RPM that ships files under it conflicts with that package on install.
+SET(CPACK_INSTALLED_DIRECTORIES "${CMAKE_SOURCE_DIR}/systemctl;/usr/lib/systemd/system" "${CMAKE_SOURCE_DIR}/etc;/etc")
 SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "Unmaintained")
 SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libprotobuf-dev, libc6 (>= 2.34), libgcc-s1 (>= 3.3.1), libstdc++6 (>= 12), libutempter0 (>= 1.1.5)")
 SET(CPACK_DEBIAN_PACKAGE_SUGGESTS "systemd")
+
+# RPM: named "et" like the Fedora and EPEL package, so either one upgrades the
+# other in place rather than conflicting over the same files.
+set(CPACK_RPM_PACKAGE_NAME "et")
+set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
+set(CPACK_RPM_PACKAGE_LICENSE "Apache-2.0")
+set(CPACK_RPM_PACKAGE_URL "https://github.com/MisterTea/EternalTerminal")
+set(CPACK_RPM_PACKAGE_DESCRIPTION
+  "Eternal Terminal (ET) is a remote shell that automatically reconnects without interrupting the session.")
+# xz payloads read on any rpm still in support; zstd needs rpm 4.14.
+set(CPACK_RPM_COMPRESSION_TYPE "xz")
+if(UTEMPTER_DLOPEN AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+  # Weak, so the package installs where no repository ships libutempter.
+  set(CPACK_RPM_PACKAGE_RECOMMENDS "libutempter.so.0()(64bit)")
+endif()
+set(CPACK_RPM_USER_FILELIST "%config(noreplace) /etc/et.cfg")
+# Directories other packages own; listing them makes this package claim them.
+set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+  /usr/lib/systemd
+  /usr/lib/systemd/system
+  /usr/share/bash-completion
+  /usr/share/bash-completion/completions
+  /usr/share/zsh
+  /usr/share/zsh/site-functions)
+set(CPACK_RPM_POST_INSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/rpm/post")
+set(CPACK_RPM_PRE_UNINSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/rpm/preun")
+set(CPACK_RPM_POST_UNINSTALL_SCRIPT_FILE "${CMAKE_SOURCE_DIR}/rpm/postun")
 
 if(BUILD_TESTING)
   find_package(Python3 COMPONENTS Interpreter)
