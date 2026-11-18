@@ -9,8 +9,6 @@ rpm=$1
 if command -v dnf >/dev/null 2>&1; then
   dnf install -y "$rpm"
 elif command -v tdnf >/dev/null 2>&1; then
-  # CBL-Mariner 2 ships libutempter in its Extended repository.
-  tdnf install -y mariner-repos-extended
   tdnf install -y "$rpm"
 elif command -v zypper >/dev/null 2>&1; then
   zypper --non-interactive install --allow-unsigned-rpm "$rpm"

@@ -102,11 +102,12 @@ zypper in EternalTerminal
 
 ### Other RPM-based Linux
 
-Each release carries RPMs for x86_64 and aarch64, built against glibc 2.28.
-They install on RHEL, Rocky Linux and AlmaLinux 8 and later, Fedora, Amazon
-Linux 2023, openSUSE Leap 15 and CBL-Mariner 2 (with its Extended repository,
-which provides libutempter). Where Fedora, EPEL or openSUSE package `et`,
-prefer those repositories, which also deliver updates.
+Each release carries RPMs for x86_64 and aarch64 that run on glibc 2.26 and
+later. They install on RHEL, CentOS Stream, Rocky Linux, AlmaLinux and Oracle
+Linux 8 and later, Fedora, Amazon Linux 2 and 2023, openSUSE Leap 15 and 16,
+Tumbleweed, SLES 15 and 16, CBL-Mariner 2, Azure Linux 3, openEuler, Mageia,
+OpenMandriva and Photon OS. Where Fedora, EPEL or openSUSE package `et`, prefer
+those repositories, which also deliver updates.
 
 ```bash
 version=7.1.1  # see https://github.com/MisterTea/EternalTerminal/releases

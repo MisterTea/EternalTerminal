@@ -118,7 +118,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, aarch64]
-        name: [rocky-8, rocky-9, alma-10, fedora, amazon-2023, opensuse-leap, mariner-2]
+        name: [rocky-8, rocky-9, alma-10, fedora, amazon-2023, opensuse-leap-15, opensuse-tumbleweed, mariner-2, azure-linux-3]
         include:
           - name: rocky-8
             image: rockylinux:8
@@ -130,10 +130,14 @@ jobs:
             image: fedora:latest
           - name: amazon-2023
             image: amazonlinux:2023
-          - name: opensuse-leap
+          - name: opensuse-leap-15
             image: opensuse/leap:15.6
+          - name: opensuse-tumbleweed
+            image: opensuse/tumbleweed:latest
           - name: mariner-2
             image: mcr.microsoft.com/cbl-mariner/base/core:2.0
+          - name: azure-linux-3
+            image: mcr.microsoft.com/azurelinux/base/core:3.0
     steps:
       - uses: actions/checkout@v4
         with:
