@@ -214,6 +214,11 @@ class WriteBuffer {
         data.append(chunk);
       }
     }
+    if (!tmuxCcLinesAreControl(data)) {
+      // A stale latch over plain output: keep the bytes in order.
+      controlPromoted = true;
+      return;
+    }
     TmuxCcFilterResult result = filterTmuxCc(data, controlMode.active(), false);
     pending.clear();
     writeOffset = 0;

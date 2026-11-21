@@ -155,6 +155,34 @@ inline bool tmuxCcStartsAtLineBoundary(const string& data) {
   return data.empty() || data[0] == '%' || data[0] == '\n';
 }
 
+/**
+ * @brief True if every line of @p data is a `%` message, the only shape
+ * tmux -CC writes. A leading partial line (the rest of one already partly
+ * sent) is skipped. Plain text or a blank line means the stream is a shell
+ * that printed a control token, so its lines must not be reordered.
+ */
+inline bool tmuxCcLinesAreControl(const string& data) {
+  size_t start = 0;
+  if (!data.empty() && data[0] != '%') {
+    const size_t newline = data.find('\n');
+    if (newline == string::npos) {
+      return true;
+    }
+    start = newline + 1;
+  }
+  while (start < data.size()) {
+    if (data[start] != '%') {
+      return false;
+    }
+    const size_t newline = data.find('\n', start);
+    if (newline == string::npos) {
+      break;
+    }
+    start = newline + 1;
+  }
+  return true;
+}
+
 inline TmuxCcFilterResult filterTmuxCc(const string& data,
                                        bool inControlMode = false,
                                        bool discarding = true) {
