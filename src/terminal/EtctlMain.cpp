@@ -1306,15 +1306,27 @@ string readConnectHandshake(const string& name, double timeoutSec) {
 // the prompt right after it, the framing marks (OSC-133 D, bracketed-paste
 // ?2004). Reading those back is a zero-probe first run. Only when the marker is
 // absent (the handshake has scrolled away) do we fall back to a
-// single probe. Run once per session by runCommand and cached.
-RunProfile detectFraming(const string& name, double timeoutSec) {
+// single probe. Run once per session by runCommand, which caches the result
+// only when `*conclusive`: a capture cut short by the deadline would otherwise
+// fix a wrong framing for the session's life.
+RunProfile detectFraming(const string& name, double timeoutSec,
+                         double handshakeWaitSec, bool* conclusive) {
   RunProfile prof;
+  *conclusive = true;
+  const std::regex answer("ETCTL_EC=[0-9]*[\r\n]");
 
   // Primary: deduce everything from the connect handshake already in
   // scrollback.
   {
-    const string acc = readConnectHandshake(name, timeoutSec);
-    if (std::regex_search(acc, std::regex("ETCTL_EC=[0-9]*[\r\n]"))) {
+    string acc = readConnectHandshake(name, timeoutSec);
+    // The preamble's echo without its answer: the shell is still starting (a
+    // slow rc file). Wait for the answer rather than type a probe into it.
+    if (!std::regex_search(acc, answer) &&
+        acc.find("ETCTL_EC=") != string::npos &&
+        handshakeWaitSec > timeoutSec) {
+      acc = readConnectHandshake(name, handshakeWaitSec);
+    }
+    if (std::regex_search(acc, answer)) {
       prof.usesStatusVar = std::regex_search(acc, std::regex("ETCTL_EC=[0-9]"));
       prof.bracket = acc.find("\x1b[?2004") != string::npos;
       prof.oscRead = osc133ContainsMark(acc, 'D');
@@ -1333,9 +1345,12 @@ RunProfile detectFraming(const string& name, double timeoutSec) {
   const string sentinel = "ETCTL_OSCPROBE_" + tag;
   const string acc = probeRead(name, "echo \"" + sentinel + "=$status\"\n",
                                sentinel, timeoutSec);
+  const std::regex answered(sentinel + "=[0-9]*[\r\n]");
   prof.usesStatusVar = std::regex_search(acc, std::regex(sentinel + "=[0-9]"));
   prof.bracket = acc.find("\x1b[?2004") != string::npos;
   prof.oscRead = osc133ContainsMark(acc, 'D');
+  // The probe printed its answer and, when the prompt has OSC 133, its D mark.
+  *conclusive = std::regex_search(acc, answered);
   return prof;
 }
 
@@ -1456,9 +1471,13 @@ int runCommand(const string& name, const string& command, double timeoutSec,
     // leave both false: the universal here-doc + echo markers.
   } else if (!readFramingCache(name, &prof.bracket, &prof.oscRead,
                                &prof.usesStatusVar)) {
-    // kAuto, cache miss: detect once (lazily) and cache beside the socket.
-    prof = detectFraming(name, 3.0);
-    writeFramingCache(name, prof.bracket, prof.oscRead, prof.usesStatusVar);
+    // kAuto, cache miss: detect once (lazily) and cache beside the socket. An
+    // inconclusive detection serves this run only; the next one detects again.
+    bool conclusive = false;
+    prof = detectFraming(name, 3.0, timeoutSec, &conclusive);
+    if (conclusive) {
+      writeFramingCache(name, prof.bracket, prof.oscRead, prof.usesStatusVar);
+    }
   }
 
   const bool oscRead = prof.oscRead;
@@ -1511,10 +1530,12 @@ int runCommand(const string& name, const string& command, double timeoutSec,
   // kMark markers: the end marker "<mark>:<code>\n" is anchored on the trailing
   // newline so a chunked read never matches a truncated code, and the start
   // marker "<mark>\r?\n" ignores the echoed command and zsh's OSC window-title
-  // (both of which also contain <mark>). Unused by the OSC framings.
+  // (both of which also contain <mark>). Unused by the OSC framings. The
+  // executed start marker follows a newline, or the BEL/ST closing an OSC 133
+  // C mark that a shell's preexec printed just before it.
   std::regex endRe(mark + ":([0-9]+)\\r?\\n");
   std::regex startRe(mark + "\\r?\\n");
-  std::regex execStartRe("[\\r\\n]" + mark + "\\r?\\n");
+  std::regex execStartRe("(?:[\\r\\n]|\\x07|\\x1b\\\\)" + mark + "\\r?\\n");
   string acc;
   const auto typedAt = std::chrono::steady_clock::now();
   const auto deadline =
@@ -1595,12 +1616,13 @@ int runCommand(const string& name, const string& command, double timeoutSec,
       ev.oscRead = oscRead;
       ev.rearmed = pasteOff != string::npos &&
                    acc.find("\x1b[?2004h", pasteOff) != string::npos;
-      if (oscRead) {
-        // Either mark proves the line was accepted: C is emitted by preexec the
-        // instant it runs, D by precmd when it finishes.
-        if (osc133ContainsMark(acc, 'C') || osc133ContainsMark(acc, 'D'))
-          accepted = true;
-      } else if (std::regex_search(acc, execStartRe)) {
+      // Either OSC 133 mark proves the line was accepted: C is emitted by
+      // preexec the instant it runs, D by precmd when it finishes. Check them
+      // whatever the framing, since a shell with OSC 133 can still be framed
+      // with echo markers (a detection that missed its marks).
+      if (osc133ContainsMark(acc, 'C') || osc133ContainsMark(acc, 'D')) {
+        accepted = true;
+      } else if (!oscRead && std::regex_search(acc, execStartRe)) {
         // kBracketMark has no C mark, but the executed start marker proves the
         // same thing: `echo <mark>` is the first line of the submitted buffer,
         // so that marker at column 0 (as against the echoed `echo <mark>`)
