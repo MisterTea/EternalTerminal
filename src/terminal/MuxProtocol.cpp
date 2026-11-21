@@ -3,6 +3,7 @@
 #include <sys/stat.h>
 
 #include "ClientArgParsing.hpp"
+#include "TimeParser.hpp"
 
 #ifndef WIN32
 #include <sys/socket.h>
@@ -323,9 +324,8 @@ ControlPersistConfig parseControlPersistValue(const string& value) {
     cfg.seconds = 0;  // forever
     return cfg;
   }
-  char* end = nullptr;
-  long seconds = strtol(value.c_str(), &end, 10);
-  if (end == value.c_str() || *end != '\0' || seconds < 0) {
+  long seconds = parseTimeString(value, -1);
+  if (seconds < 0) {
     throw runtime_error("Invalid ControlPersist value: " + value);
   }
   cfg.enabled = true;

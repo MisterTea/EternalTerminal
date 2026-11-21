@@ -26,6 +26,7 @@
 #include "RunGuard.hpp"
 #include "SessionStore.hpp"
 #include "SessionTombstone.hpp"
+#include "TimeParser.hpp"
 
 using namespace et;
 
@@ -557,30 +558,6 @@ string humanizeDuration(int64_t s) {
   return string(buf);
 }
 
-// Parse a duration like "30m", "6h", "2d", "90s", or a bare number (seconds).
-int64_t parseDuration(const string& s, int64_t fallback) {
-  if (s.empty()) return fallback;
-  char* end = nullptr;
-  const double n = strtod(s.c_str(), &end);
-  if (end == s.c_str()) return fallback;
-  int64_t mult = 1;
-  switch (*end) {
-    case 'm':
-      mult = 60;
-      break;
-    case 'h':
-      mult = 3600;
-      break;
-    case 'd':
-      mult = 86400;
-      break;
-    default:
-      mult = 1;
-      break;  // 's' or none
-  }
-  return (int64_t)(n * (double)mult);
-}
-
 /*
  * Remove control-plane files from the saved-session directory.
  *
@@ -653,11 +630,11 @@ int cmdGc(int argc, char** argv) {
     } else if (a == "--idle") {
       idle = true;
       if (i + 1 < argc && argv[i + 1][0] != '-') {
-        idleSecs = parseDuration(argv[++i], idleSecs);
+        idleSecs = parseTimeString(argv[++i], idleSecs);
       }
     } else if (a.rfind("--idle=", 0) == 0) {
       idle = true;
-      idleSecs = parseDuration(a.substr(strlen("--idle=")), idleSecs);
+      idleSecs = parseTimeString(a.substr(strlen("--idle=")), idleSecs);
     } else if (a == "--force") {
       force = true;
     }

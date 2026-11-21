@@ -157,15 +157,15 @@ inline bool applySessionOption(Options* options, const string& option) {
       options->timeout = 0;
       return true;
     }
-    long timeout = 0;
-    if (!parseEntireNonNegativeLong(value, &timeout)) {
+    long timeout = parseTimeString(value, -1);
+    if (timeout < 0) {
       return false;
     }
     return ssh_options_set(options, SSH_OPTIONS_TIMEOUT, &timeout) == 0;
   }
   if (keyLower == "serveraliveinterval") {
-    long interval = 0;
-    if (!parseEntireNonNegativeLong(value, &interval)) {
+    long interval = parseTimeString(value, -1);
+    if (interval < 0) {
       return false;
     }
     return ssh_options_set(options, SSH_OPTIONS_SERVERALIVEINTERVAL,
