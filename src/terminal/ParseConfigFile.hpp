@@ -11,6 +11,7 @@
 #include "Headers.hpp"
 #include "PlatformUtils.hpp"
 #include "SocksUtils.hpp"
+#include "TimeParser.hpp"
 
 /* This is needed for a standard getpwuid_r on opensolaris */
 #define _POSIX_PTHREAD_SEMANTICS
@@ -1585,17 +1586,13 @@ out:
   return r;
 }
 
-static int ssh_config_get_int(char** str, int notfound) {
-  char *p, *endp;
-  int i;
+static long ssh_config_get_time(char** str, long notfound) {
+  char* p;
 
   p = ssh_config_get_token(str);
   if (p && *p) {
-    i = strtol(p, &endp, 10);
-    if (p == endp) {
-      return notfound;
-    }
-    return i;
+    string_view in{p, p + strlen(p)};
+    return et::parseTimeString(in, notfound);
   }
 
   return notfound;
@@ -1844,7 +1841,7 @@ static int ssh_config_parse_line(const char* targethost,
       // from a 4-byte slot on LP64 (arm64 macOS, x86_64 Linux), so
       // uninitialized upper bits could flip the sign and trigger a bogus
       // "invalid error" message. See issue #737.
-      long timeout = ssh_config_get_int(&s, -1);
+      long timeout = ssh_config_get_time(&s, -1);
       if (timeout >= 0 && *parsing) {
         ssh_options_set(options, SSH_OPTIONS_TIMEOUT, &timeout);
       }
@@ -1946,7 +1943,7 @@ static int ssh_config_parse_line(const char* targethost,
       }
       break;
     case SOC_SERVERALIVEINTERVAL: {
-      long interval = ssh_config_get_int(&s, -1);
+      long interval = ssh_config_get_time(&s, -1);
       if (interval >= 0 && *parsing) {
         ssh_options_set(options, SSH_OPTIONS_SERVERALIVEINTERVAL, &interval);
       }
