@@ -17,6 +17,23 @@ string TcpSocketHandler::getLastConnectError() {
   return lastConnectError;
 }
 
+string TcpSocketHandler::connectErrorMessage(int error) {
+  // Remote-SSH uses OpenSSH wording to classify network failures. The Windows
+  // CRT uses different wording for the same errno values.
+  switch (error) {
+    case EHOSTUNREACH:
+      return "No route to host";
+    case ENETUNREACH:
+      return "Network is unreachable";
+    case ETIMEDOUT:
+      return "Operation timed out";
+    case ECONNREFUSED:
+      return "Connection refused";
+    default:
+      return strerror(error);
+  }
+}
+
 int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
   lastConnectError.clear();
@@ -74,7 +91,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
         GetErrno() != EINPROGRESS && GetErrno() != EWOULDBLOCK) {
       auto localErrno = GetErrno();
-      lastConnectError = strerror(localErrno);
+      lastConnectError = connectErrorMessage(localErrno);
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);
@@ -108,7 +125,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
         setBlocking(sockFd, true);
         break;  // if we get here, we must have connected successfully
       } else {
-        lastConnectError = strerror(so_error);
+        lastConnectError = connectErrorMessage(so_error);
         if (p->ai_canonname) {
           LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                     << so_error << " " << strerror(so_error);
@@ -123,7 +140,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
       }
     } else {
       auto localErrno = GetErrno();
-      lastConnectError = strerror(ETIMEDOUT);
+      lastConnectError = connectErrorMessage(ETIMEDOUT);
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);

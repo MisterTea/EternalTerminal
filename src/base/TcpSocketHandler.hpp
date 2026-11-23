@@ -30,6 +30,10 @@ class TcpSocketHandler : public UnixSocketHandler {
    */
   virtual int connect(const SocketEndpoint& endpoint);
   virtual string getLastConnectError();
+
+  /** @brief Formats an errno value for clients that parse OpenSSH output. */
+  static string connectErrorMessage(int error);
+
   /**
    * @brief Binds and listens on all IP addresses for the given port.
    */

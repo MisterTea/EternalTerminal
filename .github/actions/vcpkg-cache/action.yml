@@ -28,6 +28,6 @@ runs:
       uses: ./.github/actions/shared-cache
       with:
         path: ${{ github.workspace }}/.vcpkg-binary-cache
-        key: vcpkg-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.flavor }}-${{ hashFiles('.ci-vcpkg/compiler.txt') }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.ci-vcpkg/revision.txt') }}-${{ inputs.flavor == 'msan' && hashFiles('.github/ci/msan/**') || 'standard' }}
+        key: vcpkg-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.flavor }}-${{ hashFiles('.ci-vcpkg/compiler.txt') }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json', 'cmake/vcpkg-ports/**') }}-${{ hashFiles('.ci-vcpkg/revision.txt') }}-${{ inputs.flavor == 'msan' && hashFiles('.github/ci/msan/**') || 'standard' }}
         restore-keys: |
           vcpkg-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.flavor }}-${{ hashFiles('.ci-vcpkg/compiler.txt') }}-

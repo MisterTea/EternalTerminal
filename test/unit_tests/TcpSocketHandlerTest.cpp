@@ -75,6 +75,30 @@ TEST_CASE("TranslateSocketError maps socket errors to errno values",
 #endif
 }
 
+TEST_CASE("TcpSocketHandler formats connect errors consistently",
+          "[TcpSocketHandler]") {
+  REQUIRE(TcpSocketHandler::connectErrorMessage(EHOSTUNREACH) ==
+          "No route to host");
+  REQUIRE(TcpSocketHandler::connectErrorMessage(ENETUNREACH) ==
+          "Network is unreachable");
+  REQUIRE(TcpSocketHandler::connectErrorMessage(ETIMEDOUT) ==
+          "Operation timed out");
+  REQUIRE(TcpSocketHandler::connectErrorMessage(ECONNREFUSED) ==
+          "Connection refused");
+  REQUIRE(TcpSocketHandler::connectErrorMessage(EINVAL) == strerror(EINVAL));
+
+#ifdef WIN32
+  REQUIRE(TcpSocketHandler::connectErrorMessage(
+              TranslateSocketError(WSAEHOSTUNREACH)) == "No route to host");
+  REQUIRE(TcpSocketHandler::connectErrorMessage(TranslateSocketError(
+              WSAENETUNREACH)) == "Network is unreachable");
+  REQUIRE(TcpSocketHandler::connectErrorMessage(
+              TranslateSocketError(WSAETIMEDOUT)) == "Operation timed out");
+  REQUIRE(TcpSocketHandler::connectErrorMessage(
+              TranslateSocketError(WSAECONNREFUSED)) == "Connection refused");
+#endif
+}
+
 TEST_CASE("TcpSocketHandler connect reports why it failed",
           "[TcpSocketHandler]") {
   TcpSocketHandler handler;
@@ -92,7 +116,7 @@ TEST_CASE("TcpSocketHandler connect reports why it failed",
     endpoint.set_name("127.0.0.1");
     endpoint.set_port(1);
     REQUIRE(handler.connect(endpoint) == -1);
-    REQUIRE(handler.getLastConnectError() == strerror(ECONNREFUSED));
+    REQUIRE(handler.getLastConnectError() == "Connection refused");
   }
 
   SECTION("cleared by a successful connect") {
