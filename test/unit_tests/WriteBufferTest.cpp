@@ -293,6 +293,25 @@ TEST_CASE("WriteBuffer arms control mode on DCS or a real notification",
   }
 }
 
+TEST_CASE("WriteBuffer keeps plain output in order under a stale latch",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  // A shell printed a control token at a line start, which arms the latch.
+  buffer.enqueue("%end 1 1 0\n");
+  REQUIRE(buffer.inControlMode());
+  REQUIRE(drainWriteBuffer(&buffer) == "%end 1 1 0\n");
+
+  // A test log: blank lines and `%` lines would be promoted past the text.
+  const string log =
+      "     Running unittests src/lib.rs\n\nrunning 2 tests\ntest a ... ok\n"
+      "%done\n\ntest result: ok\n\n     Running tests/it.rs\n";
+  buffer.enqueue(log.substr(0, 40));
+  buffer.enqueue(log.substr(40));
+  buffer.promoteControlLines();
+  REQUIRE(buffer.controlBytesAtFront() == 0);
+  REQUIRE(drainWriteBuffer(&buffer) == log);
+}
+
 TEST_CASE("WriteBuffer promoteControlLines sends notifications before output",
           "[WriteBuffer][TmuxCc]") {
   WriteBuffer buffer;
