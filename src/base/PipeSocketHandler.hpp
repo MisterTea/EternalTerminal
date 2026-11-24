@@ -27,6 +27,9 @@ class PipeSocketHandler : public UnixSocketHandler {
    * Windows has no uid/gid privilege model, so this is a plain connect there.
    */
   int connectAsUser(const SocketEndpoint& endpoint, uid_t uid, gid_t gid);
+#ifndef WIN32
+  void adoptConnectedSocket(int fd);
+#endif
   /**
    * @brief Creates a listening UNIX socket and stores it internally.
    */

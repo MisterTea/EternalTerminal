@@ -17,6 +17,8 @@ enum TerminalPacketType {
   TERMINAL_CLOSE = 11;
   // Wait status of the remote shell/command, sent once when the session ends.
   TERMINAL_EXIT_STATUS = 12;
+  // Local router command carrying a one-shot Unix socket request descriptor.
+  TERMINAL_SOCKET_CONNECT = 13;
 }
 
 message TerminalBuffer {
@@ -135,4 +137,5 @@ message TerminalUserInfo {
   // Preserved from TermInit so a resumed pump keeps the client's per-session
   // disconnect timeout across etserver restart.
   optional int32 disconnect_timeout_seconds = 8;
+  optional bool supports_socket_connect = 9;
 }

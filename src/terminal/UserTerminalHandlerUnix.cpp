@@ -5,10 +5,16 @@
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
+#include "TerminalSocket.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 
 namespace et {
+#ifndef __linux__
+ssize_t TerminalSocketOpener::readCommand(int fd, char* command) {
+  return ::read(fd, command, 1);
+}
+#endif
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
     bool _noratelimit, const optional<SocketEndpoint> routerEndpoint,
@@ -101,6 +107,9 @@ void UserTerminalHandler::registerWithRouter() {
   tui.set_passkey(passkey);
   tui.set_uid(getuid());
   tui.set_gid(getgid());
+#ifdef __linux__
+  tui.set_supports_socket_connect(true);
+#endif
   tui.set_ptyactive(ptyActive);
   tui.set_hadreversetunnels(hadReverseTunnels);
   if (disconnectTimeoutSeconds) {
@@ -243,6 +252,7 @@ void UserTerminalHandler::run() {
 }
 
 void UserTerminalHandler::runIdleSession() {
+  TerminalSocketOpener sockets;
   while (true) {
     {
       lock_guard<recursive_mutex> guard(shutdownMutex);
@@ -261,7 +271,7 @@ void UserTerminalHandler::runIdleSession() {
       continue;
     }
     char packetType = 0;
-    int rc = read(routerFd, &packetType, 1);
+    int rc = sockets.readCommand(routerFd, &packetType);
     int readErrno = errno;
     if (rc == -1) {
       if (readErrno == EAGAIN || readErrno == EINTR) {
@@ -275,6 +285,8 @@ void UserTerminalHandler::runIdleSession() {
       return;
     }
     switch (packetType) {
+      case TERMINAL_SOCKET_CONNECT:
+        break;
       case TERMINAL_BUFFER:
         socketHandler->readProto<TerminalBuffer>(routerFd, false);
         break;
@@ -292,6 +304,7 @@ void UserTerminalHandler::runIdleSession() {
 }
 
 void UserTerminalHandler::runUserTerminal(int masterFd) {
+  TerminalSocketOpener sockets;
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
@@ -448,7 +461,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
 
       if (FD_ISSET(routerFd, &rfd)) {
         char packetType;
-        int rc = read(routerFd, &packetType, 1);
+        int rc = sockets.readCommand(routerFd, &packetType);
         int readErrno = errno;  // Save errno before any logging
         if (rc == -1) {
           if (readErrno == EAGAIN || readErrno == EINTR) {

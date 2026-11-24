@@ -5,6 +5,11 @@
 #ifndef WIN32
 #include <sys/resource.h>
 #endif
+#ifdef __linux__
+#include <poll.h>
+
+#include "TerminalSocket.hpp"
+#endif
 
 using namespace et;
 
@@ -139,6 +144,78 @@ class FakeConnection : public Connection {
 };
 
 }  // namespace
+
+#ifdef __linux__
+TEST_CASE("Terminal commands survive truncated control data",
+          "[PortForwardHandler]") {
+  int router[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, router) == 0);
+  // Kernel credentials are larger than the control buffer for one descriptor.
+  int passCred = 1;
+  REQUIRE(::setsockopt(router[1], SOL_SOCKET, SO_PASSCRED, &passCred,
+                       sizeof(passCred)) == 0);
+  char commands[] = {TERMINAL_SOCKET_CONNECT, TERMINAL_CLOSE};
+  REQUIRE(::write(router[0], commands, sizeof(commands)) == sizeof(commands));
+  TerminalSocketOpener opener;
+  for (char expected : commands) {
+    char actual;
+    REQUIRE(opener.readCommand(router[1], &actual) == 1);
+    CHECK(actual == expected);
+  }
+  ::close(router[0]);
+  ::close(router[1]);
+}
+
+TEST_CASE("Terminal socket handoff waits for a writable router",
+          "[PortForwardHandler]") {
+  int router[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, router) == 0);
+  char data[4096]{};
+  while (::send(router[0], data, sizeof(data), 0) > 0) {
+  }
+  REQUIRE(errno == EAGAIN);
+
+  auto pipe = make_shared<PipeSocketHandler>();
+  PortForwardHandler forwards(make_shared<FakePortForwardSocketHandler>(),
+                              pipe);
+  FakeConnection client;
+  TerminalUserInfo user;
+  user.set_fd(router[0]);
+  user.set_supports_socket_connect(true);
+  TerminalSocketRequests requests(user, *pipe, forwards, client);
+  PortForwardDestinationRequest request;
+  request.set_fd(42);
+  request.mutable_destination()->set_name("/dev/null/not-a-socket");
+  REQUIRE(requests.tryHandle(request));
+
+  set<int> read, write, refresh;
+  requests.addFds(read, write, refresh);
+  REQUIRE(write == set<int>{router[0]});
+  requests.update(read, write);  // The router filled after poll.
+  REQUIRE(client.sentPackets.empty());
+  while (::recv(router[1], data, sizeof(data), 0) > 0) {
+  }
+  REQUIRE(errno == EAGAIN);
+  requests.update(read, write);
+
+  TerminalSocketOpener opener;
+  char command;
+  REQUIRE(opener.readCommand(router[1], &command) == 1);
+  REQUIRE(command == TERMINAL_SOCKET_CONNECT);
+  requests.addFds(read, write, refresh);
+  REQUIRE(read.size() == 1);
+  pollfd reply{*read.begin(), POLLIN, 0};
+  REQUIRE(::poll(&reply, 1, 3000) == 1);
+  requests.update(read, {});
+  REQUIRE(client.sentPackets.size() == 1);
+  auto response = stringToProto<PortForwardDestinationResponse>(
+      client.sentPackets.front().getPayload());
+  CHECK(response.clientfd() == 42);
+  CHECK(response.error() == strerror(ENOTDIR));
+  ::close(router[0]);
+  ::close(router[1]);
+}
+#endif
 
 TEST_CASE("PortForwardHandler constructor", "[PortForwardHandler]") {
   auto networkHandler = make_shared<FakePortForwardSocketHandler>();

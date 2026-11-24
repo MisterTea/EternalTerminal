@@ -4,6 +4,7 @@
 
 #include "PipeSocketHandler.hpp"
 #include "SshAgentSessionBind.hpp"
+#include "TerminalSocket.hpp"
 
 namespace et {
 namespace {
@@ -286,7 +287,6 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
   lock_guard<recursive_mutex> guard(handlerMutex);
   int fd = -1;
-  bool isTcp = pfdr.destination().has_port();
   if (pfdr.destination().has_port()) {
     if (pfdr.destination().has_name() && !pfdr.destination().name().empty()) {
       fd = networkSocketHandler->connect(pfdr.destination());
@@ -318,12 +318,19 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
       fd = pipeSocketHandler->connect(pfdr.destination());
     }
   }
+  return finishDestination(pfdr, fd, fd < 0 ? GetErrno() : 0);
+}
+
+PortForwardDestinationResponse PortForwardHandler::finishDestination(
+    const PortForwardDestinationRequest& pfdr, int fd, int error) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  const bool isTcp = pfdr.destination().has_port();
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
   bool bindAgent = !isTcp && !sshAgentSessionBinds.empty() &&
                    pathsEqual(pfdr.destination().name(), sshAgentSocketPath);
   if (fd == -1) {
-    pfdresponse.set_error(strerror(GetErrno()));
+    pfdresponse.set_error(strerror(error));
   } else if (bindAgent &&
              !sendAgentSessionBinds(pipeSocketHandler.get(), fd,
                                     sshAgentSocketPath, sshAgentSessionBinds)) {
@@ -355,7 +362,8 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
 }
 
 void PortForwardHandler::handlePacket(const Packet& packet,
-                                      shared_ptr<Connection> connection) {
+                                      shared_ptr<Connection> connection,
+                                      TerminalSocketRequests* terminalSockets) {
   lock_guard<recursive_mutex> guard(handlerMutex);
   switch (TerminalPacketType(packet.getHeader())) {
     case TerminalPacketType::PORT_FORWARD_DATA: {
@@ -394,6 +402,7 @@ void PortForwardHandler::handlePacket(const Packet& packet,
           stringToProto<PortForwardDestinationRequest>(packet.getPayload());
       LOG(INFO) << "Got new port destination request for "
                 << pfdr.destination();
+      if (terminalSockets && terminalSockets->tryHandle(pfdr)) break;
       PortForwardDestinationResponse pfdresponse = createDestination(pfdr);
       Packet sendPacket(
           uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),

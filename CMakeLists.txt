@@ -624,6 +624,7 @@ add_library(
   TerminalCommon STATIC
   src/terminal/forwarding/PortForwardHandler.hpp
   src/terminal/forwarding/PortForwardHandler.cpp
+  src/terminal/forwarding/TerminalSocket.cpp
   src/terminal/forwarding/ForwardSourceHandler.hpp
   src/terminal/forwarding/ForwardSourceHandler.cpp
   src/terminal/forwarding/ForwardDestinationHandler.hpp
@@ -1038,6 +1039,10 @@ else(WIN32)
     endif()
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_test(NAME et_forward_socket_e2e
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/system_tests/et_forward_socket_e2e.py
+                $<TARGET_FILE:et> $<TARGET_FILE:etserver> $<TARGET_FILE:etterminal>)
+      set_tests_properties(et_forward_socket_e2e PROPERTIES TIMEOUT 45 LABELS "e2e;et;system")
       add_test(
         NAME rpm_elf_noexecstack
         COMMAND
