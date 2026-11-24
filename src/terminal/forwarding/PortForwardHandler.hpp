@@ -8,6 +8,8 @@
 #include "SocketHandler.hpp"
 
 namespace et {
+class TerminalSocketRequests;
+
 /**
  * @brief Coordinates port forwarding requests, source/destination sockets, and
  * data flow.
@@ -42,7 +44,8 @@ class PortForwardHandler {
               vector<PortForwardData>* dataToSend,
               const set<int>* readyFds = nullptr, bool peerConnected = true);
   /** @brief Handles control packets arriving over the SSH connection. */
-  void handlePacket(const Packet& packet, shared_ptr<Connection> connection);
+  void handlePacket(const Packet& packet, shared_ptr<Connection> connection,
+                    TerminalSocketRequests* terminalSockets = nullptr);
   PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr,
                                          string* sourceName, uid_t userid,
                                          gid_t groupid);
@@ -62,6 +65,9 @@ class PortForwardHandler {
    * socket. */
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
+  // Takes a tracked destination fd, or -1 and the connect error.
+  PortForwardDestinationResponse finishDestination(
+      const PortForwardDestinationRequest& pfdr, int fd, int error);
   /**
    * @brief Sends @p binds (OpenSSH session-bind requests) on every new
    * destination connection to the ssh-agent at @p agentSocketPath before

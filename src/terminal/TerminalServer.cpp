@@ -9,6 +9,7 @@
 #include "JumphostPending.hpp"
 #include "TelemetryService.hpp"
 #include "TerminalInterruptDrain.hpp"
+#include "TerminalSocket.hpp"
 #include "TmuxCcFilter.hpp"
 #include "WriteBuffer.hpp"
 
@@ -366,7 +367,7 @@ void TerminalServer::runTerminal(
     bool resume, bool* terminalEofOut) {
   InitialResponse response;
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
-  shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
+  auto pipeSocketHandler = make_shared<PipeSocketHandler>();
   shared_ptr<PortForwardHandler> portForwardHandler(new PortForwardHandler(
       serverSocketHandler, pipeSocketHandler, userInfo.uid(), userInfo.gid()));
   map<string, string> environmentVariables;
@@ -429,6 +430,8 @@ void TerminalServer::runTerminal(
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
   FdPoller poller;
+  TerminalSocketRequests terminalSockets(
+      userInfo, *pipeSocketHandler, *portForwardHandler, *serverClientState);
   uint64_t forwardFdsGeneration = portForwardHandler->getForwardFdsGeneration();
 
   if (!resume) {
@@ -521,6 +524,7 @@ void TerminalServer::runTerminal(
     }
     // Include port forward sockets for low-latency forwarding.
     readFds.insert(pfFds.begin(), pfFds.end());
+    terminalSockets.addFds(readFds, writeFds, refreshFds);
 
     // Any open or close since the last pass may have recycled an fd number.
     if (currentForwardFdsGeneration != forwardFdsGeneration) {
@@ -529,11 +533,11 @@ void TerminalServer::runTerminal(
     }
     poller.setFds(readFds, writeFds, refreshFds);
     socketLock.unlock();
-    // Write readiness only needs to wake the loop; the drain below re-checks
-    // it per write.
-    const set<int> readyFds = poller.wait(100).readable;
+    auto ready = poller.wait(100);
+    auto& readyFds = ready.readable;
 
     try {
+      terminalSockets.update(readyFds, ready.writable);
       // Handle client input before draining the output queue. Otherwise a
       // writable socket (fast client, or a client just resumed) sends the
       // whole backlog before Ctrl+C is read, and flushIfLarge sees nothing.
@@ -558,7 +562,8 @@ void TerminalServer::runTerminal(
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
-            portForwardHandler->handlePacket(packet, serverClientState);
+            portForwardHandler->handlePacket(packet, serverClientState,
+                                             &terminalSockets);
             continue;
           }
           switch (packetType) {

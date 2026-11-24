@@ -23,10 +23,14 @@ int PipeSocketHandler::connectAsUser(const SocketEndpoint& endpoint, uid_t uid,
   if (sockFd < 0) {
     return -1;
   }
-  initSocket(sockFd);
-  addToActiveSockets(sockFd);
+  adoptConnectedSocket(sockFd);
   LOG(INFO) << "Connected to endpoint " << endpoint << " as uid " << uid;
   return sockFd;
+}
+
+void PipeSocketHandler::adoptConnectedSocket(int fd) {
+  initSocket(fd);
+  addToActiveSockets(fd);
 }
 
 set<int> PipeSocketHandler::listenAsUser(const SocketEndpoint& endpoint,
