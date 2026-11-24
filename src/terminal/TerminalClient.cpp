@@ -184,7 +184,8 @@ TerminalClient::TerminalClient(
     bool _resumeSavedSession, std::function<bool()> _sessionHeartbeat,
     std::function<bool(const string&)> _sessionTitleUpdate,
     optional<int> disconnectTimeoutMinutes, bool noShell,
-    bool exitOnForwardFailure, const vector<string>& sshAgentSessionBinds)
+    bool exitOnForwardFailure, const vector<string>& sshAgentSessionBinds,
+    const optional<X11Forward>& x11Forward)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
@@ -196,6 +197,13 @@ TerminalClient::TerminalClient(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
+  if (x11Forward) {
+    portForwardHandler->setX11Forward(*x11Forward);
+    auto* x11 = payload.mutable_x11();
+    x11->set_destination(x11Forward->destination);
+    x11->set_cookie(x11Forward->proxyCookie);
+    x11->set_screen(x11Forward->screen);
+  }
   payload.set_supports_exit_status(true);
   if (stdioForwardActive || noShell) {
     payload.set_no_shell(true);
@@ -362,6 +370,10 @@ TerminalClient::TerminalClient(
                 if (initialResponse.has_error()) {
                   throw std::runtime_error("Error initializing connection: " +
                                            initialResponse.error());
+                }
+                if (x11Forward && !initialResponse.x11_ready()) {
+                  throw std::runtime_error(
+                      "The remote etserver does not support X11 forwarding");
                 }
                 fail = false;
                 break;

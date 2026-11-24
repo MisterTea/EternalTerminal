@@ -57,7 +57,8 @@ class TerminalClient {
                  std::function<bool(const string&)> _sessionTitleUpdate = {},
                  optional<int> disconnectTimeoutMinutes = nullopt,
                  bool noShell = false, bool exitOnForwardFailure = false,
-                 const vector<string>& sshAgentSessionBinds = {});
+                 const vector<string>& sshAgentSessionBinds = {},
+                 const optional<X11Forward>& x11Forward = nullopt);
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();

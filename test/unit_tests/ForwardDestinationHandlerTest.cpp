@@ -1,3 +1,4 @@
+#include <catch2/generators/catch_generators.hpp>
 #include <cerrno>
 #include <cstring>
 #include <deque>
@@ -204,4 +205,50 @@ TEST_CASE("ForwardDestinationHandler yields after a bounded data batch",
 
   REQUIRE(responses.size() == 4);
   REQUIRE(socketHandler->performedReads.size() == 4);
+}
+
+TEST_CASE("X11 forwarding replaces only an authenticated setup cookie",
+          "[ForwardDestinationHandler][X11]") {
+  const bool little = GENERATE(true, false);
+  X11Forward x11;
+  x11.proxyCookie = string(X11CookieSize, 'p');
+  x11.localCookie = string(X11CookieSize, 'l');
+  string setup(12, '\0');
+  setup[0] = little ? 'l' : 'B';
+  setup[little ? 2 : 3] = 11;
+  setup[little ? 6 : 7] = sizeof(X11AuthProtocol) - 1;
+  setup[little ? 8 : 9] = X11CookieSize;
+  setup += X11AuthProtocol;
+  setup += string(2, '\0');
+  const size_t cookieOffset = setup.size();
+  setup += x11.proxyCookie;
+  const auto socket = make_shared<MockSocketHandler>();
+
+  SECTION("split setup and additional data are passed through in order") {
+    ForwardDestinationHandler handler(socket, 42, 123, nullptr, &x11);
+    handler.write(setup.substr(0, 8));
+    handler.write(setup.substr(8, 32));
+    REQUIRE(socket->writes.empty());
+    handler.write(setup.substr(40) + "post-setup");
+    handler.write("later");
+    setup.replace(cookieOffset, X11CookieSize, x11.localCookie);
+    REQUIRE(socket->writes == vector<string>{setup + "post-setup", "later"});
+  }
+
+  SECTION("a bad cookie closes the connection without writing to X11") {
+    ForwardDestinationHandler handler(socket, 42, 123, nullptr, &x11);
+    setup[cookieOffset] = 'x';
+    handler.write(setup);
+    REQUIRE(socket->writes.empty());
+    REQUIRE(handler.rejectedX11Setup());
+    REQUIRE(socket->closedFds == vector<int>{42});
+  }
+
+  SECTION("an expired setup is rejected") {
+    x11.expires = std::chrono::steady_clock::now();
+    ForwardDestinationHandler handler(socket, 42, 123, nullptr, &x11);
+    handler.write(setup);
+    REQUIRE(socket->writes.empty());
+    REQUIRE(handler.rejectedX11Setup());
+  }
 }

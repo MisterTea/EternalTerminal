@@ -79,6 +79,14 @@ message PortForwardData {
   optional bool half_close = 6;
 }
 
+message X11ForwardRequest {
+  // Opaque destination routed to the client's local display.
+  optional string destination = 1;
+  // Synthetic MIT-MAGIC-COOKIE-1. The real display cookie stays on the client.
+  optional bytes cookie = 2;
+  optional int32 screen = 3;
+}
+
 message InitialPayload {
   optional bool jumphost = 1 [default = false];
   repeated PortForwardSourceRequest reversetunnels = 2;
@@ -96,10 +104,12 @@ message InitialPayload {
   // 0 means no timeout. Clients convert --disconnect-timeout minutes to
   // seconds.
   optional int32 disconnect_timeout_seconds = 8;
+  optional X11ForwardRequest x11 = 9;
 }
 
 message InitialResponse {
   optional string error = 1;
+  optional bool x11_ready = 2;
 }
 
 message ConfigParams {

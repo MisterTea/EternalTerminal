@@ -46,6 +46,10 @@ class PortForwardHandler {
   PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr,
                                          string* sourceName, uid_t userid,
                                          gid_t groupid);
+  /** @brief Creates a session-scoped loopback listener and returns its display
+   * number. */
+  int createX11Source(const string& destination);
+  void setX11Forward(const X11Forward& forward) { x11Forward = forward; }
   /**
    * @brief Listens for SOCKS clients on `source` and opens destinations chosen
    * after each handshake (ssh -D).
@@ -104,6 +108,7 @@ class PortForwardHandler {
   string sshAgentSocketPath;
   /** @brief Session-bind requests replayed on new agent connections. */
   vector<string> sshAgentSessionBinds;
+  optional<X11Forward> x11Forward;
   /** @brief Active destination handlers keyed by socket id. */
   unordered_map<int, unique_ptr<ForwardDestinationHandler>> destinationHandlers;
 

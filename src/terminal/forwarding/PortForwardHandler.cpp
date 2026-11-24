@@ -4,6 +4,7 @@
 
 #include "PipeSocketHandler.hpp"
 #include "SshAgentSessionBind.hpp"
+#include "TcpSocketHandler.hpp"
 
 namespace et {
 namespace {
@@ -282,25 +283,67 @@ void PortForwardHandler::setSshAgentSessionBinds(const string& agentSocketPath,
   sshAgentSessionBinds = binds;
 }
 
+int PortForwardHandler::createX11Source(const string& name) {
+#ifdef WIN32
+  throw runtime_error("X11 forwarding is unavailable on Windows servers");
+#else
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  // A separate handler allows multiple sessions to bind port zero.
+  auto listener = make_shared<TcpSocketHandler>();
+  SocketEndpoint source;
+  source.set_name("127.0.0.1");
+  source.set_port(0);
+  SocketEndpoint destination;
+  destination.set_name(name);
+  auto forward =
+      make_shared<ForwardSourceHandler>(listener, source, destination);
+  const auto fds = listener->getEndpointFds(source);
+  sockaddr_in address{};
+  socklen_t length = sizeof(address);
+  if (fds.size() != 1 ||
+      getsockname(*fds.begin(), reinterpret_cast<sockaddr*>(&address),
+                  &length) != 0 ||
+      ntohs(address.sin_port) < 6000) {
+    throw runtime_error("Could not allocate a loopback X11 display");
+  }
+  sourceHandlers.push_back(forward);
+  ++forwardFdsGeneration;
+  return ntohs(address.sin_port) - 6000;
+#endif
+}
+
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
   lock_guard<recursive_mutex> guard(handlerMutex);
+  const X11Forward* x11 = nullptr;
+  if (!pfdr.destination().has_port() &&
+      pfdr.destination().name().starts_with(X11ForwardPrefix)) {
+    if (!x11Forward || pfdr.destination().name() != x11Forward->destination ||
+        std::chrono::steady_clock::now() >= x11Forward->expires) {
+      PortForwardDestinationResponse response;
+      response.set_clientfd(pfdr.fd());
+      response.set_error("X11 forwarding is unavailable for this connection");
+      return response;
+    }
+    x11 = &*x11Forward;
+  }
+  const auto& destination = x11 ? x11->endpoint : pfdr.destination();
   int fd = -1;
-  bool isTcp = pfdr.destination().has_port();
-  if (pfdr.destination().has_port()) {
-    if (pfdr.destination().has_name() && !pfdr.destination().name().empty()) {
-      fd = networkSocketHandler->connect(pfdr.destination());
+  bool isTcp = destination.has_port();
+  if (destination.has_port()) {
+    if (destination.has_name() && !destination.name().empty()) {
+      fd = networkSocketHandler->connect(destination);
     } else {
       // Try ipv6 first
       SocketEndpoint ipv6Localhost;
       ipv6Localhost.set_name("::1");
-      ipv6Localhost.set_port(pfdr.destination().port());
+      ipv6Localhost.set_port(destination.port());
 
       fd = networkSocketHandler->connect(ipv6Localhost);
       if (fd == -1) {
         SocketEndpoint ipv4Localhost;
         ipv4Localhost.set_name("127.0.0.1");
-        ipv4Localhost.set_port(pfdr.destination().port());
+        ipv4Localhost.set_port(destination.port());
         // Try ipv4 next
         fd = networkSocketHandler->connect(ipv4Localhost);
       }
@@ -312,16 +355,15 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
         dynamic_pointer_cast<PipeSocketHandler>(pipeSocketHandler);
     if (concretePipe && sessionUid != static_cast<uid_t>(-1) &&
         sessionGid != static_cast<gid_t>(-1)) {
-      fd = concretePipe->connectAsUser(pfdr.destination(), sessionUid,
-                                       sessionGid);
+      fd = concretePipe->connectAsUser(destination, sessionUid, sessionGid);
     } else {
-      fd = pipeSocketHandler->connect(pfdr.destination());
+      fd = pipeSocketHandler->connect(destination);
     }
   }
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
-  bool bindAgent = !isTcp && !sshAgentSessionBinds.empty() &&
-                   pathsEqual(pfdr.destination().name(), sshAgentSocketPath);
+  bool bindAgent = !x11 && !isTcp && !sshAgentSessionBinds.empty() &&
+                   pathsEqual(destination.name(), sshAgentSocketPath);
   if (fd == -1) {
     pfdresponse.set_error(strerror(GetErrno()));
   } else if (bindAgent &&
@@ -346,7 +388,8 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
           isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId,
           bindAgent ? make_unique<AgentSessionBindReplies>(
                           sshAgentSessionBinds.size(), sshAgentSocketPath)
-                    : nullptr);
+                    : nullptr,
+          x11);
       pfdresponse.set_socketid(socketId);
       ++forwardFdsGeneration;
     }
@@ -377,6 +420,16 @@ void PortForwardHandler::handlePacket(const Packet& packet,
           ++forwardFdsGeneration;
         } else {
           it->second->write(pwd.buffer());
+          if (it->second->rejectedX11Setup()) {
+            PortForwardData closed;
+            closed.set_socketid(pwd.socketid());
+            closed.set_sourcetodestination(false);
+            closed.set_closed(true);
+            destinationHandlers.erase(it);
+            ++forwardFdsGeneration;
+            connection->writePacket(Packet(
+                TerminalPacketType::PORT_FORWARD_DATA, protoToString(closed)));
+          }
         }
       } else if (pwd.has_closed() || pwd.has_error()) {
         LOG(INFO) << "Port forward socket "
