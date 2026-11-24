@@ -5,6 +5,7 @@
 #include "Headers.hpp"
 #include "SocketHandler.hpp"
 #include "SshAgentSessionBind.hpp"
+#include "X11Forward.hpp"
 
 namespace et {
 /**
@@ -20,7 +21,8 @@ class ForwardDestinationHandler {
    */
   ForwardDestinationHandler(
       shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId,
-      unique_ptr<AgentSessionBindReplies> _bindReplies = nullptr);
+      unique_ptr<AgentSessionBindReplies> _bindReplies = nullptr,
+      const X11Forward* x11 = nullptr);
   ~ForwardDestinationHandler();
 
   ForwardDestinationHandler(const ForwardDestinationHandler&) = delete;
@@ -29,6 +31,7 @@ class ForwardDestinationHandler {
 
   /** @brief Sends bytes that need to travel to the destination socket. */
   void write(const string& s);
+  bool rejectedX11Setup() const { return x11Rejected; }
 
   /** @brief Stops writes while leaving the socket readable. */
   void shutdownWrite();
@@ -55,6 +58,8 @@ class ForwardDestinationHandler {
   bool writeShutdown = false;
   /** @brief Pending ssh-agent replies to session binds, if any. */
   unique_ptr<AgentSessionBindReplies> bindReplies;
+  optional<X11Setup> x11Setup;
+  bool x11Rejected = false;
 };
 }  // namespace et
 

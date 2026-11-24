@@ -489,8 +489,12 @@ void parseShortCluster(MuxParseResult* result, const vector<string>& args,
         result->remainingArgs.push_back("-T");
         ++k;
         break;
+      case 'X':
+      case 'Y':
       case 'x':
-        result->ssh.disableX11 = true;
+        result->ssh.disableX11 = flag == 'x';
+        result->ssh.forwardX11 = flag != 'x';
+        result->ssh.trustX11 = flag == 'Y';
         ++k;
         break;
       case 'f':

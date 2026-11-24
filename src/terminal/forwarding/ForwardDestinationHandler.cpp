@@ -3,11 +3,15 @@
 namespace et {
 ForwardDestinationHandler::ForwardDestinationHandler(
     shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId,
-    unique_ptr<AgentSessionBindReplies> _bindReplies)
+    unique_ptr<AgentSessionBindReplies> _bindReplies, const X11Forward* x11)
     : socketHandler(_socketHandler),
       fd(_fd),
       socketId(_socketId),
-      bindReplies(std::move(_bindReplies)) {}
+      bindReplies(std::move(_bindReplies)) {
+  if (x11) {
+    x11Setup.emplace(*x11);
+  }
+}
 
 ForwardDestinationHandler::~ForwardDestinationHandler() { close(); }
 
@@ -24,6 +28,16 @@ void ForwardDestinationHandler::write(const string& s) {
     return;
   }
   VLOG(1) << "Writing " << s.length() << " bytes to port destination";
+  if (x11Setup) {
+    string data;
+    if (!x11Setup->rewrite(s, &data)) {
+      x11Rejected = true;
+      close();
+    } else if (!data.empty()) {
+      socketHandler->writeAllOrReturn(fd, data.data(), data.size());
+    }
+    return;
+  }
   socketHandler->writeAllOrReturn(fd, s.c_str(), s.length());
 }
 

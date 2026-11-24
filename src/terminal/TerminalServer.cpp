@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdint>
 #include <deque>
+#include <fstream>
 #include <thread>
 
 #include "FdPoller.hpp"
@@ -16,6 +17,53 @@
 
 namespace et {
 namespace {
+
+#ifndef WIN32
+class X11Authority {
+ public:
+  ~X11Authority() {
+    if (!directory.empty()) {
+      unlink(path().c_str());
+      rmdir(directory.c_str());
+    }
+  }
+
+  string path() const { return directory + "/authority"; }
+
+  void create(const string& display, const string& cookie, uid_t uid,
+              gid_t gid) {
+    string pattern = GetTempDirectory() + "et_x11_XXXXXX";
+    if (!mkdtemp(pattern.data())) {
+      throw runtime_error("Could not create the X11 authority directory");
+    }
+    directory = std::move(pattern);
+
+    // Xauthority wire format, with one FamilyWild entry for this display.
+    // The directory remains owned by the daemon so the file cannot be replaced.
+    std::ofstream file(path(), std::ios::binary);
+    file.put(static_cast<char>(0xff));
+    file.put(static_cast<char>(0xff));
+    auto field = [&](const string& bytes) {
+      file.put(static_cast<char>(bytes.size() >> 8));
+      file.put(static_cast<char>(bytes.size() & 0xff));
+      file.write(bytes.data(), bytes.size());
+    };
+    field("");
+    field(display);
+    field(X11AuthProtocol);
+    field(cookie);
+    file.close();
+    if (!file || chmod(path().c_str(), 0400) != 0 ||
+        chown(path().c_str(), uid, gid) != 0 ||
+        chmod(directory.c_str(), 0711) != 0) {
+      throw runtime_error("Could not prepare the X11 authority file");
+    }
+  }
+
+ private:
+  string directory;
+};
+#endif
 
 // Returns true when control notifications were just sent and a large
 // droppable backlog remains: the caller should wait for client input
@@ -369,6 +417,9 @@ void TerminalServer::runTerminal(
   shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
   shared_ptr<PortForwardHandler> portForwardHandler(new PortForwardHandler(
       serverSocketHandler, pipeSocketHandler, userInfo.uid(), userInfo.gid()));
+#ifndef WIN32
+  X11Authority x11Authority;
+#endif
   map<string, string> environmentVariables;
 
   for (const auto& envVar : payload.environmentvariables()) {
@@ -384,6 +435,39 @@ void TerminalServer::runTerminal(
       serverClientState->writePacket(Packet(
           uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
       return;
+    }
+    if (payload.has_x11()) {
+      try {
+#ifdef WIN32
+        throw runtime_error("X11 forwarding is unavailable on Windows servers");
+#else
+        const auto& x11 = payload.x11();
+        if (noShell || x11.cookie().size() != X11CookieSize ||
+            x11.screen() < 0 || x11.screen() > 65535 ||
+            x11.destination().size() !=
+                X11ForwardPrefix.size() + X11ForwardTokenSize ||
+            !x11.destination().starts_with(X11ForwardPrefix) ||
+            x11.destination().find_first_not_of(
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678"
+                "9",
+                X11ForwardPrefix.size()) != string::npos) {
+          throw runtime_error("Invalid X11 forwarding request");
+        }
+        const string display = std::to_string(
+            portForwardHandler->createX11Source(x11.destination()));
+        x11Authority.create(display, x11.cookie(), userInfo.uid(),
+                            userInfo.gid());
+        environmentVariables["DISPLAY"] =
+            "127.0.0.1:" + display + "." + std::to_string(x11.screen());
+        environmentVariables["XAUTHORITY"] = x11Authority.path();
+        response.set_x11_ready(true);
+#endif
+      } catch (const std::runtime_error& error) {
+        response.set_error(error.what());
+        serverClientState->writePacket(Packet(
+            uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+        return;
+      }
     }
     vector<string> pipePaths;
     for (const PortForwardSourceRequest& pfsr : payload.reversetunnels()) {
@@ -433,7 +517,8 @@ void TerminalServer::runTerminal(
 
   if (!resume) {
     TermInit termInit;
-    termInit.set_hadreversetunnels(payload.reversetunnels_size() > 0);
+    termInit.set_hadreversetunnels(payload.reversetunnels_size() > 0 ||
+                                   payload.has_x11());
     if (payload.has_disconnect_timeout_seconds()) {
       termInit.set_disconnect_timeout_seconds(
           payload.disconnect_timeout_seconds());

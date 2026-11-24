@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <regex>
 
 #include "BinaryStdioConsole.hpp"
 #include "ClientArgParsing.hpp"
@@ -33,6 +34,96 @@
 
 namespace et {
 namespace {
+X11Forward prepareX11Forward(bool trusted, SubprocessUtils& subprocess) {
+#ifdef WIN32
+  throw runtime_error("X11 forwarding is unavailable on Windows clients");
+#else
+  const char* displayEnv = getenv("DISPLAY");
+  if (!displayEnv || !*displayEnv) {
+    throw runtime_error("X11 forwarding requires a local DISPLAY");
+  }
+  const string display = displayEnv;
+  static const std::regex displayFormat(
+      R"((\[[A-Za-z0-9_.:-]+\]|[A-Za-z0-9_.-]*):([0-9]{1,5})(?:\.([0-9]{1,5}))?)");
+  std::smatch match;
+  if (!std::regex_match(display, match, displayFormat)) {
+    throw runtime_error("Unsupported local X11 DISPLAY format");
+  }
+  const int number = std::stoi(match[2].str());
+  X11Forward forward;
+  forward.screen = match[3].matched ? std::stoi(match[3].str()) : 0;
+  if (number > 59535 || forward.screen > 65535) {
+    throw runtime_error("Invalid local X11 DISPLAY number or screen");
+  }
+  const string host = match[1].str();
+  if (host.empty() || host == "unix") {
+    forward.endpoint.set_name("/tmp/.X11-unix/X" + std::to_string(number));
+  } else {
+    forward.endpoint.set_name(
+        host.front() == '[' ? host.substr(1, host.size() - 2) : host);
+    forward.endpoint.set_port(6000 + number);
+  }
+  vector<string> args;
+  struct TempAuthority {
+    string directory;
+    ~TempAuthority() {
+      if (!directory.empty()) {
+        std::error_code error;
+        std::filesystem::remove_all(directory, error);
+      }
+    }
+  } authority;
+  if (!trusted) {
+    string pattern = GetTempDirectory() + "et_xauth_XXXXXX";
+    if (!mkdtemp(pattern.data())) {
+      throw runtime_error("Could not create a local X11 authority directory");
+    }
+    authority.directory = std::move(pattern);
+    const string path = authority.directory + "/authority";
+    if (!std::ofstream(path)) {
+      throw runtime_error("Could not create a local X11 authority file");
+    }
+    // Give the local X server slightly longer than ET's admission window.
+    forward.expires = std::chrono::steady_clock::now() + X11UntrustedTimeout;
+    subprocess.SubprocessToStringInteractive(
+        "xauth",
+        {"-f", path, "generate", display, ".", "untrusted", "timeout", "1260"});
+    args = {"-f", path};
+  }
+  args.insert(args.end(), {"list", display});
+  std::istringstream cookies(
+      subprocess.SubprocessToStringInteractive("xauth", args));
+  string line;
+  while (std::getline(cookies, line)) {
+    std::istringstream record(line);
+    string address, protocol, hexCookie, extra;
+    if (!(record >> address >> protocol >> hexCookie) || (record >> extra) ||
+        protocol != X11AuthProtocol || hexCookie.size() != X11CookieSize * 2) {
+      continue;
+    }
+    string cookie(X11CookieSize, '\0');
+    size_t decoded = 0;
+    if (sodium_hex2bin(reinterpret_cast<unsigned char*>(cookie.data()),
+                       cookie.size(), hexCookie.data(), hexCookie.size(),
+                       nullptr, &decoded, nullptr) == 0 &&
+        decoded == X11CookieSize) {
+      forward.localCookie = std::move(cookie);
+      break;
+    }
+  }
+  if (forward.localCookie.empty()) {
+    throw runtime_error(
+        trusted ? "xauth found no local X11 cookie"
+                : "xauth could not generate an untrusted X11 cookie");
+  }
+  forward.destination =
+      string(X11ForwardPrefix) + genRandomAlphaNum(X11ForwardTokenSize);
+  forward.proxyCookie.resize(X11CookieSize);
+  randombytes_buf(forward.proxyCookie.data(), forward.proxyCookie.size());
+  return forward;
+#endif
+}
+
 // A short random suffix for an unnamed --ctl session's socket name.
 string genRandomHandle() {
   static const char* kHex = "0123456789abcdef";
@@ -613,9 +704,11 @@ int TerminalClientMain(int argc, char** argv,
          cxxopts::value<int>())                                  //
         ("l", "Remote username", cxxopts::value<std::string>())  //
         ("c", "Cipher spec passed to the bootstrap ssh",
-         cxxopts::value<std::string>())                                       //
-        ("t", "Request a pty. Does not open a tunnel.")                       //
-        ("x", "Accepted and ignored (disable X11). Does not kill sessions.")  //
+         cxxopts::value<std::string>())                  //
+        ("t", "Request a pty. Does not open a tunnel.")  //
+        ("X", "Enable untrusted X11 forwarding.")        //
+        ("Y", "Enable trusted X11 forwarding.")          //
+        ("x", "Disable X11 forwarding.")                 //
         ("f",
          "Background after the session is up. Does not forward ssh-agent.")  //
         ("N", "Do not run a remote command (forwards only)")                 //
@@ -710,6 +803,9 @@ int TerminalClientMain(int argc, char** argv,
 
     // Attach to an existing ControlMaster instead of opening a new session.
     if (shouldAttachToMuxMaster(muxOptions)) {
+      if (muxParse.ssh.forwardX11) {
+        throw runtime_error("X11 forwarding requires a new ET session");
+      }
       MuxClient passenger(muxOptions.controlPath);
       if (!passenger.connect()) {
         CLOG(INFO, "stdout") << "Failed to attach to ControlPath "
@@ -933,6 +1029,9 @@ int TerminalClientMain(int argc, char** argv,
     }
 
     if (result.count("attach")) {
+      if (muxParse.ssh.forwardX11) {
+        throw runtime_error("X11 forwarding requires a new ET session");
+      }
       const optional<SessionInfo> session =
           resolveSavedSession(result["attach"].as<string>());
       if (!session) {
@@ -1380,6 +1479,9 @@ int TerminalClientMain(int argc, char** argv,
     }
 
     if (namedSession) {
+      if (muxParse.ssh.forwardX11) {
+        throw runtime_error("X11 forwarding requires a new ET session");
+      }
       if (namedSession->host != socketEndpoint.name() ||
           namedSession->port != socketEndpoint.port()) {
         CLOG(INFO, "stdout") << "session " << sessionName << " is saved for "
@@ -1480,6 +1582,21 @@ int TerminalClientMain(int argc, char** argv,
     if (!subprocessUtils) {
       subprocessUtils = make_shared<SubprocessUtils>();
     }
+    optional<X11Forward> x11Forward;
+    if (muxParse.ssh.forwardX11) {
+      if (is_jumphost) {
+        throw runtime_error(
+            "X11 forwarding through an ET jumphost is unsupported");
+      }
+      if (!stdioForward.empty() || muxParse.ssh.noRemoteCommand) {
+        throw runtime_error(
+            "X11 forwarding requires a remote shell or command");
+      }
+      x11Forward = prepareX11Forward(muxParse.ssh.trustX11, *subprocessUtils);
+    }
+    if (muxParse.ssh.forwardX11 || muxParse.ssh.disableX11) {
+      ssh_options.insert(ssh_options.begin(), "ForwardX11=no");
+    }
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
     // -T uses BinaryStdioConsole so the remote command owns stdout. SSH
     // banners and shell prompts must stay off that channel.
@@ -1539,7 +1656,7 @@ int TerminalClientMain(int argc, char** argv,
         },
         disconnectTimeoutMinutes, muxParse.ssh.noRemoteCommand,
         sshConfigOptions.exit_on_forward_failure,
-        sshSetupHandler.agentSessionBinds());
+        sshSetupHandler.agentSessionBinds(), x11Forward);
 
 #ifndef WIN32
     if (backgroundWriteFd >= 0) {

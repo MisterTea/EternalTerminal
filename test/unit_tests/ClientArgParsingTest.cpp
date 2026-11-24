@@ -313,6 +313,21 @@ TEST_CASE("OpenSSH short flags do not keep ET meanings", "[ClientArgParsing]") {
     REQUIRE(clustered.ssh.verboseCount == 3);
   }
 
+  SECTION("the last X11 option selects the forwarding mode") {
+    const auto untrusted = parseArgv({"et", "-YxX", "host"});
+    REQUIRE(untrusted.ssh.forwardX11);
+    REQUIRE_FALSE(untrusted.ssh.trustX11);
+    REQUIRE_FALSE(untrusted.ssh.disableX11);
+
+    const auto trusted = parseArgv({"et", "-XY", "host"});
+    REQUIRE(trusted.ssh.forwardX11);
+    REQUIRE(trusted.ssh.trustX11);
+
+    const auto disabled = parseArgv({"et", "-Yx", "host"});
+    REQUIRE_FALSE(disabled.ssh.forwardX11);
+    REQUIRE(disabled.ssh.disableX11);
+  }
+
   SECTION("-x does not request killing other sessions") {
     auto parsed = parseArgv({"et", "-x", "host"});
     REQUIRE(parsed.ssh.disableX11);

@@ -299,6 +299,21 @@ command. Pass `--ssh-config none` or the equivalent `--no-ssh-config` to
 disable both user and system SSH configuration entirely. The two options are
 mutually exclusive.
 
+### X11 forwarding
+
+Start a new session with `et -X host` for untrusted X11 forwarding or
+`et -Y host` for trusted X11 forwarding. `-x` disables forwarding. Both the
+client and etserver need X11 forwarding support. Run ET from an X11 session
+with `DISPLAY` set and `xauth` installed on the client. Untrusted forwarding
+requires the X SECURITY extension and accepts new X11 connections for 20
+minutes. Trusted forwarding grants remote X11 applications full access to
+your local display.
+
+X11 connections use ET's transport and survive a transient network disconnect
+while the client and server processes remain running. Start a fresh ET
+session after restarting either process. ET jumphosts and attachments to
+existing mux sessions do not support starting X11 forwarding.
+
 ### SSH agent forwarding
 
 `et --forward-ssh-agent` (or `ForwardAgent yes` in your SSH config) forwards your ssh-agent to the server. `--ssh-socket` picks a different agent to forward.

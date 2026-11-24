@@ -128,6 +128,8 @@ struct OpenSshClientFlags {
   bool background = false;
   bool noRemoteCommand = false;
   bool disableX11 = false;
+  bool forwardX11 = false;
+  bool trustX11 = false;
   int verboseCount = 0;
   bool escapeSet = false;
   string escapeChar;
