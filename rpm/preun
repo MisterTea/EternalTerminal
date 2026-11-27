@@ -1,0 +1,4 @@
+# Stops and disables the service on removal only.
+if [ "$1" -eq 0 ]; then
+  systemctl --no-reload disable --now et.service >/dev/null 2>&1 || :
+fi

@@ -1,0 +1,6 @@
+# Forgets a removed unit and, after an upgrade, restarts a running server
+# onto the new binaries.
+systemctl daemon-reload >/dev/null 2>&1 || :
+if [ "$1" -ge 1 ]; then
+  systemctl try-restart et.service >/dev/null 2>&1 || :
+fi
